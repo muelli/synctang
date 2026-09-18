@@ -37,6 +37,17 @@ type RecoverResponse struct {
 	Error string `json:"error,omitempty"`
 }
 
+// Hello is the very first message the machine sends after a key
+// holder dials in, before anything else (confirm-code or the recover
+// exchange itself): the name a human should see before approving
+// anything (plan section 5: "the key holder shows the requester's
+// transport ID and a name"). The transport ID itself needs no
+// separate field here: it is already the cryptographically verified
+// Conn.PeerID(), not merely asserted by this message.
+type Hello struct {
+	Name string `json:"name"`
+}
+
 // ConfirmCodeChallenge is sent first, before RecoverRequest, when the
 // machine is running with --confirm-code: the key holder must relay
 // Code back exactly, proving whoever is answering can see the
