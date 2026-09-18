@@ -164,6 +164,59 @@ func TestRecoverWrongKeyFails(t *testing.T) {
 	})
 }
 
+// T1.3 extension: a Recipient decoded from a corrupted or hand-edited
+// LUKS2 token can carry a Nonce of any length, not just the 12 bytes
+// enrolment always generates. crypto/cipher's GCM.Open panics, rather
+// than erroring, on a nonce of the wrong length; finishWithY must
+// catch that before it ever reaches gcm.Open, or a single corrupted
+// byte on disk becomes a denial of service against recovery.
+func TestFinishRejectsMalformedNonceWithoutPanicking(t *testing.T) {
+	g := P256()
+
+	s, err := g.RandomScalar()
+	if err != nil {
+		t.Fatalf("RandomScalar: %v", err)
+	}
+	S, err := g.ScalarBaseMult(s)
+	if err != nil {
+		t.Fatalf("ScalarBaseMult: %v", err)
+	}
+
+	_, rec, err := Enrol(g, S)
+	if err != nil {
+		t.Fatalf("Enrol: %v", err)
+	}
+
+	e, X, err := ChallengeStart(g, rec.C)
+	if err != nil {
+		t.Fatalf("ChallengeStart: %v", err)
+	}
+	y, err := g.ScalarMult(X, s)
+	if err != nil {
+		t.Fatalf("ScalarMult: %v", err)
+	}
+
+	for _, badNonce := range [][]byte{nil, {}, {1, 2, 3}, make([]byte, 13)} {
+		badRec := rec
+		badRec.Nonce = badNonce
+		// FinishFullPoint wipes e when it returns; give each iteration
+		// its own copy so an earlier iteration does not zero the
+		// scalar out from under a later one.
+		eCopy := append([]byte(nil), e...)
+
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Fatalf("FinishFullPoint panicked on a %d-byte nonce: %v", len(badNonce), r)
+				}
+			}()
+			if _, err := FinishFullPoint(g, eCopy, badRec, y); err == nil {
+				t.Fatalf("FinishFullPoint succeeded with a %d-byte nonce", len(badNonce))
+			}
+		}()
+	}
+}
+
 // Two enrolments for two different recipients over the same secret
 // must both recover it independently (recipients are first class).
 func TestMultipleRecipients(t *testing.T) {

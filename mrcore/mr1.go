@@ -210,6 +210,14 @@ func aeadSeal(key, nonce, plaintext []byte) ([]byte, error) {
 }
 
 func aeadOpen(key, nonce, ciphertext []byte) ([]byte, error) {
+	// GCM.Open panics, rather than returning an error, if nonce is not
+	// exactly its configured size. nonce comes from a Recipient that
+	// may have been decoded from a corrupted or hand-edited LUKS2
+	// token, so it must be validated before reaching that call: a
+	// single corrupted byte on disk must fail recovery, not crash it.
+	if len(nonce) != nonceLen {
+		return nil, fmt.Errorf("invalid nonce length %d, want %d", len(nonce), nonceLen)
+	}
 	gcm, err := newGCM(key)
 	if err != nil {
 		return nil, err
