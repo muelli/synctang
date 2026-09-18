@@ -1,0 +1,27 @@
+{
+  "_comment": "Fixed MR-1 test vectors (T1.5). Every value is hex-encoded. s_scalar, c_scalar, e_scalar are throwaway scalars for testing only, never used outside this file. Consumed by mrcore's Go tests and intended for the Android/Kotlin instrumented tests (WP5) to verify an independent implementation against the same numbers. Scalar and point key names deliberately differ in more than case (Go's JSON decoder folds \"e\"/\"E\" together and the later key silently wins, so this file never puts a scalar and its point under keys that differ only in case).",
+  "curve": "P-256",
+  "recipient": {
+    "_comment": "the key holder's long-term keypair",
+    "s_scalar": "111111111111111111111111111111111111111111111111111111111111114b",
+    "S": "044713908c3978c1c8f386280baf141825bde527d265583908f01de395b93ec53c575334d08042067a54e5a45796e2c78cd15d4c8f147ee56671d1d9305a608ee5"
+  },
+  "enrol": {
+    "_comment": "c_scalar is the enrolment-time ephemeral scalar; C = c_scalar.G is stored in the token; K = c_scalar.S is the shared point used to derive k",
+    "c_scalar": "2222222222222222222222222222222222222222222222222222222222222278",
+    "C": "042a7ed6b8427a8741cbfef4030c76a169b46933740e3d13d548a7259715e4e5cebffe3ec76a99b646bbb8018819688f828c46fac2db07b1b9ef14966d6b5d335f",
+    "kid": "06cad1f5f40bcad0764700bd5d7bc369153d9a191034b3cd3de1db54984bb44c",
+    "P": "6d722d31207465737420766563746f7220766f6c756d65207365637265742121",
+    "nonce": "444444444444444444444444",
+    "ct": "2412c61b023ccfe648e41ddfa7911877e62660f78a369b4059df8a76d969be5b17549c80584734ed69451fc2880fd932",
+    "hkdf_info": "mr-1 enrol"
+  },
+  "recover": {
+    "_comment": "e_scalar is the recovery-time ephemeral scalar; X = C + E is sent to the key holder; Y = s_scalar.X is what a full-point key holder (file backend, Tang) returns; xOnly = x(Y) is what an x-only key holder (Android Keystore, TPM2 ECDH) returns instead",
+    "e_scalar": "3333333333333333333333333333333333333333333333333333333333333369",
+    "E": "0421d8fa836025858e6cc93f7f0c79b1b1ce8de662a94b629e4643a7785107b8860feabd09acb4b1f21cd219629700df2bcf32ff092b4b04c68223f0ffceb16775",
+    "X": "0422dbe49652e74fdc63bee50e83901685a64ec408f7fe2b568933bf08307077ecf3ecb93789bccb7580166bcd0302bb5e30ba6cf50e8c4f585339a8eb9b011175",
+    "Y": "044cdeeffdbf221ceeee0a92ebf2916d60e7e84302bf3b64497a44c1eade5b579dacffc4328af20802c79aa958abf5556c92b144e677dbdf765a83684b973d96a5",
+    "xOnly": "4cdeeffdbf221ceeee0a92ebf2916d60e7e84302bf3b64497a44c1eade5b579d"
+  }
+}
