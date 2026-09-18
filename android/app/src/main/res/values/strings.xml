@@ -2,4 +2,53 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <resources>
     <string name="app_name">synctang</string>
+
+    <!-- Pairing -->
+    <string name="pair_title">Pair with a machine</string>
+    <string name="pair_scan_hint">Scan the QR code the machine is showing, or type its device ID.</string>
+    <string name="pair_grant_camera">Allow the camera to scan a QR code</string>
+    <string name="pair_manual_label">Machine device ID</string>
+    <string name="pair_manual_action">Pair</string>
+    <string name="pair_invalid">That is not a machine device ID.</string>
+    <string name="pair_enrol_title">Enrol this phone on the machine</string>
+    <string name="pair_enrol_hint">Run this on the machine, once, to let this phone unlock it.</string>
+    <string name="pair_copy">Copy the enrolment command</string>
+    <string name="pair_copied">Copied.</string>
+
+    <!-- Identity -->
+    <string name="identity_device_id">This phone\'s device ID</string>
+    <string name="identity_public_key">This phone\'s public key</string>
+    <string name="identity_backing_strongbox">Key held in StrongBox, the phone\'s secure element.</string>
+    <string name="identity_backing_tee">Key held in the Keystore. This phone has no StrongBox, so the key lives in the trusted execution environment instead. It still cannot be exported.</string>
+
+    <!-- Unlock -->
+    <string name="unlock_machine">Machine</string>
+    <string name="unlock_action">Unlock</string>
+    <string name="unlock_connecting">Connecting to the machine…</string>
+    <string name="unlock_working">Working…</string>
+    <string name="unlock_waiting_hint">The machine has to be waiting at its unlock prompt before this will connect.</string>
+    <string name="unlock_request_title">A machine is asking to be unlocked</string>
+    <string name="unlock_request_identity">Verified identity</string>
+    <string name="unlock_request_key">Key requested</string>
+    <string name="unlock_approve">Approve and unlock</string>
+    <string name="unlock_decline">Refuse</string>
+    <string name="unlock_done">Answered. The machine can now unlock its disk.</string>
+    <string name="unlock_again">Unlock something again</string>
+    <string name="unlock_forget">Forget this machine</string>
+
+    <!-- Confirm code -->
+    <string name="confirm_title">Check the code on the machine</string>
+    <string name="confirm_hint">The machine is showing a code on its own screen. Only continue if it matches the one below; if it does not, someone else is asking.</string>
+    <string name="confirm_action">It matches, continue</string>
+
+    <!-- Biometrics -->
+    <string name="biometric_title">Unlock the machine</string>
+    <string name="biometric_subtitle">Confirm it is you before answering %1$s.</string>
+    <string name="biometric_cancel">Cancel</string>
+
+    <!-- Errors -->
+    <string name="error_cancelled">Cancelled. Nothing was sent to the machine.</string>
+    <string name="error_no_biometric">This phone has no usable biometric enrolled, so the key cannot be created or used. Enrol a fingerprint or a face in the phone\'s settings, then come back.</string>
+    <string name="error_title">That did not work</string>
+    <string name="error_retry">Try again</string>
 </resources>

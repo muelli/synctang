@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<resources>
+    <!--
+        The window itself has to agree with what Compose draws inside
+        it, or the moment between the window appearing and the first
+        composed frame shows as a flash of the wrong colour. This is
+        Material 3's baseline dark surface, which is what
+        darkColorScheme() uses for the background.
+    -->
+    <color name="window_background">#FF1C1B1F</color>
+    <color name="icon_background">#FF1C1B1F</color>
+
+    <style name="Theme.Synctang" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:statusBarColor">@color/window_background</item>
+        <item name="android:navigationBarColor">@color/window_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>
