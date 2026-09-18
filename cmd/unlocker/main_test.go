@@ -94,3 +94,44 @@ func mustScalar(t *testing.T) []byte {
 	}
 	return s
 }
+
+// A passphrase file created with a text editor, or piped via a shell
+// here-string, almost always carries a trailing newline that is not
+// part of the passphrase a human actually typed at cryptsetup's own
+// interactive prompt (the terminal driver strips that newline before
+// the passphrase reaches cryptsetup). readPassphrase must strip
+// exactly one trailing newline (and a preceding \r, for files written
+// on Windows) so --existing-passphrase-file behaves the way a human
+// expects, not like a raw cryptsetup --key-file (which deliberately
+// treats trailing bytes as significant).
+func TestReadPassphraseStripsOneTrailingNewline(t *testing.T) {
+	dir := t.TempDir()
+
+	cases := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{"no newline", "passphrase", "passphrase"},
+		{"unix newline", "passphrase\n", "passphrase"},
+		{"windows newline", "passphrase\r\n", "passphrase"},
+		{"only one newline stripped", "passphrase\n\n", "passphrase\n"},
+		{"internal newline kept", "pass\nphrase\n", "pass\nphrase"},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			path := filepath.Join(dir, "passphrase-"+c.name)
+			if err := os.WriteFile(path, []byte(c.content), 0o600); err != nil {
+				t.Fatalf("WriteFile: %v", err)
+			}
+			got, err := readPassphrase(path)
+			if err != nil {
+				t.Fatalf("readPassphrase: %v", err)
+			}
+			if string(got) != c.want {
+				t.Fatalf("readPassphrase(%q): got %q want %q", c.content, got, c.want)
+			}
+		})
+	}
+}

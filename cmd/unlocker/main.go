@@ -6,6 +6,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -212,9 +213,26 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+// readPassphrase reads an existing LUKS passphrase from path (stdin if
+// "-"), stripping exactly one trailing newline (and a preceding \r).
+// A human typing a passphrase at cryptsetup's own interactive prompt
+// never has it include the newline the terminal driver consumed; a
+// passphrase saved to a file with a text editor, or piped with a
+// shell here-string, almost always does. Without this, --existing-
+// passphrase-file silently fails to match a passphrase that was in
+// fact typed correctly, for a reason invisible in the file's content.
 func readPassphrase(path string) ([]byte, error) {
+	var data []byte
+	var err error
 	if path == "-" {
-		return io.ReadAll(os.Stdin)
+		data, err = io.ReadAll(os.Stdin)
+	} else {
+		data, err = os.ReadFile(path)
 	}
-	return os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	data = bytes.TrimSuffix(data, []byte("\n"))
+	data = bytes.TrimSuffix(data, []byte("\r"))
+	return data, nil
 }
