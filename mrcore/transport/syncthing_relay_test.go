@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -110,6 +111,91 @@ func TestDirectListenDialRoundTrip(t *testing.T) {
 	}
 	if string(buf2) != response {
 		t.Errorf("dialer received %q, want %q", buf2, response)
+	}
+}
+
+// TestDirectListenRejectsUnauthorizedPeer is T2.2: Listen with
+// AuthorizedPeers naming one specific Device ID must reject a dialer
+// with a different identity, after the TLS handshake itself has
+// succeeded, and leave the connection unusable on both sides afterwards.
+func TestDirectListenRejectsUnauthorizedPeer(t *testing.T) {
+	t.Parallel()
+
+	listenerCert, err := socket.GenerateDeterministicCert("t2.2-pairing-secret-listener")
+	if err != nil {
+		t.Fatalf("generating listener cert: %v", err)
+	}
+	authorizedCert, err := socket.GenerateDeterministicCert("t2.2-pairing-secret-authorized")
+	if err != nil {
+		t.Fatalf("generating authorized-peer cert: %v", err)
+	}
+	unauthorizedCert, err := socket.GenerateDeterministicCert("t2.2-pairing-secret-intruder")
+	if err != nil {
+		t.Fatalf("generating unauthorized-peer cert: %v", err)
+	}
+
+	wantListenerID := protocol.NewDeviceID(listenerCert.Certificate[0]).String()
+	authorizedID := protocol.NewDeviceID(authorizedCert.Certificate[0]).String()
+	unauthorizedID := protocol.NewDeviceID(unauthorizedCert.Certificate[0]).String()
+
+	addr := freeAddr(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	listener := NewSyncthingRelay(listenerCert)
+	intruder := NewSyncthingRelay(unauthorizedCert)
+
+	type listenResult struct {
+		conn Conn
+		err  error
+	}
+	listenCh := make(chan listenResult, 1)
+	go func() {
+		conn, err := listener.Listen(ctx, ListenOptions{
+			DirectAddr:      addr,
+			AuthorizedPeers: []string{authorizedID},
+		})
+		listenCh <- listenResult{conn, err}
+	}()
+
+	dialerConn, err := intruder.Dial(ctx, DialOptions{PeerID: wantListenerID, DirectAddr: addr})
+	// The TLS handshake and Device ID verification between dialer and
+	// listener succeed regardless of the authorization list (that list
+	// is enforced only on the listener side); Dial itself should
+	// therefore not fail here.
+	if err != nil {
+		t.Fatalf("Dial (handshake against listener should succeed even though listener will later reject): %v", err)
+	}
+	defer dialerConn.Close()
+
+	res := <-listenCh
+	if res.err == nil {
+		if res.conn != nil {
+			res.conn.Close()
+		}
+		t.Fatalf("Listen: expected rejection of unauthorized peer %s, got success", unauthorizedID)
+	}
+	if !strings.Contains(res.err.Error(), unauthorizedID) {
+		t.Errorf("Listen error %q does not name the rejected peer's Device ID %q; the listener must have verified the peer's cryptographic identity before rejecting it", res.err, unauthorizedID)
+	}
+
+	// The connection must be unusable afterwards: the listener closed
+	// its side once it rejected the peer, so a subsequent read on the
+	// dialer's side must error rather than hang or succeed.
+	readErrCh := make(chan error, 1)
+	go func() {
+		buf := make([]byte, 1)
+		_, err := dialerConn.Read(buf)
+		readErrCh <- err
+	}()
+	select {
+	case err := <-readErrCh:
+		if err == nil {
+			t.Errorf("dialer read after rejection: expected an error, got none")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("dialer read after rejection: timed out, connection was not closed")
 	}
 }
 
