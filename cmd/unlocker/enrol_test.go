@@ -58,7 +58,7 @@ func TestEnrolAddsKeyslotAndToken(t *testing.T) {
 		t.Fatalf("ScalarBaseMult: %v", err)
 	}
 
-	if err := enrolRecipient(device, existingPassphrase, S, "test-machine", "MACHINE-ID"); err != nil {
+	if err := enrolRecipient(device, existingPassphrase, S, "test-machine", "MACHINE-ID", ""); err != nil {
 		t.Fatalf("enrolRecipient: %v", err)
 	}
 
@@ -112,10 +112,10 @@ func TestEnrolSecondRecipientAppends(t *testing.T) {
 	s2, _ := g.RandomScalar()
 	S2, _ := g.ScalarBaseMult(s2)
 
-	if err := enrolRecipient(device, existingPassphrase, S1, "test-machine", "MACHINE-ID"); err != nil {
+	if err := enrolRecipient(device, existingPassphrase, S1, "test-machine", "MACHINE-ID", ""); err != nil {
 		t.Fatalf("first enrolRecipient: %v", err)
 	}
-	if err := enrolRecipient(device, existingPassphrase, S2, "test-machine", "MACHINE-ID"); err != nil {
+	if err := enrolRecipient(device, existingPassphrase, S2, "test-machine", "MACHINE-ID", ""); err != nil {
 		t.Fatalf("second enrolRecipient: %v", err)
 	}
 
@@ -152,4 +152,82 @@ func TestEnrolSecondRecipientAppends(t *testing.T) {
 func itoaForTest(n int) string {
 	b, _ := json.Marshal(n)
 	return string(b)
+}
+
+// A non-empty recipientTransportID must round-trip through the exported
+// token as Recipient.Transport, in a shape TransportDeviceID can parse
+// back out: this is what lets the agent later restrict Listen's
+// AuthorizedPeers to exactly the enrolled key holders.
+func TestEnrolRecordsRecipientTransportID(t *testing.T) {
+	existingPassphrase := []byte("existing-test-passphrase")
+	device := formatLoopbackImage(t, existingPassphrase)
+
+	g := mrcore.P256()
+	s, _ := g.RandomScalar()
+	S, _ := g.ScalarBaseMult(s)
+
+	const wantID = "KEYHOLDER-DEVICE-ID"
+	if err := enrolRecipient(device, existingPassphrase, S, "test-machine", "MACHINE-ID", wantID); err != nil {
+		t.Fatalf("enrolRecipient: %v", err)
+	}
+
+	dump, err := runCommand(nil, "cryptsetup", "luksDump", device)
+	if err != nil {
+		t.Fatalf("luksDump: %v", err)
+	}
+	tokenIDs := tokenIDsOfType(string(dump), mrTokenType)
+	if len(tokenIDs) != 1 {
+		t.Fatalf("expected exactly one mr-1 token, got %v", tokenIDs)
+	}
+	exported, err := runCommand(nil, "cryptsetup", "token", "export",
+		"--token-id", itoaForTest(tokenIDs[0]), device)
+	if err != nil {
+		t.Fatalf("token export: %v", err)
+	}
+
+	var tok mrcore.Token
+	if err := json.Unmarshal(exported, &tok); err != nil {
+		t.Fatalf("unmarshal exported token: %v", err)
+	}
+	if len(tok.Recipients) != 1 {
+		t.Fatalf("expected 1 recipient, got %d", len(tok.Recipients))
+	}
+	gotID, ok := tok.Recipients[0].TransportDeviceID()
+	if !ok || gotID != wantID {
+		t.Fatalf("Recipient.TransportDeviceID() = (%q, %v), want (%q, true)", gotID, ok, wantID)
+	}
+}
+
+// An empty recipientTransportID must not fail enrolment, and must leave
+// Transport unset.
+func TestEnrolEmptyRecipientTransportIDIsAllowed(t *testing.T) {
+	existingPassphrase := []byte("existing-test-passphrase")
+	device := formatLoopbackImage(t, existingPassphrase)
+
+	g := mrcore.P256()
+	s, _ := g.RandomScalar()
+	S, _ := g.ScalarBaseMult(s)
+
+	if err := enrolRecipient(device, existingPassphrase, S, "test-machine", "MACHINE-ID", ""); err != nil {
+		t.Fatalf("enrolRecipient: %v", err)
+	}
+
+	dump, err := runCommand(nil, "cryptsetup", "luksDump", device)
+	if err != nil {
+		t.Fatalf("luksDump: %v", err)
+	}
+	tokenIDs := tokenIDsOfType(string(dump), mrTokenType)
+	exported, err := runCommand(nil, "cryptsetup", "token", "export",
+		"--token-id", itoaForTest(tokenIDs[0]), device)
+	if err != nil {
+		t.Fatalf("token export: %v", err)
+	}
+
+	var tok mrcore.Token
+	if err := json.Unmarshal(exported, &tok); err != nil {
+		t.Fatalf("unmarshal exported token: %v", err)
+	}
+	if _, ok := tok.Recipients[0].TransportDeviceID(); ok {
+		t.Fatalf("expected no transport device id when recipientTransportID is empty")
+	}
 }
