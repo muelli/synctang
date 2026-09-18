@@ -19,5 +19,4 @@ em-dash-check:
 
 install-dracut:
 	sudo install -d /usr/lib/dracut/modules.d/90unlocker
-	sudo install -m 0755 dracut/90unlocker/module-setup.sh /usr/lib/dracut/modules.d/90unlocker/
-	sudo install -m 0755 dracut/90unlocker/unlocker-start.sh /usr/lib/dracut/modules.d/90unlocker/
+	sudo install -m 0755 dracut/90unlocker/*.sh /usr/lib/dracut/modules.d/90unlocker/

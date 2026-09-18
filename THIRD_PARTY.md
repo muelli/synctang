@@ -15,6 +15,16 @@ before the commit that adds it lands.
 | androidx.test:runner 1.5.2 (`android/wp0-spike/app`, androidTestImplementation) | Apache-2.0 `[V]` | Yes, permissive, compatible `[V]` | Test-only, same as above. Read the resolved POM's `<licenses>` block on 2026-09-18: "The Apache Software License, Version 2.0". |
 | junit:junit 4.13.2 (transitive, via androidx.test.ext:junit/androidx.test:runner, `android/wp0-spike/app`) | Eclipse Public License 1.0 `[V]` | Yes, for this use, with a caveat `[U]`: the FSF lists EPL-1.0 as GPL-incompatible for a combined/linked work, but here JUnit4 is a test-only dependency packaged solely into the androidTest APK, which this project builds for local/CI test runs and does not distribute to end users; no distributed artefact links AGPL-3.0-or-later code with JUnit4 code. Flag for re-check if a test artefact is ever distributed rather than run-and-discard. | Read the resolved POM's `<licenses>` block at `~/.gradle/caches/.../junit/junit/4.13.2/.../junit-4.13.2.pom` on 2026-09-18: "Eclipse Public License 1.0". |
 
+## Copied and adapted code
+
+Not a dependency (nothing imported), but licence-relevant: this repository
+contains code copied from another AGPL-3.0 project and adapted, per the task
+brief's explicit permission to do so.
+
+| What | From | Adaptation |
+|---|---|---|
+| `dracut/90unlocker/{module-setup,unlocker-start,unlocker-stop}.sh` | `syncthing-socket`'s `contrib/dracut-luks/90syncthing-socket/` (commit checked out at `/tmp/syncthing-socket` on 2026-09-18) | Renamed the binary, PID file, kernel command-line flag (`rd.syncthing_socket=0` to `rd.unlocker=0`), and hook filenames; dropped the `/etc/syncthing-socket/luks.conf` override (this project's token is the only configuration source); comments and licence header adjusted to this project's SPDX convention. Same AGPL-3.0 licence, both AGPL-3.0-or-later compatible per the row above. |
+
 ## Pending
 
 - Full transitive dependency audit of `syncthing-socket`'s `go.mod` (pion/webrtc,
