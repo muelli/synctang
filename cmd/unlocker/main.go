@@ -173,6 +173,15 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 
 	tr := transport.NewSyncthingRelay(cert)
 	for ctx.Err() == nil {
+		// Checked on every pass, not once at startup: this hook runs
+		// from dracut's initqueue "settled", which fires once udev has
+		// settled, not once the network is up, so a one-shot check
+		// here would see "no resolver yet" and never look again. Every
+		// discovery lookup and relay connection needs DNS, so without
+		// this the agent can sit here indefinitely with a live network
+		// it cannot actually use for anything name-based.
+		ensureResolver()
+
 		activeDevice := *device
 		if activeDevice == "" {
 			// The real dracut deployment has no --device to pass: the
