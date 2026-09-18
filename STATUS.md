@@ -43,19 +43,31 @@ for following progress; assume no other channel is read.
     and self-checked before committing; for WP5's Kotlin instrumented tests
     to verify an independent implementation against the same numbers.
 
+- WP0 (Android Keystore ECDH spike) emulator phase complete: `docs/wp0-keystore-ecdh.md`.
+  Core assertion PASSED on an API 34 emulator (non-StrongBox backend):
+  Keystore ECDH accepted a manually-constructed P-256 peer point
+  (`ECPublicKeySpec` from raw coordinates, never touched by a
+  `KeyPairGenerator`) and returned the raw 32-byte x-coordinate, matching
+  an independent software ECDH computation exactly. `StrongBoxUnavailableException`
+  thrown as expected (no StrongBox hardware on the emulator); fell back to
+  a non-StrongBox key and still passed. This confirms the curve choice
+  (P-256) is workable for the Keystore ECDH path in principle; StrongBox
+  itself and biometric gating still need a real device (see "Blocked").
+
 ### In progress
 
-- WP0 (Android Keystore ECDH spike): delegated to a sub-agent to set up the
-  Android SDK and emulator, write the Kotlin scratch app, and run it without
-  biometrics on the emulator, per plan section 7 / WP0. Still running.
 - WP2 (transport interface + syncthing-socket implementation): starting
   next.
 
 ### Blocked
 
-- None currently. Real-device StrongBox/biometric testing for WP0 will need
-  a human once the emulator-level spike is built and instructions are
-  written (stop condition in the task brief).
+- Real-device StrongBox + BiometricPrompt retest for WP0 (stop condition in
+  the task brief): exact steps are in `docs/wp0-keystore-ecdh.md` under
+  "For the human". Needs a StrongBox-capable phone with USB debugging and a
+  fingerprint/face already enrolled. Not blocking WP2 onward, since the
+  curve and the basic Keystore ECDH mechanism are already confirmed on the
+  emulator; only the StrongBox-specific and biometric-specific behaviour
+  remain open.
 
 ### Decisions taken
 
