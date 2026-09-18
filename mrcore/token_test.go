@@ -5,6 +5,7 @@ package mrcore
 import (
 	"bytes"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -29,6 +30,7 @@ func testToken(t *testing.T) Token {
 
 	return Token{
 		Version:    1,
+		Keyslots:   []string{"2"},
 		Recipients: []Recipient{rec},
 		Machine: MachineInfo{
 			Name:        "test-machine",
@@ -54,6 +56,9 @@ func TestTokenRoundTrip(t *testing.T) {
 	if got.Version != want.Version {
 		t.Fatalf("version: got %d want %d", got.Version, want.Version)
 	}
+	if !slices.Equal(got.Keyslots, want.Keyslots) {
+		t.Fatalf("keyslots: got %v want %v", got.Keyslots, want.Keyslots)
+	}
 	if got.Machine != want.Machine {
 		t.Fatalf("machine: got %+v want %+v", got.Machine, want.Machine)
 	}
@@ -77,6 +82,7 @@ func TestTokenPreservesUnknownFields(t *testing.T) {
 	const input = `{
 		"type": "mr-1",
 		"version": 1,
+		"keyslots": ["2"],
 		"recipients": [],
 		"machine": {"name": "m", "transport_id": "t"},
 		"future_field": {"nested": "value", "n": 7}

@@ -29,7 +29,15 @@ type MachineInfo struct {
 // Nothing in it is secret; recovering P requires a key holder's
 // private scalar, which never touches disk.
 type Token struct {
-	Version    int
+	Version int
+
+	// Keyslots names the LUKS2 keyslot ID(s) holding P, encrypted with
+	// the LUKS2 master key derivation as usual. LUKS2 requires every
+	// on-disk token to carry this field (cryptsetup's own "token
+	// import" rejects a token without it, even as an empty array); it
+	// is not part of the MR-1 protocol itself.
+	Keyslots []string
+
 	Recipients []Recipient
 	Machine    MachineInfo
 
@@ -44,6 +52,7 @@ type Token struct {
 var tokenWireFields = map[string]bool{
 	"type":       true,
 	"version":    true,
+	"keyslots":   true,
 	"recipients": true,
 	"machine":    true,
 }
@@ -65,6 +74,16 @@ func (t Token) MarshalJSON() ([]byte, error) {
 		return nil, fmt.Errorf("mrcore: marshal token: %w", err)
 	}
 	out["version"] = versionJSON
+
+	keyslots := t.Keyslots
+	if keyslots == nil {
+		keyslots = []string{}
+	}
+	keyslotsJSON, err := json.Marshal(keyslots)
+	if err != nil {
+		return nil, fmt.Errorf("mrcore: marshal token: %w", err)
+	}
+	out["keyslots"] = keyslotsJSON
 
 	recipientsJSON, err := json.Marshal(t.Recipients)
 	if err != nil {
@@ -107,6 +126,13 @@ func (t *Token) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("mrcore: unmarshal token: unsupported version %d, want %d", version, currentVersion)
 	}
 
+	var keyslots []string
+	if v, ok := raw["keyslots"]; ok {
+		if err := json.Unmarshal(v, &keyslots); err != nil {
+			return fmt.Errorf("mrcore: unmarshal token: keyslots: %w", err)
+		}
+	}
+
 	var recipients []Recipient
 	if v, ok := raw["recipients"]; ok {
 		if err := json.Unmarshal(v, &recipients); err != nil {
@@ -129,6 +155,7 @@ func (t *Token) UnmarshalJSON(data []byte) error {
 	}
 
 	t.Version = version
+	t.Keyslots = keyslots
 	t.Recipients = recipients
 	t.Machine = machine
 	t.extra = extra
