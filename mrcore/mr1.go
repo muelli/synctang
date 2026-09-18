@@ -8,6 +8,7 @@ import (
 	"crypto/hkdf"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 )
 
@@ -25,11 +26,12 @@ const (
 // that mirrors Tang's property that the header is useless without the
 // key holder.
 type Recipient struct {
-	Kid        []byte // sha256(S), identifies the key holder
-	S          []byte // the key holder's long-term public point, s.G
-	C          []byte // the enrolment-time ephemeral point, c.G
-	Ciphertext []byte // AEAD(k, nonce, P)
-	Nonce      []byte
+	Kid        []byte          `json:"kid"`                 // sha256(S), identifies the key holder
+	S          []byte          `json:"S"`                   // the key holder's long-term public point, s.G
+	C          []byte          `json:"C"`                   // the enrolment-time ephemeral point, c.G
+	Ciphertext []byte          `json:"ct"`                  // AEAD(k, nonce, P)
+	Nonce      []byte          `json:"nonce"`               // AEAD nonce
+	Transport  json.RawMessage `json:"transport,omitempty"` // opaque, transport-specific pairing data (WP2)
 }
 
 // Enrol creates a new random LUKS volume secret P and a Recipient entry
