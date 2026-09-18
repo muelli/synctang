@@ -25,6 +25,20 @@ func defaultKeyFile() (string, error) {
 	return filepath.Join(dir, "keyholder", "key"), nil
 }
 
+// defaultTransportKeyFile is where this key holder's persistent transport
+// identity (its TLS certificate and key, see transport.LoadOrCreateCert)
+// lives unless overridden. It is a separate file from defaultKeyFile: one
+// is the long-term MR-1 scalar s, the other the Syncthing Device ID a
+// machine's AuthorizedPeers and Recipient.Transport are matched against;
+// they are both "this key holder's identity" but serve different layers.
+func defaultTransportKeyFile() (string, error) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("finding config directory: %w", err)
+	}
+	return filepath.Join(dir, "keyholder", "transport.pem"), nil
+}
+
 // generateAndSave creates a new random long-term scalar s and writes it
 // to keyFile as hex, refusing to overwrite an existing key unless force
 // is set: losing s means losing access to every volume enrolled against

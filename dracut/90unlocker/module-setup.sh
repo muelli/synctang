@@ -48,6 +48,17 @@ install() {
 		dwarn "unlocker: install ca-certificates, or discovery will fail at boot."
 	fi
 
+	# The human who ran "unlocker enrol" already generated this machine's
+	# persistent transport identity (transport.LoadOrCreateCert's default
+	# path). Carrying the same file into the initrd is what lets the agent
+	# present the exact Device ID a key holder's Recipient.Transport was
+	# recorded against; without it the agent would generate a fresh identity
+	# on first boot and no enrolled key holder would recognise it. Missing
+	# entirely just means enrol has not run yet, so there is nothing to copy.
+	if [ -r /etc/unlocker/machine.pem ]; then
+		inst_simple /etc/unlocker/machine.pem
+	fi
+
 	# The initrd's own default network file is already "DHCP=yes" for every
 	# non-loopback interface, but networkd is only waited on when rd.neednet is
 	# set. Without this the agent can start before there is a network to use.

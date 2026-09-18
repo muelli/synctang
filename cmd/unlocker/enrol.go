@@ -22,7 +22,14 @@ const mrTokenType = "mr-1"
 // P and the concatenated stdin buffer fed to cryptsetup are wiped
 // before returning, and P is never written to disk: it goes straight
 // from memory into cryptsetup's stdin.
-func enrolRecipient(device string, existingPassphrase, recipientPublicKey []byte, machineName, transportID string) error {
+//
+// transportID is this machine's own transport identity, shown to a key
+// holder before it approves an unlock (mrcore.MachineInfo.TransportID).
+// recipientTransportID is the opposite direction: the key holder's own
+// transport Device ID, recorded on the Recipient itself so the agent
+// can later restrict who is allowed to answer for it (an empty value
+// is allowed; some future recipient type may not have one yet).
+func enrolRecipient(device string, existingPassphrase, recipientPublicKey []byte, machineName, transportID, recipientTransportID string) error {
 	dump, err := runCommand(nil, "cryptsetup", "luksDump", device)
 	if err != nil {
 		return fmt.Errorf("reading LUKS header: %w", err)
@@ -43,6 +50,10 @@ func enrolRecipient(device string, existingPassphrase, recipientPublicKey []byte
 		return fmt.Errorf("mrcore enrol: %w", err)
 	}
 	defer wipe(P)
+
+	if recipientTransportID != "" {
+		rec.Transport = json.RawMessage(fmt.Sprintf(`{"device_id":%q}`, recipientTransportID))
+	}
 
 	stdin := make([]byte, 0, len(existingPassphrase)+len(P))
 	stdin = append(stdin, existingPassphrase...)
