@@ -37,6 +37,23 @@ type RecoverResponse struct {
 	Error string `json:"error,omitempty"`
 }
 
+// ConfirmCodeChallenge is sent first, before RecoverRequest, when the
+// machine is running with --confirm-code: the key holder must relay
+// Code back exactly, proving whoever is answering can see the
+// machine's own console, not merely reach it over the network. The
+// same code is reused for every connection attempt during one agent
+// run, so a human only has to read it off the console once.
+type ConfirmCodeChallenge struct {
+	Code string `json:"code"`
+}
+
+// ConfirmCodeResponse answers a ConfirmCodeChallenge. The machine
+// must reject a response whose Code does not match exactly, before
+// ever sending a RecoverRequest.
+type ConfirmCodeResponse struct {
+	Code string `json:"code"`
+}
+
 // WriteMessage writes v to w as a 4-byte big-endian length prefix
 // followed by its JSON encoding, so a peer reading a stream of
 // messages knows exactly where one ends and the next begins.
