@@ -4,6 +4,7 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,14 +33,36 @@ var networkdStateFiles = []string{
 	"/run/systemd/netif/leases/*",
 }
 
+// fallbackResolvers are queried directly (bypassing whatever, if
+// anything, /etc/resolv.conf already says) only when nothing on disk
+// offers a real nameserver at all: better to trust a public resolver
+// for finding the relay pool's address than to sit retrying forever
+// against a resolver that is not there yet. This is not a security
+// weakening: a malicious DNS answer here could only misdirect which
+// relay or discovery server the machine talks to, not anything about
+// MR-1's cryptography, which is why cheating on DNS resolution is an
+// acceptable trade for boot-time robustness.
+var fallbackResolvConf = "nameserver 1.1.1.1\nnameserver 9.9.9.9\n"
+
 // looksLikeResolvConf reports whether content has at least one
-// nameserver line, so an empty or comment-only file is not mistaken
-// for a working resolver.
+// nameserver line that is not a loopback address, so an empty,
+// comment-only, or systemd-resolved-stub-only file (127.0.0.53, ::1,
+// left behind whether or not systemd-resolved itself is actually
+// running yet) is not mistaken for a working resolver. Found running
+// this against a real VM: a loopback-only resolv.conf already exists
+// by the time this hook runs, and the very first version of this
+// check accepted it, so the agent retried DNS against a resolver that
+// was actively refusing connections, forever.
 func looksLikeResolvConf(content string) bool {
 	for _, line := range strings.Split(content, "\n") {
-		if strings.HasPrefix(strings.TrimSpace(line), "nameserver ") {
-			return true
+		rest, ok := strings.CutPrefix(strings.TrimSpace(line), "nameserver ")
+		if !ok {
+			continue
 		}
+		if ip := net.ParseIP(strings.TrimSpace(rest)); ip != nil && ip.IsLoopback() {
+			continue
+		}
+		return true
 	}
 	return false
 }
@@ -78,25 +101,32 @@ func resolvConfFromNetworkdState(content string) string {
 // once at agent startup, only on every retry (the caller is
 // responsible for calling this repeatedly, not just once).
 func ensureResolver() {
-	if info, err := os.Stat(resolvConfPath); err == nil && info.Size() > 0 {
-		if content, err := os.ReadFile(resolvConfPath); err == nil && looksLikeResolvConf(string(content)) {
+	ensureResolverAt(resolvConfPath, resolverSources, networkdStateFiles)
+}
+
+// ensureResolverAt is ensureResolver with every path parameterized,
+// so the search can be exercised against fixtures instead of the
+// real /etc/resolv.conf and dracut state files.
+func ensureResolverAt(path string, sources, stateFiles []string) {
+	if info, err := os.Stat(path); err == nil && info.Size() > 0 {
+		if content, err := os.ReadFile(path); err == nil && looksLikeResolvConf(string(content)) {
 			return
 		}
 	}
 
-	for _, pattern := range resolverSources {
+	for _, pattern := range sources {
 		for _, candidate := range globAll(pattern) {
 			content, err := os.ReadFile(candidate)
 			if err != nil || !looksLikeResolvConf(string(content)) {
 				continue
 			}
-			if os.WriteFile(resolvConfPath, content, 0o644) == nil {
+			if os.WriteFile(path, content, 0o644) == nil {
 				return
 			}
 		}
 	}
 
-	for _, pattern := range networkdStateFiles {
+	for _, pattern := range stateFiles {
 		for _, candidate := range globAll(pattern) {
 			content, err := os.ReadFile(candidate)
 			if err != nil {
@@ -106,11 +136,16 @@ func ensureResolver() {
 			if rendered == "" {
 				continue
 			}
-			if os.WriteFile(resolvConfPath, []byte(rendered), 0o644) == nil {
+			if os.WriteFile(path, []byte(rendered), 0o644) == nil {
 				return
 			}
 		}
 	}
+
+	// Nothing on disk offered a real nameserver. Rather than retry
+	// indefinitely against a resolver that is not there, or none at
+	// all, fall back to a public one directly.
+	os.WriteFile(path, []byte(fallbackResolvConf), 0o644)
 }
 
 // globAll expands pattern, treating a plain path with no wildcard as a
