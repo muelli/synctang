@@ -16,7 +16,7 @@ log this report is drawn from.
 | Android SDK cmdline-tools | 11076708 | `[V]` `docs/wp0-keystore-ecdh.md` |
 | Android build-tools / platform | 34.0.0 / android-34 | `[V]` `docs/wp0-keystore-ecdh.md` |
 | Gradle | 8.7 | `[V]` `docs/wp0-keystore-ecdh.md` |
-| Kernel (VM) | `[U]` not yet recorded | pending |
+| Kernel (VM) | 7.0.0-31-generic | `[V]` `uname -r` on the VM, 2026-09-18 |
 
 ## Acceptance table
 
