@@ -1,0 +1,9 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+        WP0 feasibility spike: no activities, no permissions. The only
+        code that matters lives in src/androidTest, exercised via
+        `./gradlew connectedAndroidTest`. This manifest exists only
+        because a runnable androidTest target needs an application.
+    -->
+</manifest>
