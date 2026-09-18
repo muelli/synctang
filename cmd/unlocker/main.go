@@ -139,17 +139,13 @@ func generateConfirmCode() (string, error) {
 func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("agent", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	device := fs.String("device", "", "LUKS2 device to unlock (required)")
+	device := fs.String("device", "", "LUKS2 device to unlock (auto-discovered from /proc/partitions if omitted)")
 	name := fs.String("name", "", "this machine's name, shown to the key holder")
 	confirmCodeFlag := fs.Bool("confirm-code", false, "require the key holder to read back a code shown on this console")
 	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, "path to this machine's persistent transport identity")
 	askPasswordDir := fs.String("ask-password-dir", defaultAskPasswordDir, "systemd ask-password directory")
 	directAddr := fs.String("direct-addr", "", "listen on this address directly, bypassing relay and discovery (testing only)")
 	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-	if *device == "" {
-		fmt.Fprintln(stderr, "unlocker: --device is required")
 		return 2
 	}
 
@@ -176,7 +172,28 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 
 	tr := transport.NewSyncthingRelay(cert)
 	for ctx.Err() == nil {
-		err := runAgentOnce(ctx, *device, cert, *name, confirmCode, *askPasswordDir,
+		activeDevice := *device
+		if activeDevice == "" {
+			// The real dracut deployment has no --device to pass: the
+			// hook script that starts this (unlocker-start.sh) has no
+			// way to know the device name either. Re-discover every
+			// attempt, not just once at startup, in case the volume
+			// was not yet visible in /proc/partitions the first time
+			// around (this hook runs on udev "settled", not after the
+			// network or every device enumeration is guaranteed done).
+			found, err := findMr1Device()
+			if err != nil {
+				fmt.Fprintf(stderr, "unlocker: %v\n", err)
+				select {
+				case <-ctx.Done():
+				case <-time.After(agentRetryInterval):
+				}
+				continue
+			}
+			activeDevice = found
+		}
+
+		err := runAgentOnce(ctx, activeDevice, cert, *name, confirmCode, *askPasswordDir,
 			transport.ListenOptions{DirectAddr: *directAddr}, tr)
 		switch {
 		case err == nil:
