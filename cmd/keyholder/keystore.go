@@ -60,6 +60,7 @@ func loadPrivateKey(keyFile string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading key file: %w", err)
 	}
+	defer wipe(data)
 
 	s, err := hex.DecodeString(strings.TrimSpace(string(data)))
 	if err != nil {
@@ -79,6 +80,7 @@ func publicKeyHex(keyFile string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	defer wipe(s)
 
 	S, err := mrcore.P256().ScalarBaseMult(s)
 	if err != nil {
