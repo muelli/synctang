@@ -119,6 +119,57 @@ func (r *Recipient) FinishXOnly(e, xOnly []byte) ([]byte, error) {
 	return mrcore.FinishXOnly(mrcore.P256(), append([]byte(nil), e...), rec, xOnly)
 }
 
+// Challenge is a complete machine-side recovery attempt against a
+// given long-term public point: an enrolment, the ephemeral scalar,
+// and the challenge point that falls out of it.
+//
+// Like Recipient, it is bound for testing rather than for the app's
+// own use: it lets an instrumented test enrol against the phone's real
+// Keystore key, have the Keystore answer the challenge, and check the
+// machine recovers the very secret it enrolled. That is the one thing
+// the fixed vectors cannot cover, because their long-term scalar is a
+// known number and a Keystore key's never is.
+type Challenge struct {
+	rec    mrcore.Recipient
+	e      []byte
+	x      []byte
+	secret []byte
+}
+
+// EnrolAndChallenge enrols a fresh random secret against the long-term
+// public point s (SEC1 uncompressed) and immediately starts a recovery
+// attempt against it.
+func EnrolAndChallenge(s []byte) (*Challenge, error) {
+	g := mrcore.P256()
+
+	secret, rec, err := mrcore.Enrol(g, s)
+	if err != nil {
+		return nil, fmt.Errorf("mobile: enrol: %w", err)
+	}
+
+	e, x, err := mrcore.ChallengeStart(g, rec.C)
+	if err != nil {
+		return nil, fmt.Errorf("mobile: challenge: %w", err)
+	}
+
+	return &Challenge{rec: rec, e: e, x: x, secret: secret}, nil
+}
+
+// Point is the challenge point X = C + E to hand to the key holder.
+func (c *Challenge) Point() []byte { return append([]byte(nil), c.x...) }
+
+// Kid names the key holder this challenge is for.
+func (c *Challenge) Kid() []byte { return append([]byte(nil), c.rec.Kid...) }
+
+// Secret is the volume secret that was enrolled, so a test can check
+// what Finish recovers against what went in.
+func (c *Challenge) Secret() []byte { return append([]byte(nil), c.secret...) }
+
+// Finish completes the attempt from the key holder's x-only answer.
+func (c *Challenge) Finish(xOnly []byte) ([]byte, error) {
+	return mrcore.FinishXOnly(mrcore.P256(), append([]byte(nil), c.e...), c.rec, xOnly)
+}
+
 // AffineX returns the 32-byte x-coordinate of an uncompressed SEC1
 // point, and AffineY its y-coordinate. The Android side needs both to
 // rebuild the peer point as a java.security.spec.ECPublicKeySpec, and

@@ -300,17 +300,56 @@ func runSession(t *testing.T, v vectors, withConfirmCode bool) {
 
 // softwareECDH is the stand-in for the Android Keystore in tests:
 // x(scalar . (px, py)), returned as the raw 32-byte coordinate.
+// elliptic.ScalarMult is deprecated but is the only standard library
+// route to a bare scalar multiplication, and this is test-only code.
 //
-// only standard library route to a bare scalar multiplication here,
-// and this is test-only code.
-//
-//nolint:staticcheck // elliptic.ScalarMult is deprecated but is the
+//nolint:staticcheck
 func softwareECDH(t *testing.T, scalar, px, py []byte) []byte {
 	t.Helper()
 	x, _ := elliptic.P256().ScalarMult(new(big.Int).SetBytes(px), new(big.Int).SetBytes(py), scalar)
 	out := make([]byte, coordLen)
 	x.FillBytes(out)
 	return out
+}
+
+// TestEnrolAndChallengeRoundTrip covers the loop the Android
+// instrumented test runs against a real Keystore key, with a software
+// scalar standing in for the hardware one here.
+func TestEnrolAndChallengeRoundTrip(t *testing.T) {
+	g := mrcore.P256()
+	s, err := g.RandomScalar()
+	if err != nil {
+		t.Fatalf("RandomScalar: %v", err)
+	}
+	pub, err := g.ScalarBaseMult(s)
+	if err != nil {
+		t.Fatalf("ScalarBaseMult: %v", err)
+	}
+
+	ch, err := EnrolAndChallenge(pub)
+	if err != nil {
+		t.Fatalf("EnrolAndChallenge: %v", err)
+	}
+
+	px, err := AffineX(ch.Point())
+	if err != nil {
+		t.Fatalf("AffineX: %v", err)
+	}
+	py, err := AffineY(ch.Point())
+	if err != nil {
+		t.Fatalf("AffineY: %v", err)
+	}
+
+	recoveredSecret, err := ch.Finish(softwareECDH(t, s, px, py))
+	if err != nil {
+		t.Fatalf("Finish: %v", err)
+	}
+	if !bytes.Equal(recoveredSecret, ch.Secret()) {
+		t.Fatalf("recovered\n got %x\nwant %x", recoveredSecret, ch.Secret())
+	}
+	if len(ch.Kid()) != 32 {
+		t.Fatalf("kid should be a sha256 digest, got %d bytes", len(ch.Kid()))
+	}
 }
 
 var (
