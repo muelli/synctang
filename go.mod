@@ -5,7 +5,7 @@
 
 module github.com/muelli/synctang
 
-go 1.25.0
+go 1.26.0
 
 require (
 	filippo.io/nistec v0.0.4
@@ -72,15 +72,21 @@ require (
 	github.com/thejerf/suture/v4 v4.0.6 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	golang.org/x/crypto v0.54.0 // indirect
-	golang.org/x/image v0.44.0 // indirect
-	golang.org/x/net v0.57.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/term v0.45.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/crypto v0.57.0 // indirect
+	golang.org/x/image v0.46.0 // indirect
+	golang.org/x/mobile v0.0.0-20260908204917-8b95e45f8d3e // indirect
+	golang.org/x/mod v0.41.0 // indirect
+	golang.org/x/net v0.59.0 // indirect
+	golang.org/x/sync v0.23.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/term v0.46.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
+	golang.org/x/tools v0.50.0 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
 	rsc.io/qr v0.2.0 // indirect
 )
 
 replace syncthing-socket => github.com/muelli/syncthing-socket v0.1.1-alpha.0.20260909182828-518875db93fe
+
+tool golang.org/x/mobile/cmd/gobind
