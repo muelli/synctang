@@ -6,3 +6,8 @@
 module github.com/muelli/synctang
 
 go 1.25
+
+require (
+	filippo.io/nistec v0.0.4 // indirect
+	golang.org/x/sys v0.36.0 // indirect
+)

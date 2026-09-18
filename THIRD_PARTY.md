@@ -7,6 +7,8 @@ before the commit that adds it lands.
 | Dependency | Licence | Compatible with AGPL-3.0-or-later | How checked |
 |---|---|---|---|
 | github.com/muelli/syncthing-socket | AGPL-3.0 | Yes, combining AGPLv3-only code into an AGPL-3.0-or-later work is permitted; the combined work is distributed under plain AGPLv3 terms `[V]` | Cloned the repository at `/tmp/syncthing-socket` on 2026-09-18 and read `LICENSE` in full: canonical GNU AGPL v3 text, no "or later" grant in the file itself. |
+| filippo.io/nistec v0.0.4 | BSD-3-Clause | Yes, permissive, compatible `[V]` | `go get`'d into `go.mod`; read `LICENSE` at `$(go env GOMODCACHE)/filippo.io/nistec@v0.0.4/LICENSE` in full: standard 3-clause BSD (Go Authors / Google LLC copyright). |
+| golang.org/x/sys | BSD-3-Clause | Yes `[V]` | Transitive dependency of nistec; same licence family as the Go standard toolchain, read `LICENSE` in the module cache. |
 
 ## Pending
 
