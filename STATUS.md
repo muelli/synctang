@@ -65,12 +65,19 @@ for following progress; assume no other channel is read.
   existing, which it now does; not done yet, WP7-adjacent, to pick up
   after the current delegated task lands.
 
-- WP4 (`keyholder`) in progress: `init`/`export-pubkey` (file backend)
-  complete, need nothing beyond `mrcore`. `s` stored as hex in a 0600
-  file under the user's config directory; `init` refuses to overwrite an
-  existing key without `--force`. `pair`/`unlock` and the TPM2 backend
-  behind a build tag not started; `unlock` is part of the task currently
-  delegated (see WP3 below), TPM2 remains an open `[U]` item.
+- WP4 (`keyholder`) file backend complete: `init`/`export-pubkey`/`unlock`.
+  `s` (MR-1 scalar) and a separate persistent transport identity (PEM,
+  `transport.LoadOrCreateCert`) are two different files, deliberately not
+  combined: different key types for different protocols, and either can
+  be rotated independently. `export-pubkey` prints both `S` and the
+  transport ID, for pasting into `unlocker enrol --pubkey
+  --recipient-transport-id`. `unlock <machine-transport-id>` dials, shows
+  the machine's name (`mrcore.Hello`) and waits for Enter or `--yes`,
+  relays a confirm code if the machine asks for one, answers once with
+  the full point `Y = s.X` (the file backend always can; only a
+  hardware-backed key holder is limited to `XOnly`), exits.
+  `pair` (live QR/network pairing) and the TPM2 backend behind a build
+  tag not started; TPM2 remains an open `[U]` item.
 
 - WP1 extended after real cryptsetup testing surfaced a gap: `Token` gained
   a `Keyslots []string` field. LUKS2 requires every on-disk token to carry
@@ -122,17 +129,30 @@ for following progress; assume no other channel is read.
     a deliberate future decision rather than unpicking working, tested
     code.
 
-- WP3 (`unlocker`) in progress: `enrol` complete (T3.1, real cryptsetup,
-  no root needed for header ops, see the loopback-LUKS note below).
-  `agent`/`status`/`--confirm-code` (T3.2, T3.3) and WP4's `keyholder
-  unlock`, plus shared transport-identity persistence, delegated as one
-  task (they share a wire protocol and need testing together); running,
-  no result yet as of this line. `rd.unlocker=0` is already fully handled
-  at the dracut shell level (WP6), nothing further needed there.
-  `pair` (live QR/network pairing, both sides) explicitly deferred: the
-  laptop path is already complete without it (`keyholder export-pubkey` +
-  `unlocker enrol --pubkey`); live pairing matters most for the phone,
-  which needs the Android app (WP5) to exist first anyway.
+- WP3 (`unlocker`) complete except `status` and `pair`: `enrol` (T3.1),
+  `agent` (T3.2: recovers over the transport, verifies the recovered
+  secret with `cryptsetup open --test-passphrase` before ever answering
+  systemd, then answers the matching ask-password request; T3.3: sends
+  `ConfirmCodeChallenge` right after `Hello`, rejects a wrong or missing
+  response before ever sending a `RecoverRequest`). `rd.unlocker=0` was
+  already fully handled at the dracut shell level (WP6).
+  `--device` auto-discovers from `/proc/partitions` (scanning for a
+  device carrying an `mr-1` token) when not given, re-checked on every
+  retry: the real dracut hook (`unlocker-start.sh`) has no way to name
+  a device, since `systemd-cryptsetup` sets no environment variable for
+  it the way `initramfs-tools`' askpass could rely on. Added after the
+  delegated agent/unlock work landed and flagged it as a real gap that
+  would have made the boot path exit 2 immediately.
+  `status` and `pair` (live QR/network pairing, both sides) not started;
+  the laptop pairing path is already complete without live pairing
+  (`keyholder export-pubkey` + `unlocker enrol --pubkey
+  --recipient-transport-id`), and phone pairing needs the Android app
+  (WP5) to exist first anyway.
+  Wire-protocol note: `mrcore.ConfirmCodeChallenge` has no discriminator
+  field, so machine and key holder agree on message order instead: the
+  machine always sends it right after `Hello`, with an empty `Code`
+  meaning "not required", and the key holder skips its own prompt when
+  it sees that.
 
 - `[V]` **Loopback LUKS2 tests do not need root or a privileged CI job**,
   contrary to the plan's assumption (section 7, WP3: "needs root or a CI
@@ -156,10 +176,40 @@ for following progress; assume no other channel is read.
   that does not actually exist on the device yet (order matters: add the
   keyslot first, only then write a token referencing it).
 
+- `[V]` A code review pass over `mrcore` (four dimensions: line-by-line
+  correctness, cross-file caller/callee, cleanup, altitude) found and
+  fixed two real issues, both now merged:
+  - `cmd/keyholder/keystore.go`'s `loadPrivateKey`/`publicKeyHex` never
+    wiped the private scalar `s` (or the raw hex file bytes it was
+    decoded from) after use, unlike `runInit`'s equivalent path, which
+    already did. `export-pubkey` left the long-term key sitting in
+    process memory for the rest of the process's life.
+  - `mrcore.aeadOpen` (reached from `FinishFullPoint`/`FinishXOnly` via
+    `finishWithY`) passed `rec.Nonce` straight to `cipher.AEAD.Open`
+    without checking its length first; `crypto/cipher`'s GCM
+    implementation *panics*, rather than erroring, on a nonce that is
+    not exactly 12 bytes. `rec.Nonce` comes from a `Recipient` decoded
+    from an on-disk LUKS2 token, so a single corrupted or hand-edited
+    byte was a denial of service against recovery, directly
+    contradicting `finishWithY`'s own documented "never a panic"
+    guarantee. Reproduced with a failing test first, then fixed with an
+    explicit length check.
+  - Several further findings (a `Token.MarshalJSON`/`UnmarshalJSON`
+    refactor to a single shadow struct, `Group.Negate` reimplemented as
+    `ScalarMult` by `N-1` instead of hand-rolled `big.Int` arithmetic,
+    factoring the duplicated `eS` derivation out of `FinishFullPoint`/
+    `FinishXOnly`, `slices.Contains` instead of a hand-rolled
+    `containsDeviceID`, caching the discovery HTTP client instead of
+    building one per announce tick) are real simplifications, not bugs;
+    not applied yet, `[U]` whether to do so before or after WP7.
+
 ### In progress
 
-- Waiting on the `unlocker agent` / `keyholder unlock` delegated task
-  (see above).
+- WP5 (Android app): `gomobile bind` of `mrcore`, Kotlin UI (QR pairing,
+  `BiometricPrompt`-gated Keystore ECDH, one Unlock action), F-Droid
+  infrastructure adapted from `syncthing-socket`'s existing Android app;
+  delegated, running, no result yet as of this line.
+- `unlocker status` and both `pair` subcommands: not started.
 
 ### Blocked
 
