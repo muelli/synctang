@@ -25,8 +25,8 @@ Status: work in progress, see `STATUS.md`.
 ## Quick start
 
 Filled in as each component reaches a runnable state; see `STATUS.md` for
-what is not here yet (`unlocker agent`, `keyholder unlock`, both
-`pair` subcommands, and the Android app).
+what is not here yet (`unlocker status`, both `pair` subcommands, and the
+Android app).
 
 ### keyholder (laptop), file backend
 
@@ -35,10 +35,11 @@ go run ./cmd/keyholder init
 go run ./cmd/keyholder export-pubkey
 ```
 
-`init` generates a new long-term key under your config directory
-(refuses to overwrite an existing one without `--force`). `export-pubkey`
-prints the resulting public key as hex, for pasting into
-`unlocker enrol --pubkey` below.
+`init` generates a new long-term MR-1 key and a separate persistent
+transport identity, both under your config directory (`init` refuses to
+overwrite an existing key without `--force`). `export-pubkey` prints the
+resulting public key and transport ID, for pasting into `unlocker enrol`
+below.
 
 ### unlocker (machine), enrolling a laptop key holder
 
@@ -46,17 +47,42 @@ prints the resulting public key as hex, for pasting into
 echo -n 'your-existing-luks-passphrase' > /tmp/passphrase
 go run ./cmd/unlocker enrol \
   --device /path/to/your/luks-device-or-image \
-  --pubkey <hex from export-pubkey above> \
+  --pubkey <S from export-pubkey above> \
+  --recipient-transport-id <transport-id from export-pubkey above> \
   --existing-passphrase-file /tmp/passphrase \
-  --name my-laptop-name \
-  --transport-id my-laptop-transport-id
+  --name my-laptop-name
 rm /tmp/passphrase
 ```
 
 This adds a new LUKS2 keyslot holding a freshly generated secret, and a
 `mr-1` token entry for that key holder. Run `cryptsetup luksDump
 --device` to see it; `cryptsetup token export --token-id N` to see the
-token JSON itself.
+token JSON itself. `enrol` also prints this machine's own transport ID,
+which a key holder needs to dial it.
+
+### Recovering (machine listening, laptop answering)
+
+On the machine (or against a plain loopback image, with `--direct-addr`
+bypassing the real relay network for a local test):
+
+```
+go run ./cmd/unlocker agent --device /path/to/your/luks-device-or-image \
+  --name my-machine-name [--confirm-code] [--direct-addr 127.0.0.1:PORT]
+```
+
+On the laptop, once the machine above is waiting:
+
+```
+go run ./cmd/keyholder unlock <machine's transport id> [--direct-addr 127.0.0.1:PORT]
+```
+
+`unlock` shows the machine's name, waits for Enter (or `--yes`) to
+approve, relays a confirm code back if the machine asked for one, and
+answers once. `agent` verifies the recovered secret against the device
+before ever answering systemd's password agent request, and keeps
+listening for the next attempt until it receives `SIGTERM` (which
+`dracut/90unlocker/unlocker-stop.sh` sends before pivoting to the real
+root).
 
 ## Protocol: MR-1
 
