@@ -105,3 +105,57 @@ brief's explicit permission to do so.
   constraints inside `gopsutil` and `cobra`'s dependency graph and are never
   compiled for this project's Linux target; left unchecked here, flag for
   a licence check only if a non-Linux build is ever produced. `[U]`
+
+## Android key holder app dependencies (WP5)
+
+Every row below was checked on 2026-09-18 by reading the `<licenses>` block of
+the resolved POM in the Gradle cache
+(`~/.gradle/caches/modules-2/files-2.1/<group>/<artifact>/<version>/*/`), with
+`scripts/check-pom-licences.sh`, rather than by consulting a project web page.
+Versions are the ones Gradle actually resolved for `android/app`, which for the
+Compose artefacts is what `androidx.compose:compose-bom:2024.02.02` pins.
+
+All of these are Apache-2.0, permissive, and compatible with
+AGPL-3.0-or-later. None of them is Google Play Services, Firebase or ML Kit:
+F-Droid's scanner rejects those, and the QR scanning that would usually pull
+one in is done by CameraX plus ZXing's pure-Java core instead.
+
+| Dependency | Licence | Compatible with AGPL-3.0-or-later | How checked |
+|---|---|---|---|
+| androidx.core:core-ktx 1.12.0 (`android/app`) | Apache-2.0 `[V]` | Yes, permissive, compatible `[V]` | Resolved POM's `<licenses>`: "The Apache Software License, Version 2.0". |
+| androidx.fragment:fragment-ktx 1.6.2 (`android/app`) | Apache-2.0 `[V]` | Yes, permissive, compatible `[V]` | Resolved POM's `<licenses>`: "The Apache Software License, Version 2.0". Needed because `BiometricPrompt` takes a `FragmentActivity`. |
+| androidx.activity:activity-compose 1.8.2 (`android/app`) | Apache-2.0 `[V]` | Yes, permissive, compatible `[V]` | Resolved POM's `<licenses>`: "The Apache Software License, Version 2.0". |
+| androidx.lifecycle:lifecycle-runtime-ktx 2.7.0 (`android/app`) | Apache-2.0 `[V]` | Yes, permissive, compatible `[V]` | Resolved POM's `<licenses>`: "The Apache Software License, Version 2.0". |
+| androidx.lifecycle:lifecycle-viewmodel-compose 2.7.0 (`android/app`) | Apache-2.0 `[V]` | Yes, permissive, compatible `[V]` | Resolved POM's `<licenses>`: "The Apache Software License, Version 2.0". |
+| androidx.compose:compose-bom 2024.02.02 (`android/app`, platform) | Apache-2.0 `[V]` | Yes, permissive, compatible `[V]` | Resolved POM's `<licenses>`: "The Apache Software License, Version 2.0". A BOM pins versions and ships no code itself. |
+| androidx.compose.ui:ui 1.6.3 (via the BOM) | Apache-2.0 `[V]` | Yes, permissive, compatible `[V]` | Resolved POM's `<licenses>`: "The Apache Software License, Version 2.0". |
+| androidx.compose.ui:ui-graphics 1.6.3 (via the BOM) | Apache-2.0 `[V]` | Yes, permissive, compatible `[V]` | Resolved POM's `<licenses>`: "The Apache Software License, Version 2.0". |
+| androidx.compose.ui:ui-tooling-preview 1.6.3 (via the BOM) | Apache-2.0 `[V]` | Yes, permissive, compatible `[V]` | Resolved POM's `<licenses>`: "The Apache Software License, Version 2.0". |
+| androidx.compose.ui:ui-tooling 1.6.3 (via the BOM, debug builds only) | Apache-2.0 `[V]` | Yes, permissive, compatible `[V]` | Resolved POM's `<licenses>`: "The Apache Software License, Version 2.0". `debugImplementation`, so not in a release APK. |
+| androidx.compose.ui:ui-test-manifest 1.6.3 (via the BOM, debug builds only) | Apache-2.0 `[V]` | Yes, permissive, compatible `[V]` | Resolved POM's `<licenses>`: "The Apache Software License, Version 2.0". `debugImplementation`, so not in a release APK. |
+| androidx.compose.material3:material3 1.2.1 (via the BOM) | Apache-2.0 `[V]` | Yes, permissive, compatible `[V]` | Resolved POM's `<licenses>`: "The Apache Software License, Version 2.0". |
+| androidx.biometric:biometric 1.1.0 (`android/app`) | Apache-2.0 `[V]` | Yes, permissive, compatible `[V]` | Resolved POM's `<licenses>`: "The Apache Software License, Version 2.0". |
+| androidx.security:security-crypto 1.1.0-alpha06 (`android/app`) | Apache-2.0 `[V]` | Yes, permissive, compatible `[V]` | Resolved POM's `<licenses>`: "The Apache Software License, Version 2.0". Used for the pairing record only; no MR-1 secret is ever stored through it. |
+| androidx.camera:camera-core 1.3.2 (`android/app`) | Apache-2.0 `[V]` | Yes, permissive, compatible `[V]` | Resolved POM's `<licenses>`: "The Apache Software License, Version 2.0". |
+| androidx.camera:camera-camera2 1.3.2 (`android/app`) | Apache-2.0 `[V]` | Yes, permissive, compatible `[V]` | Resolved POM's `<licenses>`: "The Apache Software License, Version 2.0". |
+| androidx.camera:camera-lifecycle 1.3.2 (`android/app`) | Apache-2.0 `[V]` | Yes, permissive, compatible `[V]` | Resolved POM's `<licenses>`: "The Apache Software License, Version 2.0". |
+| androidx.camera:camera-view 1.3.2 (`android/app`) | Apache-2.0 `[V]` | Yes, permissive, compatible `[V]` | Resolved POM's `<licenses>`: "The Apache Software License, Version 2.0". |
+| com.google.zxing:core 3.5.3 (`android/app`) | Apache-2.0 `[V]` | Yes, permissive, compatible `[V]` | The artefact POM inherits from `com.google.zxing:zxing-parent:3.5.3`, which is what carries the `<licenses>` block; read it in the Gradle cache on 2026-09-18: "The Apache Software License, Version 2.0". Pure Java, no Play Services, no ML Kit. |
+| androidx.test:rules 1.5.0 (`android/app`, androidTestImplementation) | Apache-2.0 `[V]` | Yes, permissive, compatible `[V]` | Resolved POM's `<licenses>`: "The Apache Software License, Version 2.0". Test-only, packaged into the androidTest APK, not distributed. |
+| golang.org/x/mobile v0.0.0-20260908204917-8b95e45f8d3e | BSD-3-Clause `[V]` | Yes, permissive, compatible `[V]` | Added to `go.mod` by `go get -tool golang.org/x/mobile/cmd/gobind`, which current `gomobile bind` requires. Both a build tool (gobind) and a real runtime dependency: `gomobile bind` links `golang.org/x/mobile/bind` into `libgojni.so` and generates `go/Seq.java`, `go/Universe.java` and `go/error.java` from it into the `.aar`, so this code ships in the app. Read `LICENSE` at `$(go env GOMODCACHE)/golang.org/x/mobile@v0.0.0-20260908204917-8b95e45f8d3e/LICENSE` on 2026-09-18 in full: standard 3-clause BSD, "Copyright 2009 The Go Authors". |
+
+The same `go get -tool` also moved several `golang.org/x/*` modules that already
+have rows above to newer versions (`crypto` v0.54.0 to v0.57.0, `image` v0.44.0
+to v0.46.0, `net` v0.57.0 to v0.59.0, `sys` v0.47.0 to v0.48.0, `term` v0.45.0
+to v0.46.0, `text` v0.40.0 to v0.42.0, plus `mod`, `sync` and `tools` as tool
+dependencies). All are BSD-3-Clause, unchanged from the rows above; the module
+cache `LICENSE` files for the new versions were spot-checked on 2026-09-18 and
+are byte-identical to the ones already recorded. `[V]`
+
+Also now used by `android/app`, not only by `android/wp0-spike` as their rows
+above say: `com.android.tools.build:gradle` 8.3.2 and
+`org.jetbrains.kotlin:kotlin-gradle-plugin` 1.9.22 (both build-time only, both
+Apache-2.0 as already checked), and `androidx.test.ext:junit` 1.1.5,
+`androidx.test:runner` 1.5.2 and `junit:junit` 4.13.2 (all test-only, packaged
+into the androidTest APK and not distributed, with the EPL-1.0 caveat recorded
+in the JUnit4 row above applying unchanged here).
