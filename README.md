@@ -24,18 +24,182 @@ Status: work in progress, see `STATUS.md`.
 
 ## Quick start
 
-To be filled in as each component reaches a runnable state; see `STATUS.md`
-for what exists today.
+Filled in as each component reaches a runnable state; see `STATUS.md` for
+what is not here yet (`unlocker agent`, `keyholder unlock`, both
+`pair` subcommands, and the Android app).
+
+### keyholder (laptop), file backend
+
+```
+go run ./cmd/keyholder init
+go run ./cmd/keyholder export-pubkey
+```
+
+`init` generates a new long-term key under your config directory
+(refuses to overwrite an existing one without `--force`). `export-pubkey`
+prints the resulting public key as hex, for pasting into
+`unlocker enrol --pubkey` below.
+
+### unlocker (machine), enrolling a laptop key holder
+
+```
+echo -n 'your-existing-luks-passphrase' > /tmp/passphrase
+go run ./cmd/unlocker enrol \
+  --device /path/to/your/luks-device-or-image \
+  --pubkey <hex from export-pubkey above> \
+  --existing-passphrase-file /tmp/passphrase \
+  --name my-laptop-name \
+  --transport-id my-laptop-transport-id
+rm /tmp/passphrase
+```
+
+This adds a new LUKS2 keyslot holding a freshly generated secret, and a
+`mr-1` token entry for that key holder. Run `cryptsetup luksDump
+--device` to see it; `cryptsetup token export --token-id N` to see the
+token JSON itself.
 
 ## Protocol: MR-1
 
-To be documented here once WP1 (`mrcore`) has committed test vectors in
-`testdata/mr1.json`.
+MR-1 is a McCallum-Relyea exchange (the same blinding construction Tang
+uses), adapted so the key holder's long-term secret can live in hardware
+that only offers ECDH, not full scalar multiplication (Android Keystore,
+TPM2). `[V]` implemented in `mrcore`, see `mrcore/mr1.go` and the tests
+listed below.
+
+Curve: NIST P-256. Chosen over Curve25519 because Android Keystore and
+TPM2 support ECDH on P-256, not on Curve25519.
+
+A **key holder** has a long-term private scalar `s` and publishes the
+point `S = s.G` and `kid = SHA-256(S)`.
+
+**Enrol** (machine, once per key holder):
+
+1. Generate a random 32-byte volume secret `P`; add it as a new LUKS2
+   keyslot with `cryptsetup luksAddKey` (the existing passphrase is
+   required). `[V]` `mrcore.Enrol` plus `cmd/unlocker`'s `enrolRecipient`.
+2. Pick a random scalar `c`, compute `C = c.G` and `K = c.S`. Derive
+   `k = HKDF-SHA256(x(K), salt = kid, info = "mr-1 enrol")`.
+3. `ct = AES-256-GCM(k, nonce, P)`.
+4. Store a LUKS2 token of type `mr-1` carrying, per recipient: `kid`, `S`,
+   `C`, `ct`, `nonce`, and an opaque `transport` blob (that recipient's
+   transport identity). Several recipients can share one token; any one
+   of them can recover `P`. Discard `c`, `K`, `k`, `P` from memory once
+   the keyslot and token are written. Nothing on disk is secret on its
+   own, matching Tang's property that the header is useless without the
+   key holder.
+
+**Recover** (machine, per attempt):
+
+1. Pick an ephemeral scalar `e`, compute `E = e.G`, and send
+   `X = C + E` together with `kid` to the key holder
+   (`mrcore.RecoverRequest`).
+2. The key holder answers in one of two ways, depending on what its key
+   storage can do:
+   - A key holder that holds `s` directly (the `keyholder` file backend,
+     or Tang's server) computes the full point `Y = s.X` and returns it.
+     `[V]` `mrcore.FinishFullPoint`.
+   - A key holder whose key lives in hardware that only offers ECDH
+     (Android Keystore, TPM2) can only return the raw x-coordinate
+     `x(s.X)`, 32 bytes, never the full point. `[V]` on an emulator's
+     non-StrongBox Keystore backend, see `docs/wp0-keystore-ecdh.md`;
+     `[U]` on real StrongBox hardware, pending the retest described
+     there.
+3. Either way, the machine recovers the shared point: given the full
+   point directly, or given only `x(s.X)`, by lifting `x` to its two
+   candidate points `+/-Y` and trying both. It computes
+   `K' = Y - e.S`, derives `k'` exactly as enrolment derived `k`, and
+   attempts to open the AEAD with each candidate; the authentication tag
+   picks the right one, since `K' = s.C = c.S = K` only for the true `Y`.
+   `[V]` `mrcore.FinishFullPoint` / `mrcore.FinishXOnly`, see
+   `mrcore/mr1_test.go`'s `TestEnrolRecoverXOnlyRoundTrip` and
+   `TestRecoverWrongKeyFails` (a wrong key holder, or the wrong sign
+   candidate, fails the AEAD tag with an error, never a panic).
+4. Decrypt `P`, verify it actually opens the volume
+   (`cryptsetup open --test-passphrase`), answer systemd's password
+   agent request, and wipe `e` and `P` from memory.
+
+Properties, compared with Tang: the key holder never learns `P` or `K`
+(identical blinding); a passive or active network attacker learns
+nothing usable; a fake key holder yields a wrong key, caught by the AEAD
+tag; and, unlike Tang, the key holder's secret can be non-exportable and
+gated per use (StrongBox plus biometric on Android). The trade-off is a
+human in the loop for every unlock: better against theft, worse for
+unattended reboots. See "Unattended boot" below.
+
+**Test vectors**: `testdata/mr1.json` is a full worked example (a fixed
+recipient keypair, a fixed enrolment, and a fixed recovery, both the
+full-point and x-only paths) with every value hex-encoded, generated
+once by `mrcore`'s own tested implementation and self-checked before
+being committed. `[V]` consumed by `mrcore/vectors_test.go`; intended for
+WP5's Android instrumented tests to verify an independent Kotlin
+implementation against the same numbers, not just against `mrcore`'s own
+tests.
+
+**Wire format**: the recovery exchange is two JSON messages over the
+transport's authenticated connection, each prefixed with a 4-byte
+big-endian length (`mrcore.WriteMessage`/`ReadMessage`,
+`mrcore.RecoverRequest`/`RecoverResponse`). A `Hello` message (the
+machine's name) is sent first, and, when `--confirm-code` is active, a
+`ConfirmCodeChallenge`/`ConfirmCodeResponse` pair is exchanged before the
+recovery request; see "Threat model" for why.
 
 ## Threat model
 
-To be documented here in substance from the design plan once WP1 to WP3 are
-in place; see `STATUS.md` for progress.
+**Disk thief during an unlock window.** Whoever steals the machine has
+the LUKS2 token and the machine's transport identity: both live on the
+unencrypted disk by design (the header is useless without a key holder,
+per MR-1's properties above, but the thief can still *ask*). Mitigations,
+cheapest first:
+
+- The key holder shows the requester's transport ID and name before
+  approving (`mrcore.Hello`), and answers at most once per session.
+  `[V]` `keyholder unlock` waits for the human to press Enter (or pass
+  `--yes`) before answering.
+- **Confirm-code mode** (`unlocker agent --confirm-code`): the machine
+  prints a six-digit code to its own console; the key holder must relay
+  it back before the machine will even send a recovery request. A thief
+  who only has the disk, not eyes on the machine's console, cannot
+  complete a recovery over the network alone. `[V]`
+  `mrcore.ConfirmCodeChallenge`/`ConfirmCodeResponse`.
+- Sealing the machine's transport identity in the TPM (a PCR policy, so
+  the disk alone cannot impersonate the machine) is real additional work,
+  deferred behind a flag for a later version. `[I]` not implemented.
+
+**Key holder compromise.** On the laptop, a plain key file is the weak
+point; a TPM2 ECDH backend (behind a build tag) is the intended fix.
+`[U]` whether `go-tpm` integration is reachable in the time available;
+may remain a stub with its tests skipped, in which case the file backend
+is what actually protects a laptop key holder, no better than any other
+secret in a home directory. On Android, the key is intended to live in
+StrongBox, biometric-gated per use; `[V]` on an API 34 emulator's
+non-StrongBox backend that Android Keystore accepts a manually
+constructed peer point and returns the correct raw x-coordinate (see
+`docs/wp0-keystore-ecdh.md`); `[U]` on real StrongBox hardware, pending a
+human with a suitable phone.
+
+**Rendezvous infrastructure.** The Syncthing relay network sees two
+Device IDs and traffic volume, nothing else: the tunnel itself is TLS
+1.3 with certificate pinning by Device ID (`mrcore/transport`), so a
+relay operator cannot read or inject into an unlock exchange, only
+observe that one happened between two identities and roughly how much
+data moved. Availability depends on the public relay pool; a
+project-run rendezvous server (transport implementation T2 in the
+design plan) would remove that dependency, and is not built.
+
+**Threshold.** Not built. Recipients are already first-class (several
+key holders can share one LUKS2 token), so Shamir-sharing `P` across
+them, one share per recipient, is straightforward future work rather
+than a redesign.
+
+**What this project does not defend against**: an attacker who controls
+both the disk and a key holder's approval (a coerced or careless human
+pressing Enter); compromise of the Syncthing relay operator's
+infrastructure at a scale that lets them run their own TLS endpoint
+convincingly (certificate pinning by Device ID is what stops an ordinary
+man-in-the-middle, not a compromised CA, since there is no CA in this
+design at all: identities are self-signed and pinned by hash); and,
+deliberately, unattended reboots, which is the whole trade this design
+makes.
 
 ## Rotation and revocation
 
