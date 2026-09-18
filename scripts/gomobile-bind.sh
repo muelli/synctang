@@ -16,7 +16,7 @@ set -eu
 out=${1:?usage: gomobile-bind.sh <output.aar> [target]}
 target=${2:-android}
 
-repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+repo_root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 
 gomobile=${GOMOBILE:-}
 if [ -z "$gomobile" ]; then
