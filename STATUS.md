@@ -415,3 +415,23 @@ for following progress; assume no other channel is read.
   a key holder only reachable via another. Not fixed now;
   `SyncthingRelay` remains the fallback for that case since it is not
   interface-bound.
+
+### Found while sweeping CI, not yet fixed
+
+- **The `android` CI job has failed on every single run on `main`**,
+  from the very first push through the latest (checked via the GitHub
+  API's `actions/runs` list, 30+ consecutive runs, all `failure`),
+  isolated to the `android-actions/setup-android@v3` step; every other
+  job (`go-test`, `go-test-privileged`, `lint`, `em-dash-check`) is
+  consistently green, including on every commit from this session.
+  `[U]` exact cause: could not fetch the job's actual log text (the
+  `actions/jobs/{id}/logs` endpoint needs a token with admin rights on
+  the repo, not available in this environment), so this is reported
+  rather than fixed. Deliberately not guessing at a workflow change
+  here: `android-actions/setup-android@v3` failing outright (before
+  even reaching the NDK install or Gradle steps) could be a runner
+  image compatibility issue, a marketplace action problem, or
+  something else entirely, and a blind edit pushed straight to `main`
+  with no CI feedback loop to check it against is a bad way to find
+  out which. Worth a look with real log access, or by trying a pinned
+  older/newer version of that action.
