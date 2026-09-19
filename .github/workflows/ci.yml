@@ -56,10 +56,20 @@ jobs:
           java-version: "21"
       # The app links a gomobile .aar built from mobile/ and mrcore/,
       # so this job needs a Go toolchain and an NDK as well as the SDK.
+      # The SDK itself needs no setup step at all: actions/runner-images
+      # documents ubuntu-latest as already carrying a full Android SDK
+      # (ANDROID_HOME, ANDROID_SDK_ROOT, sdkmanager on PATH, build-tools
+      # 34.0.0 among others already installed). android-actions/
+      # setup-android@v3 was failing outright on every single run on
+      # this repository since the very first push (checked via the
+      # GitHub API's own run history, never once green), well before
+      # even reaching its own NDK/SDK component steps; since the SDK it
+      # would set up already exists, removing it rather than debugging
+      # a third-party action blind (no log access in the environment
+      # that found this) is the actual fix, not a workaround.
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
-      - uses: android-actions/setup-android@v3
       - name: Install the NDK
         run: sdkmanager --install "ndk;27.2.12479018"
         working-directory: .
