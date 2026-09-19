@@ -228,3 +228,123 @@ func TestUnlockRelaysConfirmCode(t *testing.T) {
 		t.Fatalf("relayed confirm code = %q, want %q", gotCode, wantCode)
 	}
 }
+
+// Found running unlock against a real deployment: Multi races
+// LocalDiscovery against SyncthingRelay independently on the machine
+// and the key holder, so the two sides can each pick a different
+// winning transport for what was meant to be one attempt, producing a
+// connection that completes its handshake and then reads EOF (nobody
+// on the other end ever writes to it). "run unlock" (the CLI entry
+// point, not runUnlockOnce directly) must retry the whole attempt
+// rather than give up: a machine listening again on a second attempt
+// still gets a real key holder to answer it.
+func TestRunUnlockRetriesAfterATransientFailure(t *testing.T) {
+	g := mrcore.P256()
+
+	dir := t.TempDir()
+	keyFile := filepath.Join(dir, "key")
+	s, err := generateAndSave(keyFile, false)
+	if err != nil {
+		t.Fatalf("generateAndSave: %v", err)
+	}
+	S, err := g.ScalarBaseMult(s)
+	if err != nil {
+		t.Fatalf("ScalarBaseMult: %v", err)
+	}
+	P, rec, err := mrcore.Enrol(g, S)
+	if err != nil {
+		t.Fatalf("mrcore.Enrol: %v", err)
+	}
+	transportKeyFile := filepath.Join(dir, "transport.pem")
+
+	machineCert, err := transport.LoadOrCreateCert(filepath.Join(t.TempDir(), "machine.pem"))
+	if err != nil {
+		t.Fatalf("machine LoadOrCreateCert: %v", err)
+	}
+	machineID := protocol.NewDeviceID(machineCert.Certificate[0]).String()
+
+	addr := freeTestAddr(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	recoveredCh := make(chan []byte, 1)
+	machineErrCh := make(chan error, 1)
+	go func() {
+		tr := transport.NewSyncthingRelay(machineCert)
+
+		// First attempt: accept, complete the handshake, then hang up
+		// without writing anything, exactly like a losing Multi race
+		// that still finished connecting.
+		conn, err := tr.Listen(ctx, transport.ListenOptions{DirectAddr: addr})
+		if err != nil {
+			machineErrCh <- err
+			return
+		}
+		conn.Close()
+
+		// Second attempt: behave correctly.
+		conn, err = tr.Listen(ctx, transport.ListenOptions{DirectAddr: addr})
+		if err != nil {
+			machineErrCh <- err
+			return
+		}
+		defer conn.Close()
+
+		if err := mrcore.WriteMessage(conn, mrcore.Hello{Name: "sim-machine"}); err != nil {
+			machineErrCh <- err
+			return
+		}
+		if err := mrcore.WriteMessage(conn, mrcore.ConfirmCodeChallenge{Code: ""}); err != nil {
+			machineErrCh <- err
+			return
+		}
+
+		e, X, err := mrcore.ChallengeStart(g, rec.C)
+		if err != nil {
+			machineErrCh <- err
+			return
+		}
+		if err := mrcore.WriteMessage(conn, mrcore.RecoverRequest{Kid: rec.Kid, X: X}); err != nil {
+			machineErrCh <- err
+			return
+		}
+
+		var resp mrcore.RecoverResponse
+		if err := mrcore.ReadMessage(conn, &resp); err != nil {
+			machineErrCh <- err
+			return
+		}
+		gotP, err := mrcore.FinishFullPoint(g, e, rec, resp.Y)
+		if err != nil {
+			machineErrCh <- err
+			return
+		}
+		recoveredCh <- gotP
+		machineErrCh <- nil
+	}()
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"unlock",
+		"--key-file", keyFile,
+		"--transport-key-file", transportKeyFile,
+		"--direct-addr", addr,
+		"--yes",
+		"--timeout", "15s",
+		machineID,
+	}, strings.NewReader(""), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run unlock: exit %d, stderr %q", code, stderr.String())
+	}
+
+	if err := <-machineErrCh; err != nil {
+		t.Fatalf("simulated machine side: %v", err)
+	}
+	gotP := <-recoveredCh
+	if !bytes.Equal(gotP, P) {
+		t.Fatalf("the machine recovered the wrong secret:\n got=%x\nwant=%x", gotP, P)
+	}
+	if !strings.Contains(stdout.String(), "unlocked") {
+		t.Errorf("expected run unlock to report success, got %q", stdout.String())
+	}
+}

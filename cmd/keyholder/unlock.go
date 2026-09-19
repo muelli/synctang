@@ -18,8 +18,10 @@ import (
 // it as the file-backed key holder: it always answers with the full point
 // Y, computed directly from s, never XOnly (XOnly is only for
 // hardware-backed key holders that cannot expose s in the clear, such as
-// Android Keystore or a TPM2; this backend holds s directly). s is wiped
-// before returning.
+// Android Keystore or a TPM2; this backend holds s directly). The caller
+// owns wiping s: this may be called more than once against the same s
+// (see runUnlock's retry), so wiping it here after the first call would
+// corrupt every attempt after that.
 //
 // The machine always sends a ConfirmCodeChallenge right after Hello,
 // whether or not it was started with --confirm-code: an empty Code means
@@ -46,8 +48,6 @@ func newDialTransport(cert tls.Certificate, directAddr string) transport.Transpo
 }
 
 func runUnlockOnce(ctx context.Context, s []byte, cert tls.Certificate, machineID, directAddr string, yes bool, stdin io.Reader, stdout io.Writer) error {
-	defer wipe(s)
-
 	tr := newDialTransport(cert, directAddr)
 	conn, err := tr.Dial(ctx, transport.DialOptions{PeerID: machineID, DirectAddr: directAddr})
 	if err != nil {

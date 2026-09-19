@@ -50,7 +50,6 @@ func (m *Multi) race(ctx context.Context, attempt func(context.Context, Transpor
 	}
 
 	raceCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
 
 	results := make(chan multiResult, len(m.Transports))
 	for _, tr := range m.Transports {
@@ -62,13 +61,35 @@ func (m *Multi) race(ctx context.Context, attempt func(context.Context, Transpor
 	}
 
 	var errs []error
-	for range m.Transports {
+	for i := 0; i < len(m.Transports); i++ {
 		r := <-results
 		if r.err == nil {
 			cancel()
+			if remaining := len(m.Transports) - i - 1; remaining > 0 {
+				go closeLateArrivals(results, remaining)
+			}
 			return r.conn, nil
 		}
 		errs = append(errs, r.err)
 	}
+	cancel()
 	return nil, errors.Join(errs...)
+}
+
+// closeLateArrivals drains the results still outstanding after race
+// has already returned a winner, closing any connection among them.
+// Cancelling raceCtx only stops a losing attempt that has not yet
+// finished; one already in the middle of a TLS handshake, or one
+// whose Transport simply does not check ctx after committing to an
+// operation, can still report success afterwards. That is a second
+// real, authenticated connection to the same peer nobody is going to
+// use, and leaving it open leaks a live session on both ends rather
+// than merely a goroutine, so it must be closed, not dropped.
+func closeLateArrivals(results chan multiResult, n int) {
+	for i := 0; i < n; i++ {
+		r := <-results
+		if r.err == nil && r.conn != nil {
+			r.conn.Close()
+		}
+	}
 }

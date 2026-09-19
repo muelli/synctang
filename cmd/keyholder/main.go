@@ -172,10 +172,10 @@ func runUnlock(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "keyholder: %v\n", err)
 		return 1
 	}
+	defer wipe(s)
 
 	cert, err := transport.LoadOrCreateCert(*transportKeyFile)
 	if err != nil {
-		wipe(s)
 		fmt.Fprintf(stderr, "keyholder: %v\n", err)
 		return 1
 	}
@@ -183,12 +183,36 @@ func runUnlock(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
 
-	if err := runUnlockOnce(ctx, s, cert, machineID, *directAddr, *yes, stdin, stdout); err != nil {
-		fmt.Fprintf(stderr, "keyholder: %v\n", err)
-		return 1
+	// Retried, not just attempted once: Multi races LocalDiscovery
+	// against SyncthingRelay independently on each side, so the
+	// machine and this key holder can each pick a different winning
+	// transport for what was meant to be the same attempt (one
+	// genuinely authenticated connection with nobody on the other end
+	// reading or writing it), surfacing as a read failure partway
+	// through the exchange rather than a dial failure. Found running
+	// this against a real deployment. A fresh attempt is a fresh,
+	// independent race on both sides, so retrying converges rather
+	// than repeating the same mismatch.
+	var lastErr error
+	for {
+		lastErr = runUnlockOnce(ctx, s, cert, machineID, *directAddr, *yes, stdin, stdout)
+		if lastErr == nil {
+			return 0
+		}
+		select {
+		case <-ctx.Done():
+			fmt.Fprintf(stderr, "keyholder: %v (last attempt: %v)\n", ctx.Err(), lastErr)
+			return 1
+		case <-time.After(unlockRetryInterval):
+		}
 	}
-	return 0
 }
+
+// unlockRetryInterval is how long runUnlock waits between attempts
+// after one fails. Matches the machine agent's own agentRetryInterval
+// in spirit: fast enough not to waste the --timeout budget, slow
+// enough not to hammer the relay pool.
+const unlockRetryInterval = 2 * time.Second
 
 // defaultUnlockTimeout bounds how long "unlock" will keep retrying the
 // dial (mrcore/transport.SyncthingRelay.Dial now retries the relay path
