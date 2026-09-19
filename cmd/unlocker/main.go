@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -202,7 +203,7 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer cancel()
 
-	tr := &transport.SyncthingRelay{Cert: cert, Logger: logger}
+	tr := newAgentTransport(cert, logger, *directAddr)
 	for ctx.Err() == nil {
 		// Checked on every pass, not once at startup: this hook runs
 		// from dracut's initqueue "settled", which fires once udev has
@@ -254,6 +255,25 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	return 0
+}
+
+// newAgentTransport builds the Transport the agent listens through. An
+// explicit directAddr bypasses discovery entirely (offline tests, and
+// the escape hatch for a network that blocks both the relay and local
+// multicast); otherwise LocalDiscovery and SyncthingRelay are raced
+// together (transport.Multi), so a key holder on the same LAN can
+// unlock this machine even with no Internet route at all, without
+// either side needing to know in advance which situation it is in.
+// LocalDiscovery needs no DNS resolver, unlike SyncthingRelay, so it
+// keeps working even when ensureResolver above never finds one.
+func newAgentTransport(cert tls.Certificate, logger *slog.Logger, directAddr string) transport.Transport {
+	if directAddr != "" {
+		return &transport.SyncthingRelay{Cert: cert, Logger: logger}
+	}
+	return &transport.Multi{Transports: []transport.Transport{
+		&transport.LocalDiscovery{Cert: cert, Logger: logger},
+		&transport.SyncthingRelay{Cert: cert, Logger: logger},
+	}}
 }
 
 // readPassphrase reads an existing LUKS passphrase from path (stdin if

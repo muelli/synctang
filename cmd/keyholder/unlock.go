@@ -28,10 +28,27 @@ import (
 // That is how the two message types are told apart, by their fixed
 // position in the exchange rather than by a discriminator field in
 // mrcore/wire.go; cmd/unlocker's agent.go follows the same convention.
+// newDialTransport builds the Transport runUnlockOnce dials through.
+// An explicit directAddr bypasses discovery entirely (offline tests,
+// and manual same-network pairing), exactly as before; otherwise
+// LocalDiscovery and SyncthingRelay are raced together
+// (transport.Multi), so unlock keeps working on a LAN with no
+// Internet route without the caller having to know in advance which
+// situation it is in.
+func newDialTransport(cert tls.Certificate, directAddr string) transport.Transport {
+	if directAddr != "" {
+		return transport.NewSyncthingRelay(cert)
+	}
+	return &transport.Multi{Transports: []transport.Transport{
+		&transport.LocalDiscovery{Cert: cert},
+		transport.NewSyncthingRelay(cert),
+	}}
+}
+
 func runUnlockOnce(ctx context.Context, s []byte, cert tls.Certificate, machineID, directAddr string, yes bool, stdin io.Reader, stdout io.Writer) error {
 	defer wipe(s)
 
-	tr := transport.NewSyncthingRelay(cert)
+	tr := newDialTransport(cert, directAddr)
 	conn, err := tr.Dial(ctx, transport.DialOptions{PeerID: machineID, DirectAddr: directAddr})
 	if err != nil {
 		return fmt.Errorf("dialing %s: %w", machineID, err)

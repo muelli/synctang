@@ -161,6 +161,145 @@ func TestAgentRecoversAndAnswersAskPassword(t *testing.T) {
 	}
 }
 
+// multicastOrSkip skips the test if this environment does not deliver a
+// self-addressed multicast packet: some sandboxes restrict it even on a
+// machine's own interfaces, and the point of this test is to prove local
+// discovery works where it is available, not to fail on infrastructure
+// that does not support it at all.
+func multicastOrSkip(t *testing.T) {
+	t.Helper()
+	group := &net.UDPAddr{IP: net.ParseIP("239.255.42.100"), Port: 21077}
+
+	recv, err := net.ListenMulticastUDP("udp4", nil, group)
+	if err != nil {
+		t.Skipf("multicast not available in this environment: %v", err)
+	}
+	defer recv.Close()
+	if err := recv.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatalf("SetReadDeadline: %v", err)
+	}
+
+	send, err := net.DialUDP("udp4", nil, group)
+	if err != nil {
+		t.Skipf("multicast not available in this environment: %v", err)
+	}
+	defer send.Close()
+	if _, err := send.Write([]byte("probe")); err != nil {
+		t.Skipf("multicast not available in this environment: %v", err)
+	}
+
+	buf := make([]byte, 16)
+	if _, _, err := recv.ReadFromUDP(buf); err != nil {
+		t.Skipf("multicast not available in this environment: %v", err)
+	}
+}
+
+// A9 requirement made concrete for the offline case: unlock must work
+// with no relay and no discovery server involved at all, over
+// transport.LocalDiscovery alone, exactly as it does over
+// SyncthingRelay's DirectAddr in the test above. This is the actual
+// behaviour "unlock works even without the Internet" means end to end,
+// not just at the transport layer LocalDiscovery's own tests already
+// cover.
+func TestAgentRecoversOverLocalDiscovery(t *testing.T) {
+	multicastOrSkip(t)
+
+	existingPassphrase := []byte("existing-test-passphrase")
+	device := formatLoopbackImage(t, existingPassphrase)
+
+	g := mrcore.P256()
+	s, err := g.RandomScalar()
+	if err != nil {
+		t.Fatalf("RandomScalar: %v", err)
+	}
+	S, err := g.ScalarBaseMult(s)
+	if err != nil {
+		t.Fatalf("ScalarBaseMult: %v", err)
+	}
+
+	keyholderCert, err := transport.LoadOrCreateCert(filepath.Join(t.TempDir(), "keyholder.pem"))
+	if err != nil {
+		t.Fatalf("keyholder LoadOrCreateCert: %v", err)
+	}
+	keyholderID := protocol.NewDeviceID(keyholderCert.Certificate[0]).String()
+
+	if err := enrolRecipient(device, existingPassphrase, S, "test-machine", "MACHINE-ID", keyholderID); err != nil {
+		t.Fatalf("enrolRecipient: %v", err)
+	}
+
+	machineCert, err := transport.LoadOrCreateCert(filepath.Join(t.TempDir(), "machine.pem"))
+	if err != nil {
+		t.Fatalf("machine LoadOrCreateCert: %v", err)
+	}
+	machineID := protocol.NewDeviceID(machineCert.Certificate[0]).String()
+
+	askDir := t.TempDir()
+	replyConn := writeAskRequest(t, askDir)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	tr := &transport.LocalDiscovery{Cert: machineCert, AnnounceInterval: 50 * time.Millisecond}
+	agentErrCh := make(chan error, 1)
+	go func() {
+		agentErrCh <- runAgentOnce(ctx, device, machineCert, "test-machine", "", askDir,
+			transport.ListenOptions{}, tr)
+	}()
+
+	keyholderTr := &transport.LocalDiscovery{Cert: keyholderCert}
+	conn, err := keyholderTr.Dial(ctx, transport.DialOptions{PeerID: machineID})
+	if err != nil {
+		t.Fatalf("keyholder Dial: %v", err)
+	}
+	defer conn.Close()
+
+	var hello mrcore.Hello
+	if err := mrcore.ReadMessage(conn, &hello); err != nil {
+		t.Fatalf("reading Hello: %v", err)
+	}
+
+	var challenge mrcore.ConfirmCodeChallenge
+	if err := mrcore.ReadMessage(conn, &challenge); err != nil {
+		t.Fatalf("reading ConfirmCodeChallenge: %v", err)
+	}
+
+	var req mrcore.RecoverRequest
+	if err := mrcore.ReadMessage(conn, &req); err != nil {
+		t.Fatalf("reading RecoverRequest: %v", err)
+	}
+
+	Y, err := g.ScalarMult(req.X, s)
+	if err != nil {
+		t.Fatalf("ScalarMult: %v", err)
+	}
+	if err := mrcore.WriteMessage(conn, mrcore.RecoverResponse{Y: Y}); err != nil {
+		t.Fatalf("sending RecoverResponse: %v", err)
+	}
+
+	if err := <-agentErrCh; err != nil {
+		t.Fatalf("runAgentOnce: %v", err)
+	}
+
+	buf := make([]byte, 4096)
+	if err := replyConn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatalf("SetReadDeadline: %v", err)
+	}
+	n, _, err := replyConn.ReadFrom(buf)
+	if err != nil {
+		t.Fatalf("reading ask-password reply: %v", err)
+	}
+	got := buf[:n]
+	if len(got) == 0 || got[0] != '+' {
+		t.Fatalf("ask-password reply = %q, want a leading '+'", got)
+	}
+	P := got[1:]
+
+	if _, err := runCommand(P, "cryptsetup", "open", "--test-passphrase",
+		"--key-file=-", device); err != nil {
+		t.Fatalf("the delivered secret does not open %s: %v", device, err)
+	}
+}
+
 // T3.3: a confirm code response that does not match the code the agent
 // generated must be rejected before any RecoverResponse is even trusted,
 // and no ask-password reply must ever be sent.

@@ -84,6 +84,33 @@ listening for the next attempt until it receives `SIGTERM` (which
 `dracut/90unlocker/unlocker-stop.sh` sends before pivoting to the real
 root).
 
+## Transport: local network and the Internet, at once
+
+`unlocker agent` and `keyholder unlock` do not have to guess in advance
+whether the Internet is reachable. Unless `--direct-addr` is given
+(which bypasses both, for offline tests and manual same-network
+pairing), both sides run two transports at once and use whichever
+finds the other first:
+
+- `transport.LocalDiscovery`: the machine multicasts its Device ID and
+  a plain TCP listener's address on the local network every couple of
+  seconds; the key holder listens for a matching announcement and
+  dials it directly. Needs a LAN link and nothing else: no DNS, no
+  route to the Internet, no third-party infrastructure.
+- `transport.SyncthingRelay`: the public Syncthing relay network and
+  global discovery, for when the two sides are not on the same
+  network.
+
+`transport.Multi` races the two: on a LAN with no Internet route, the
+relay path simply keeps failing in the background while local
+discovery succeeds, so unlock keeps working; with the Internet
+reachable, both are tried and whichever answers first wins, so this
+costs nothing when local discovery is not needed at all. Either way
+the TLS handshake and Device ID pinning that follow are identical: an
+announcement (local or global) is only ever a hint about where to
+dial, never trusted on its own, exactly as the plan's threat model
+requires (see below).
+
 ## Protocol: MR-1
 
 MR-1 is a McCallum-Relyea exchange (the same blinding construction Tang
@@ -211,6 +238,14 @@ observe that one happened between two identities and roughly how much
 data moved. Availability depends on the public relay pool; a
 project-run rendezvous server (transport implementation T2 in the
 design plan) would remove that dependency, and is not built.
+`[V]` `transport.LocalDiscovery` is a partial answer already built: on
+the same LAN, unlock needs no rendezvous infrastructure, no Internet
+route and no DNS at all. Its multicast announcement is unauthenticated
+(anyone on the LAN can see that a Device ID is listening, and where),
+exactly as global discovery's lookups already are; nothing in it is
+trusted on its own; the TLS handshake and Device ID pinning that follow
+a dial are unchanged, so a forged announcement can point a dialer at
+the wrong address but cannot make it accept the wrong identity.
 
 **Threshold.** Not built. Recipients are already first-class (several
 key holders can share one LUKS2 token), so Shamir-sharing `P` across
