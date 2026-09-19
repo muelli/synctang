@@ -284,3 +284,49 @@ for following progress; assume no other channel is read.
   reusable for the Android app, per plan section 4; `android/app/build.gradle.kts`
   has not been inspected yet because no such Android app in that repository
   has been located yet; to check when starting WP5.
+
+## 2026-09-19, session 2
+
+### Done
+
+- WP2 fix: `SyncthingRelay.dialRelay`'s retry loop only covered the
+  discovery lookup and relay session join (`dialRelayOnce`); `Dial()`
+  then called `clientHandshake()` as a separate step outside that loop.
+  A real-VM retest after the previous (lookup/join-only) fix still failed
+  with `transport: client handshake: EOF`, i.e. exactly the step the
+  retry did not cover. Fixed by introducing `dialRelayAttempt`, which
+  wraps the lookup, join and handshake together so any of the three
+  failing triggers a fresh attempt; `dialRelay` now returns `(Conn,
+  error)` directly rather than a raw `net.Conn`. Commit `6861f0d`.
+  `gofmt`, `go vet`, and the full suite (`go test ./...`) all green
+  after the change.
+
+### In progress
+
+- A3 retest against `synctang-test-2604` with the rebuilt `keyholder`:
+  progress, but not yet passing. The relay dial and TLS handshake now
+  succeed (confirming the WP2 fix above works, and that the machine's
+  Device ID checks out over the relay). The next step now fails
+  instead: `keyholder: reading hello: mrcore: reading message length:
+  EOF`, meaning the machine's `unlocker` agent closes the connection
+  right after the handshake, before ever writing its `Hello` message.
+  Two candidate causes in `cmd/unlocker/agent.go`'s `runAgentOnce`,
+  indistinguishable from the key holder's side (both just look like
+  EOF):
+  1. `transport.Listen()`'s `serverHandshake` rejected the key holder's
+     certificate as unauthorized (logged server-side only, at Warn
+     level).
+  2. The handshake-level check passed, but `runAgentOnce`'s own
+     redundant `matched == nil` check (comparing `conn.PeerID()` against
+     each enrolled `Recipient.TransportDeviceID()`) failed instead,
+     returning `unlocker: connected peer %s does not match any enrolled
+     recipient` without ever writing `Hello`.
+  Asked the separate hypervisor-access session (the same one that
+  converted `synctang-test-2604`'s root to LUKS2) to check the VM's
+  journal for the actual rejection reason and to compare the enrolled
+  recipient's `device_id` against the current key holder identity's
+  transport ID (`IL2O3W3-UX6ZIVO-NJHVUDL-LSXQ34Q-ALHXKES-3JGHIS3-W7ZPIBE-JXB57A7`,
+  from `~/wp7-keyholder-config/`, regenerated after the `/tmp` wipe
+  described in session 1). `[U]` pending that report; likely either a
+  stale enrolment (re-enrol with the current key) or a real bug in one
+  of the two checks above, not yet known which.
