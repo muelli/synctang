@@ -36,7 +36,27 @@ not here. See `TESTREPORT.md` for the acceptance table (A1-A11).
 
 Green: `go-test`, `go-test-privileged`, `lint`, `em-dash-check`,
 `android` (the last one for the first time as of `59614d8`; see
-`AGENTS.md` for the four issues chasing that down turned up).
+`AGENTS.md` for the four issues chasing that down turned up), and
+`build-deb`.
+
+## Packaging
+
+`build-deb` produces three Debian packages for amd64 and arm64:
+`synctang-unlocker` (`/usr/sbin/unlocker`), `synctang-keyholder`
+(`/usr/bin/keyholder`), and `synctang-dracut` (the 90unlocker module,
+arch: all). It verifies the cross-built package really holds an aarch64
+binary, attests build provenance with
+`actions/attest-build-provenance` (pushes to `main` only, since a fork
+pull request cannot get an id-token), and uploads the packages.
+
+`just deb` builds them locally; `just deb-repro` builds twice under
+different umask, `TZ` and `LC_ALL` and checks the results are
+byte-identical, which CI also runs. Reproducibility rests on
+`SOURCE_DATE_EPOCH` coming from the commit date rather than wall clock,
+and on `go build -buildvcs=false -trimpath` with `CGO_ENABLED=0`. Scope
+is deliberately limited to "same commit, matching toolchain and
+packaging tool versions"; cross-machine and cross-architecture
+reproducibility are untested and not claimed.
 
 ## Open items
 
