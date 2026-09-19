@@ -16,8 +16,29 @@
 
 # shellcheck disable=SC2154
 
+# unlocker_path finds the agent binary even when it is not on the PATH this
+# script happens to run with. A kernel upgrade rebuilds the initrd from a dpkg
+# maintainer script, and dpkg runs those with a PATH that does not include
+# /usr/local/bin. A plain "require_binaries unlocker" therefore fails there,
+# check() returns 1, dracut silently drops this whole module, and the machine
+# comes up with an initrd that has no agent in it at all: remote unlock stops
+# working after an unattended kernel upgrade, with nothing to show for it but a
+# console prompt nobody is standing in front of. Observed exactly that on the
+# test VM, whose 7.0.0-31 initrd contained no unlocker files whatsoever.
+unlocker_path() {
+	command -v unlocker 2>/dev/null && return 0
+	for candidate in /usr/local/sbin/unlocker /usr/local/bin/unlocker \
+		/usr/sbin/unlocker /usr/bin/unlocker; do
+		if [ -x "$candidate" ]; then
+			echo "$candidate"
+			return 0
+		fi
+	done
+	return 1
+}
+
 check() {
-	require_binaries unlocker || return 1
+	unlocker_path > /dev/null || return 1
 	return 0
 }
 
@@ -30,7 +51,7 @@ depends() {
 }
 
 install() {
-	inst_binary unlocker
+	inst_binary "$(unlocker_path)" /usr/local/bin/unlocker
 
 	# 70crypt installs the cryptsetup binary only on its non-systemd branch: with
 	# systemd present it installs dracut-crypt-generator and relies on
