@@ -71,12 +71,24 @@ jobs:
         with:
           go-version: "1.25"
       - name: Install the NDK
-        # sdkmanager blocks on an interactive license prompt for any
-        # component it does not already have cached (the runner's
-        # pre-installed NDK is a different version, 27.3.13750724, so
-        # this one is a fresh download); "yes |" is the standard
-        # non-interactive workaround, there being no --yes flag.
-        run: yes | sdkmanager --install "ndk;27.2.12479018"
+        # Two separate things needed fixing here, one at a time,
+        # without log access to see which: sdkmanager blocks on an
+        # interactive license prompt for any component it does not
+        # already have cached (the runner's pre-installed NDK is a
+        # different version, 27.3.13750724, so this one is a fresh
+        # download; "yes |" is the standard non-interactive
+        # workaround, there being no --yes flag), and
+        # actions/runner-images documents ANDROID_HOME as set but
+        # does not confirm cmdline-tools/sdkmanager is actually on
+        # PATH, so this locates it explicitly rather than assuming.
+        run: |
+          SDKMANAGER=$(command -v sdkmanager || find "$ANDROID_HOME" -type f -name sdkmanager 2>/dev/null | head -1)
+          if [ -z "$SDKMANAGER" ]; then
+            echo "sdkmanager not found under \$ANDROID_HOME ($ANDROID_HOME)" >&2
+            exit 1
+          fi
+          echo "using sdkmanager at $SDKMANAGER"
+          yes | "$SDKMANAGER" --install "ndk;27.2.12479018"
         working-directory: .
       - name: Install gomobile
         run: |
