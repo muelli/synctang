@@ -123,6 +123,84 @@ func TestLocalDiscoveryListenContextCancellation(t *testing.T) {
 	}
 }
 
+// A11: the announcing socket must be bound to a specific interface
+// address, never left unbound for the routing table to resolve.
+//
+// An unbound UDP socket writing to a multicast group needs a route to
+// that group, and on an ordinary host the only route that covers
+// 239.0.0.0/8 is the default one. So a machine with no default route
+// cannot send an announcement at all: the write fails outright with
+// "network is unreachable". That is exactly backwards, because a
+// machine with no default route is a machine with no Internet, which
+// is the one case LocalDiscovery exists to serve. Confirmed on the
+// real test VM: with its default route deleted, an unbound socket
+// failed with EUNREACH and a socket bound to the interface's own
+// address succeeded, on the same host, at the same moment.
+//
+// Binding to an interface address makes the kernel send out that
+// interface without consulting the default route, so this asserts
+// what the fix actually depends on rather than the fix's shape.
+func TestAnnounceSocketsAreBoundToAnInterfaceAddress(t *testing.T) {
+	multicastOrSkip(t)
+
+	l := &LocalDiscovery{Cert: testCert(t)}
+	socks := l.announceSockets(context.Background())
+	if len(socks) == 0 {
+		t.Skip("no multicast-capable interface in this environment")
+	}
+	t.Cleanup(func() {
+		for _, s := range socks {
+			s.Close()
+		}
+	})
+
+	local := make(map[string]bool)
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		t.Fatalf("listing interface addresses: %v", err)
+	}
+	for _, a := range addrs {
+		if ipnet, ok := a.(*net.IPNet); ok {
+			if v4 := ipnet.IP.To4(); v4 != nil {
+				local[v4.String()] = true
+			}
+		}
+	}
+
+	for _, s := range socks {
+		ip := s.LocalAddr().(*net.UDPAddr).IP
+		if ip == nil || ip.IsUnspecified() {
+			t.Fatalf("announce socket is bound to %v, so sending depends on the routing table", ip)
+		}
+		if !local[ip.To4().String()] {
+			t.Fatalf("announce socket bound to %v, which is not an address of any local interface", ip)
+		}
+	}
+}
+
+// A dialer must join the multicast group on every multicast-capable
+// interface, not only whichever one the kernel picks by default. A
+// key holder laptop routinely has several (wifi, ethernet, a docker
+// bridge), and joining the wrong one means never hearing a machine
+// that is announcing perfectly well on the right one.
+func TestWaitForAnnouncementJoinsEveryMulticastInterface(t *testing.T) {
+	multicastOrSkip(t)
+
+	want := multicastInterfaces()
+	if len(want) == 0 {
+		t.Skip("no multicast-capable interface in this environment")
+	}
+
+	l := &LocalDiscovery{Cert: testCert(t)}
+	socks := l.listenSockets()
+	if len(socks) != len(want) {
+		t.Fatalf("joined the group on %d interfaces, want %d", len(socks), len(want))
+	}
+	for _, s := range socks {
+		s.Close()
+	}
+}
+
 func deviceIDString(t *testing.T, cert tls.Certificate) string {
 	t.Helper()
 	return protocol.NewDeviceID(cert.Certificate[0]).String()

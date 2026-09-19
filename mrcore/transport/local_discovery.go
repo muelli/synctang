@@ -151,10 +151,87 @@ func (l *LocalDiscovery) Dial(ctx context.Context, opts DialOptions) (Conn, erro
 	return doClientHandshake(l.Cert, l.logger(), raw, opts.PeerID)
 }
 
+// multicastInterfaces returns the interfaces worth announcing on and
+// listening on: up, multicast-capable, not loopback, and carrying at
+// least one IPv4 address. Loopback is excluded because it is not a
+// LAN, which is the only thing this Transport is about; an interface
+// with no IPv4 address is excluded because there would be nothing to
+// bind an "udp4" socket to.
+func multicastInterfaces() []net.Interface {
+	all, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	var out []net.Interface
+	for _, ifi := range all {
+		if ifi.Flags&net.FlagUp == 0 ||
+			ifi.Flags&net.FlagMulticast == 0 ||
+			ifi.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		if interfaceIPv4(ifi) == nil {
+			continue
+		}
+		out = append(out, ifi)
+	}
+	return out
+}
+
+// interfaceIPv4 returns ifi's first usable IPv4 address, or nil.
+func interfaceIPv4(ifi net.Interface) net.IP {
+	addrs, err := ifi.Addrs()
+	if err != nil {
+		return nil
+	}
+	for _, a := range addrs {
+		ipnet, ok := a.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		v4 := ipnet.IP.To4()
+		if v4 == nil || v4.IsUnspecified() {
+			continue
+		}
+		return v4
+	}
+	return nil
+}
+
+// announceSockets opens one UDP socket per multicast-capable
+// interface, each bound to that interface's own IPv4 address.
+//
+// The binding is the whole point, not an optimisation. An unbound
+// socket writing to a multicast group has to find a route to it, and
+// on an ordinary host nothing covers 239.0.0.0/8 except the default
+// route, so a machine without one fails the write with "network is
+// unreachable" and never announces at all. That is precisely the
+// machine this Transport exists for: no default route means no
+// Internet, which is when the relay cannot help and local discovery
+// is the only path left. Binding to an interface address sends out
+// that interface directly, with no route lookup to fail.
+//
+// Announcing on every interface rather than one also fixes the
+// multi-homed case: a machine with wifi and ethernet both up has no
+// way to know which side the key holder is on, and a packet on the
+// wrong one is indistinguishable from no packet at all.
+func (l *LocalDiscovery) announceSockets(ctx context.Context) []*net.UDPConn {
+	var socks []*net.UDPConn
+	for _, ifi := range multicastInterfaces() {
+		conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: interfaceIPv4(ifi)})
+		if err != nil {
+			l.logger().Log(ctx, levelTrace, "local discovery: could not open announce socket",
+				"interface", ifi.Name, "error", err)
+			continue
+		}
+		socks = append(socks, conn)
+	}
+	return socks
+}
+
 // announceLocally multicasts an announcement of deviceID and tcpPort
 // immediately and then on every announceInterval tick, until ctx is
 // done or the returned stop function is called (whichever first).
-// Failing to open the announcing socket is not itself an error worth
+// Failing to open the announcing sockets is not itself an error worth
 // failing Listen over: SyncthingRelay's own announce loop is running
 // concurrently via Multi, so an unreachable multicast group (a network
 // that genuinely blocks it) just means this Transport alone will never
@@ -166,12 +243,16 @@ func (l *LocalDiscovery) announceLocally(ctx context.Context, deviceID string, t
 	go func() {
 		defer close(done)
 
-		conn, err := net.DialUDP("udp4", nil, l.groupUDPAddr())
-		if err != nil {
-			l.logger().Log(ctx, levelTrace, "local discovery: could not open announce socket", "error", err)
+		socks := l.announceSockets(ctx)
+		if len(socks) == 0 {
+			l.logger().Log(ctx, levelTrace, "local discovery: no multicast-capable interface to announce on")
 			return
 		}
-		defer conn.Close()
+		defer func() {
+			for _, s := range socks {
+				s.Close()
+			}
+		}()
 
 		payload, err := json.Marshal(localAnnouncement{
 			Magic:    localAnnounceMagic,
@@ -182,9 +263,13 @@ func (l *LocalDiscovery) announceLocally(ctx context.Context, deviceID string, t
 			return
 		}
 
+		group := l.groupUDPAddr()
 		send := func() {
-			if _, err := conn.Write(payload); err != nil {
-				l.logger().Log(ctx, levelTrace, "local discovery: announce failed", "error", err)
+			for _, s := range socks {
+				if _, err := s.WriteToUDP(payload, group); err != nil {
+					l.logger().Log(ctx, levelTrace, "local discovery: announce failed",
+						"from", s.LocalAddr(), "error", err)
+				}
 			}
 		}
 
@@ -216,24 +301,30 @@ func (l *LocalDiscovery) announceLocally(ctx context.Context, deviceID string, t
 // rendezvous, not a directory, so there is nothing useful to do with
 // an announcement for a Device ID nobody asked to reach.
 func (l *LocalDiscovery) waitForAnnouncement(ctx context.Context, peerID string) (string, error) {
-	conn, err := net.ListenMulticastUDP("udp4", nil, l.groupUDPAddr())
-	if err != nil {
-		return "", fmt.Errorf("joining the local discovery group: %w", err)
+	conns := l.listenSockets()
+	if len(conns) == 0 {
+		return "", fmt.Errorf("joining the local discovery group: no multicast-capable interface")
 	}
-	defer conn.Close()
+	defer func() {
+		for _, c := range conns {
+			c.Close()
+		}
+	}()
 
 	// ReadFromUDP below has no ctx of its own, so cancellation is
 	// implemented the same way as acceptWithContext: closing the
-	// socket from a second goroutine unblocks the read. Whichever of
-	// the two conn.Close() calls (this one, or the deferred one above)
-	// runs second is a harmless no-op.
+	// sockets from a second goroutine unblocks the reads. Whichever of
+	// the two Close calls (this one, or the deferred one above) runs
+	// second is a harmless no-op.
 	stopWatching := make(chan struct{})
 	watchDone := make(chan struct{})
 	go func() {
 		defer close(watchDone)
 		select {
 		case <-ctx.Done():
-			conn.Close()
+			for _, c := range conns {
+				c.Close()
+			}
 		case <-stopWatching:
 		}
 	}()
@@ -242,14 +333,57 @@ func (l *LocalDiscovery) waitForAnnouncement(ctx context.Context, peerID string)
 		<-watchDone
 	}()
 
+	// One reader per interface, first match wins. The channel is
+	// buffered for every reader so that the losers, which nobody is
+	// listening to any more once this function returns, do not block
+	// forever on a send and leak their goroutine.
+	found := make(chan string, len(conns))
+	for _, c := range conns {
+		go func(c *net.UDPConn) {
+			if addr, ok := readAnnouncementFor(c, peerID); ok {
+				found <- addr
+			}
+		}(c)
+	}
+
+	select {
+	case addr := <-found:
+		return addr, nil
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+}
+
+// listenSockets joins the local discovery group on every
+// multicast-capable interface. Joining on only the interface the
+// kernel picks by default is not enough: a key holder laptop
+// routinely has several up at once (wifi, ethernet, a container
+// bridge), and listening on the wrong one is indistinguishable from
+// the machine never announcing.
+func (l *LocalDiscovery) listenSockets() []*net.UDPConn {
+	var conns []*net.UDPConn
+	for _, ifi := range multicastInterfaces() {
+		conn, err := net.ListenMulticastUDP("udp4", &ifi, l.groupUDPAddr())
+		if err != nil {
+			continue
+		}
+		conns = append(conns, conn)
+	}
+	return conns
+}
+
+// readAnnouncementFor reads from conn until it sees an announcement
+// for peerID, or the socket is closed. Every other announcement (a
+// different machine, or unrelated traffic that happens to land on the
+// same group) is silently skipped: this is a rendezvous, not a
+// directory, so there is nothing useful to do with an announcement
+// for a Device ID nobody asked to reach.
+func readAnnouncementFor(conn *net.UDPConn, peerID string) (string, bool) {
 	buf := make([]byte, 512)
 	for {
 		n, src, err := conn.ReadFromUDP(buf)
 		if err != nil {
-			if ctx.Err() != nil {
-				return "", ctx.Err()
-			}
-			return "", fmt.Errorf("reading from the local discovery group: %w", err)
+			return "", false
 		}
 
 		var ann localAnnouncement
@@ -259,6 +393,6 @@ func (l *LocalDiscovery) waitForAnnouncement(ctx context.Context, peerID string)
 		if ann.Magic != localAnnounceMagic || ann.DeviceID != peerID {
 			continue
 		}
-		return net.JoinHostPort(src.IP.String(), strconv.Itoa(ann.Port)), nil
+		return net.JoinHostPort(src.IP.String(), strconv.Itoa(ann.Port)), true
 	}
 }
