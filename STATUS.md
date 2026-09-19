@@ -330,3 +330,88 @@ for following progress; assume no other channel is read.
   described in session 1). `[U]` pending that report; likely either a
   stale enrolment (re-enrol with the current key) or a real bug in one
   of the two checks above, not yet known which.
+
+- **Root cause of the handshake EOF, found.** The hypervisor session's
+  report ruled out both candidates above: the enrolled recipient's
+  `device_id` matched exactly, and the VM's console log never showed
+  either rejection message, only a repeating `server handshake: EOF`
+  immediately followed each time by a fresh `Joined relay` to a
+  different address. Reading `strelaysrv`'s actual source
+  (`cmd/strelaysrv/listener.go`) explained it: the relay server calls
+  `dropSessions(id)`, closing every session belonging to a device, the
+  moment that device's own control connection to the relay
+  disconnects, "to realize the client is no longer there faster".
+  `SyncthingRelay.listenRelay` was disconnecting its control connection
+  (`cancelRelay`, via a plain `defer`) the instant it joined one
+  session, before `Listen`'s subsequent TLS handshake on that session
+  even started, racing the relay server's own cleanup against a
+  handshake that had not happened yet. Fixed by having `listenRelay`
+  hand its cleanup function to the caller instead of running it itself:
+  `Listen` now wires it into the resulting `Conn`'s `Close()`, so the
+  control connection, and this listener's relay registration, stays up
+  for the connection's whole lifetime, not merely until it was joined.
+  Commit (WP2). Confirmed structurally sound against `syncthing-socket`
+  and `strelaysrv`'s own source: `syncthing-socket`'s `runServer` does
+  not have this bug, because it keeps its relay client alive for the
+  whole process's lifetime rather than per attempt; this bug was
+  specific to `unlocker agent`'s "one attempt per `Listen()` call, many
+  calls per process" design, introduced when writing that design from
+  scratch rather than inherited from anything upstream.
+
+- **Fixes proposed upstream to `syncthing-socket`** (reported to the
+  user as a written summary, not yet turned into patches or PRs,
+  pending their say): (1) `go.mod`'s bare `module syncthing-socket`
+  path breaks `go get` for library consumers, needing the `replace`
+  directive this project's own `go.mod` already carries; (2)
+  `luks_agent.go`'s `ensureResolver` treats any non-empty
+  `/etc/resolv.conf` as already usable, so a loopback-only
+  systemd-resolved stub (present before the real resolver lands, in
+  exactly the dracut/Ubuntu 26.04 scenario its own comment describes)
+  is wrongly accepted, matching the bug this project hit and fixed
+  first (`looksLikeResolvConf`, rejecting loopback-only nameserver
+  lines); (3) `main.go`'s `RunClient` tries every relay address from
+  one discovery lookup but never retries the lookup itself, so a
+  discovery record that is entirely stale (the public relay pool's own
+  churn) fails the whole unlock outright, matching the bug this
+  project hit and fixed (`dialRelay`'s retry loop, which also needed to
+  cover the handshake, not just the lookup and join, per the root
+  cause above).
+
+- **WP2 extension: local network transport, no Internet needed.**
+  New `transport.LocalDiscovery`: the machine multicasts its Device ID
+  and a plain TCP listener's port on an IPv4 multicast group
+  (`239.255.42.99:21076`, this project's own, not Syncthing's own local
+  discovery group or wire format) every 2 seconds while `Listen` waits;
+  a key holder's `Dial` listens on the same group for a matching
+  announcement and dials the announced address directly. New
+  `transport.Multi`: races several `Transport`s (used with
+  `LocalDiscovery` and `SyncthingRelay` together) for both `Listen` and
+  `Dial`, cancelling the losers once one succeeds, joining every
+  error if all fail. Both `unlocker agent` and `keyholder unlock` now
+  build `Multi{LocalDiscovery, SyncthingRelay}` by default,
+  falling back to `SyncthingRelay` alone only when `--direct-addr` is
+  given explicitly (which still bypasses discovery entirely, as
+  before). Needs no DNS, no route to the Internet and no dracut module
+  changes: local discovery only needs the LAN link `rd.neednet=1`
+  already waits for, an easier precondition than the relay path's.
+  Trust model unchanged: an announcement (local or global) is only ever
+  a hint about where to dial, never trusted on its own; the TLS
+  handshake and Device ID pinning after a dial are what actually
+  verify identity, so a forged announcement can misdirect a dial but
+  cannot make it accept the wrong peer. TDD: `multi_test.go` (offline,
+  stub transports, no real network) covers the race semantics
+  directly; `local_discovery_test.go` and a new
+  `cmd/unlocker/agent_test.go` case
+  (`TestAgentRecoversOverLocalDiscovery`) cover the real thing end to
+  end over actual IPv4 multicast, skipping cleanly on a sandbox that
+  restricts it. `[V]` full-repo `go test ./...` green with these new
+  tests included. `[U]` not yet verified on
+  the real VM against a second machine with no Internet route at all;
+  would need two real hosts on the same LAN to test properly, which
+  the current single test VM does not give. Known simplification:
+  `net.Listen("tcp", ":0")`/`net.DialUDP` bind to whichever
+  interface(s) the kernel picks by default; a host with more than one
+  active network interface might announce on only one of them, missing
+  a key holder only reachable via another. Not fixed now;
+  `SyncthingRelay` remains the fallback for that case since it is not
+  interface-bound.
