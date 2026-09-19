@@ -435,3 +435,93 @@ for following progress; assume no other channel is read.
   with no CI feedback loop to check it against is a bad way to find
   out which. Worth a look with real log access, or by trying a pinned
   older/newer version of that action.
+
+## 2026-09-19, session 3: A3 passes
+
+Picked this back up after the user gave the go-ahead to actually
+redeploy and reboot the real VM directly (not through the separate
+hypervisor-access session, once it turned out SSH access to
+`synctang-test-2604` worked all along; the earlier "permission denied"
+confusion was simply the wrong IP, `192.168.118.123`, an address the
+initrd's own DHCP lease uses that the fully booted OS never answers
+SSH on: the full OS gets a different lease on its own network restart,
+`synctang-test-2604.fritz.box` resolving to `.136`/`.137` instead).
+
+### Found and fixed, in order, chasing A3 to a real pass
+
+- **Bug 3: `Multi` races could disagree between the two sides.**
+  `Multi` races `LocalDiscovery` against `SyncthingRelay`
+  independently on the machine and the key holder, so each side could
+  pick a *different* winning transport for what was meant to be one
+  attempt: a real, authenticated connection that completed its TLS
+  handshake and then read EOF, because nobody on the other end ever
+  wrote to it (the other side's `runAgentOnce`/`runUnlockOnce` was
+  using a *different* physical connection, the one *its own* race
+  picked instead). Made worse by `Multi.race` silently leaking rather
+  than closing a losing attempt's connection when it finished
+  connecting too late for cancellation to stop it in time (a TLS
+  handshake already under way runs to completion on its own,
+  regardless of context state). Fixed both: `Multi.race` now closes a
+  late second success instead of leaking it, and `keyholder unlock`
+  retries the whole attempt on a transient failure (the same
+  resilience already applied to `dialRelay` and the agent's own outer
+  retry loop) rather than giving up after one, since a fresh attempt is
+  a fresh, independent race on both sides and converges rather than
+  repeating the same mismatch. Commit `0082143`.
+- **Bug 4, the real blocker: raw secrets cannot go through
+  systemd's ask-password protocol safely.** After bug 3's fix,
+  `keyholder unlock` reported "unlocked" and the agent's own log
+  agreed, and `journalctl` on the VM still showed
+  `systemd-cryptsetup: Failed to activate with specified passphrase
+  (Passphrase incorrect?)`. Recovered the exact same secret offline
+  (replaying the MR-1 math directly against the token's own recorded
+  `C`/`ct`/`nonce` and the key holder's scalar) and inspected it: two
+  embedded NUL bytes. `verifyPassphrase` (raw bytes straight to
+  `cryptsetup` on stdin) cannot see this; something downstream of the
+  ask-password socket, in systemd's own password handling, truncates
+  at the first NUL byte, silently delivering a short, wrong key.
+  A uniformly random 32-byte secret contains at least one NUL byte
+  roughly one enrolment in eight ((255/256)^32 ≈ 0.88, so ≈12% chance
+  per enrolment); this was always going to surface eventually across
+  enough recipients, not a fluke specific to this VM. Fixed with a new
+  `luksKeyMaterial` helper (hex-encodes, applied both when
+  `enrolRecipient` adds the LUKS2 keyslot and when `runAgentOnce`
+  delivers the recovered secret, so the keyslot and the answer always
+  agree), and `TestAgentRecoversASecretContainingANulByte`, which
+  forces the exact scenario by retrying `mrcore.Enrol` (pure in-memory
+  crypto, costs nothing to loop) until it produces a NUL-containing
+  secret, then drives the full enrol-equivalent setup and recovery
+  against a real loopback LUKS2 image and checks the device actually
+  opens with what gets delivered, not merely that no error was
+  returned. Commit `cc0158f`. Re-enrolled the real VM's key holder
+  recipient under the new encoding (the old keyslot, added with the
+  previous code's raw bytes, is not compatible with a fix that changes
+  what "the passphrase" means) and redeployed.
+
+### `[V]` A3 passes
+
+Two consecutive full reboots of `synctang-test-2604`, both fully
+automatic, no console intervention: `keyholder unlock` from this dev
+host reports "unlocked" in 1-3 seconds of the machine reaching the
+LUKS prompt, `journalctl -b 0` on the VM shows only
+`Finished systemd-cryptsetup@vda4_crypt.service`, and no leftover
+`unlocker` process afterward (A9 reconfirmed on real hardware, not
+just the earlier console-unblocked boot). See `TESTREPORT.md`.
+
+### Console access notes worth keeping
+
+- The telnet console (`192.168.118.123:7000`) only meaningfully
+  delivers input to *one* connected client at a time; a second,
+  independent connection can receive output fine (or nothing, this
+  varied) but does not reliably get to type. Every clean interaction
+  this session used exactly one connection for both reading and
+  writing. A stray earlier connection left running is enough to make a
+  fresh one appear to receive nothing at all; kill it first.
+- Sending anything to the console banks on it being interpreted
+  character-for-character by whatever is reading raw input at that
+  moment (a LUKS passphrase prompt, in every case here): a bash
+  double-quoted `"passphrase\n"` does not contain a real newline
+  (bash does not interpret `\n` inside `"..."`), so it was typed
+  as the 12 literal characters `passphrase\n`, consuming a real,
+  wrong password attempt. `$'...'` or an actual `\n`/`\r` byte in the
+  script, not a shell string literal, is what is needed.
