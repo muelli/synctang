@@ -32,7 +32,15 @@ Description: on-demand LUKS unlocker, key holder side (laptop CLI)
 
 Package: synctang-dracut
 Architecture: all
-Depends: ${misc:Depends}, synctang-unlocker, cryptsetup, ca-certificates
+# dracut-core carries the module machinery this module plugs into, and
+# dracut-network carries the "network" module that 90unlocker's own
+# depends() asks for. Both are hard dependencies, not Recommends: if
+# either is missing, dracut silently drops 90unlocker from the initrd
+# and the machine boots with no agent and no error to say why, which is
+# precisely the failure this packaging exists to make hard to hit.
+Depends: ${misc:Depends}, synctang-unlocker, cryptsetup, ca-certificates,
+         dracut-core | dracut,
+         dracut-network
 Description: on-demand LUKS unlocker, dracut module
  synctang is an on-demand LUKS volume unlocker for dracut-based boots: a
  machine asks, a human key holder on a laptop or phone answers. There is
