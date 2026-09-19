@@ -128,11 +128,19 @@ func runAgentOnce(ctx context.Context, device string, machineCert tls.Certificat
 	}
 	defer wipe(P)
 
-	if err := verifyPassphrase(device, P); err != nil {
+	// keyMaterial, not P itself, is what actually unlocked the keyslot
+	// (enrolRecipient adds the hex form, never the raw secret) and
+	// what gets delivered: see luksKeyMaterial's own comment for why a
+	// raw random secret cannot go through systemd's ask-password
+	// protocol safely.
+	keyMaterial := luksKeyMaterial(P)
+	defer wipe(keyMaterial)
+
+	if err := verifyPassphrase(device, keyMaterial); err != nil {
 		return fmt.Errorf("unlocker: recovered secret does not open %s: %w", device, err)
 	}
 
-	if err := answerAskPassword(askPasswordDir, P); err != nil {
+	if err := answerAskPassword(askPasswordDir, keyMaterial); err != nil {
 		return fmt.Errorf("unlocker: answering ask-password request: %w", err)
 	}
 

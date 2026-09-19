@@ -4,11 +4,35 @@ package main
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 )
+
+// luksKeyMaterial converts p, mrcore's raw recovered (or freshly
+// enrolled) secret, into what is actually used as LUKS key material
+// and handed to systemd's ask-password protocol: hex, never the raw
+// bytes.
+//
+// Found running unlock against a real deployment: an enrolment whose
+// random 32-byte P happened to contain a NUL byte answered
+// systemd-ask-password successfully by every measure this code could
+// see (verifyPassphrase, which reads raw bytes off stdin, agreed it
+// was correct), and cryptsetup still rejected it as an incorrect
+// passphrase moments later. systemd's own password handling truncates
+// at the first NUL byte somewhere along its path from the ask-password
+// socket to cryptsetup; a uniformly random 32-byte secret contains at
+// least one roughly one enrolment in eight ((255/256)^32 is not
+// negligible), so this was always going to surface, not a fluke of
+// this one VM. Hex has no NUL bytes by construction and is applied at
+// both ends: enrolRecipient adds the hex form as the actual LUKS2
+// keyslot content, and runAgentOnce delivers the hex form, so the
+// keyslot and the answer always agree on what "the passphrase" is.
+func luksKeyMaterial(p []byte) []byte {
+	return []byte(hex.EncodeToString(p))
+}
 
 // cryptsetupSearchPath covers where distributions put cryptsetup when
 // it is not on the caller's PATH at all: Debian and Ubuntu (including

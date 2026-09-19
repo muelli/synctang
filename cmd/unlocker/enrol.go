@@ -55,14 +55,24 @@ func enrolRecipient(device string, existingPassphrase, recipientPublicKey []byte
 		rec.Transport = json.RawMessage(fmt.Sprintf(`{"device_id":%q}`, recipientTransportID))
 	}
 
-	stdin := make([]byte, 0, len(existingPassphrase)+len(P))
+	// The keyslot is added with keyMaterial, not raw P: see
+	// luksKeyMaterial's own comment for why a raw random secret
+	// cannot go through systemd's ask-password protocol safely at
+	// recovery time. The token still stores P's own encryption (via
+	// rec, from mrcore.Enrol), never keyMaterial; deriving keyMaterial
+	// from the recovered P the same way at recovery time is what
+	// keeps the two in agreement.
+	keyMaterial := luksKeyMaterial(P)
+	defer wipe(keyMaterial)
+
+	stdin := make([]byte, 0, len(existingPassphrase)+len(keyMaterial))
 	stdin = append(stdin, existingPassphrase...)
-	stdin = append(stdin, P...)
+	stdin = append(stdin, keyMaterial...)
 	defer wipe(stdin)
 
 	_, err = runCommand(stdin, "cryptsetup", "luksAddKey", "--batch-mode", device,
 		"--key-file=-", fmt.Sprintf("--keyfile-size=%d", len(existingPassphrase)),
-		"--new-keyfile=-", fmt.Sprintf("--new-keyfile-size=%d", len(P)),
+		"--new-keyfile=-", fmt.Sprintf("--new-keyfile-size=%d", len(keyMaterial)),
 		fmt.Sprintf("--new-key-slot=%d", slot),
 	)
 	if err != nil {

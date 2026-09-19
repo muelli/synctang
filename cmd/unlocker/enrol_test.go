@@ -205,14 +205,18 @@ func TestRemoveRecipientRevokesOnlyThatOne(t *testing.T) {
 		t.Fatalf("expected the surviving recipient to be KH-2, got (%q, %v)", gotID, ok)
 	}
 
-	if _, err := runCommand(p1, "cryptsetup", "open", "--test-passphrase",
-		"--key-file=-", fmt.Sprintf("--keyfile-size=%d", len(p1)), device); err == nil {
+	// enrolRecipient keys each slot with luksKeyMaterial(P) (hex), not
+	// raw P; test-passphrase must use the same encoding.
+	keyMaterial1 := luksKeyMaterial(p1)
+	if _, err := runCommand(keyMaterial1, "cryptsetup", "open", "--test-passphrase",
+		"--key-file=-", fmt.Sprintf("--keyfile-size=%d", len(keyMaterial1)), device); err == nil {
 		t.Fatal("the revoked recipient's P still opens the device")
 	}
 
 	p2 := recoverPForTest(t, g, afterTok.Recipients[0], s2)
-	if _, err := runCommand(p2, "cryptsetup", "open", "--test-passphrase",
-		"--key-file=-", fmt.Sprintf("--keyfile-size=%d", len(p2)), device); err != nil {
+	keyMaterial2 := luksKeyMaterial(p2)
+	if _, err := runCommand(keyMaterial2, "cryptsetup", "open", "--test-passphrase",
+		"--key-file=-", fmt.Sprintf("--keyfile-size=%d", len(keyMaterial2)), device); err != nil {
 		t.Fatalf("the surviving recipient's P no longer opens the device: %v", err)
 	}
 }
