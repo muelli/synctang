@@ -119,6 +119,11 @@ jobs:
 
   build-deb:
     runs-on: ubuntu-latest
+    # Job-wide, so it covers the go build inside dpkg-buildpackage and not
+    # just one step: see the setup-go pin below for why the default
+    # GOTOOLCHAIN=auto would otherwise quietly replace the pinned compiler.
+    env:
+      GOTOOLCHAIN: local
     permissions:
       # Only the attestation step below needs any of these; the build
       # and verification steps need no elevated permissions at all.
@@ -133,22 +138,40 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          # Matches go.mod's own "go 1.26.0" directive exactly, and is
+          # pinned to a patch release unlike the other jobs here, because a
+          # different Go patch release produces a different binary and
+          # reproducibility would otherwise be something this job assumes
+          # rather than proves.
+          #
+          # go.mod, not this line, is what actually decides the toolchain:
+          # with the default GOTOOLCHAIN=auto, a go.mod requiring a version
+          # newer than the installed one makes Go silently download and use
+          # that newer one instead, so pinning here alone buys nothing but a
+          # wasted download. GOTOOLCHAIN=local below removes that fallback,
+          # turning a future divergence between this pin and go.mod into a
+          # loud build failure rather than a silent change of compiler.
+          go-version: "1.26.0"
       - name: Install packaging tools
         # ubuntu-latest preconfigures several third-party apt repositories
         # this project never uses (docker, nodesource, the GitLab runner
         # repo); a stale signing key or hash mismatch in any single one of
         # them makes apt-get update exit non-zero and fail the whole job,
         # so strip everything except Ubuntu's own sources before updating.
+        # "just" runs the deb-repro reproducibility check further down.
         run: |
           sudo find /etc/apt/sources.list.d -type f ! -name 'ubuntu.sources' -delete
           sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends debhelper dpkg-dev fakeroot
+          sudo apt-get install -y -qq --no-install-recommends debhelper dpkg-dev fakeroot just
       - name: Generate debian/changelog
         # Not committed: a version baked into a checked-in changelog goes
         # stale the moment anything is tagged, so it is derived here, at
         # build time, from the commit count instead, the same source the
         # packaging uses for the version number itself.
+        #
+        # The trailer date is the commit's own date, not $(date -R): see
+        # the justfile's "deb" target for why (SOURCE_DATE_EPOCH, and
+        # hence every timestamp inside the .deb, is derived from it).
         run: |
           version="0.0.$(git rev-list --count HEAD)-1"
           {
@@ -156,7 +179,7 @@ jobs:
             echo
             echo "  * CI build from commit ${GITHUB_SHA}."
             echo
-            echo " -- synctang CI <noreply@github.com>  $(date -R)"
+            echo " -- synctang CI <noreply@github.com>  $(git log -1 --format=%cD)"
           } > debian/changelog
       - name: Build packages
         run: |
@@ -185,6 +208,24 @@ jobs:
           dpkg-deb -x dist/synctang-unlocker_*_amd64.deb verify/amd64
           file verify/amd64/usr/sbin/unlocker | grep -q 'x86-64'
           dpkg-deb -c dist/synctang-dracut_*_all.deb | grep -q 'usr/lib/dracut/modules\.d/90unlocker/.*\.sh'
+      - name: Check package build reproducibility
+        # Builds the packages twice more (native host arch only), deliberately
+        # varying umask/TZ/LC_ALL between the two builds, and fails if the
+        # resulting .debs are not byte-identical: see the justfile's
+        # deb-repro target for the actual comparison. dist/ from the "Build
+        # packages" step above is moved aside first and restored afterwards
+        # regardless of outcome, since the attestation and upload steps
+        # below must still see exactly what that step produced, not this
+        # step's own throwaway rebuilds.
+        run: |
+          mv dist dist-ci
+          set +e
+          just deb-repro
+          status=$?
+          set -e
+          rm -rf dist dist-a dist-b
+          mv dist-ci dist
+          exit "$status"
       - uses: actions/attest-build-provenance@v2
         # A pull request, including one from a fork, cannot obtain an
         # id-token, so this step only runs for a push to main; the build

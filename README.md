@@ -319,6 +319,26 @@ human-approved unlock, hardware-held key holder secrets, and a phone as a
 first-class key holder. If unattended reboot is a requirement, use Tang
 directly.
 
+## Debian package reproducibility
+
+Building the Debian packages (`just deb`) from the same git commit
+produces byte-identical `.deb` files, verified rather than assumed: `just
+deb-repro` builds twice, deliberately varying umask, `TZ` and `LC_ALL`
+between the two builds, and compares the results with `sha256sum`. The
+`build-deb` CI job runs this same check on every push and pull request.
+
+This holds for a given commit under: the exact Go toolchain patch version,
+which `go.mod`'s own `go` directive decides rather than anything in CI (by
+default Go downloads and uses whatever version `go.mod` asks for, whatever
+is installed, so `GOTOOLCHAIN=local` in the `build-deb` job turns a
+mismatch into a build failure instead of a silent substitution), and the
+same `debhelper`/`dpkg` versions doing the packaging. A different Go patch
+release is not verified to produce the same binary. It has not been checked
+across different machines, architectures or Debian/Ubuntu releases;
+"reproducible" here means "the same commit, rebuilt on hosts with matching
+toolchain and packaging tool versions, matches", not "reproducible by
+anyone, on anything, forever."
+
 ## Licence
 
 AGPL-3.0-or-later. See `LICENSE`.

@@ -24,6 +24,8 @@
 *.buildinfo
 *.changes
 /dist/
+/dist-a/
+/dist-b/
 
 # debian/rules' override_dh_auto_build builds these at the repo root;
 # override_dh_auto_clean removes them again, but only on the next clean.

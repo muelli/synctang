@@ -42,9 +42,15 @@ endif
 %:
 	dh $@
 
+# -buildvcs=false: by default "go build" stamps VCS information (commit
+# hash, and a dirty/clean flag) into the binary, so the same source
+# produces a different binary depending on the state of the working tree
+# it happens to be built from (e.g. a shallow clone, or one with an
+# untracked file lying around). That is exactly the kind of accidental
+# input a reproducible build must not depend on.
 override_dh_auto_build:
-	GOARCH=$(GOARCH_HOST) go build -ldflags "-s -w" -o unlocker ./cmd/unlocker
-	GOARCH=$(GOARCH_HOST) go build -ldflags "-s -w" -o keyholder ./cmd/keyholder
+	GOARCH=$(GOARCH_HOST) go build -buildvcs=false -ldflags "-s -w" -o unlocker ./cmd/unlocker
+	GOARCH=$(GOARCH_HOST) go build -buildvcs=false -ldflags "-s -w" -o keyholder ./cmd/keyholder
 
 override_dh_auto_test:
 	# Deliberately empty. The test suite needs real cryptsetup (loopback
