@@ -1,0 +1,82 @@
+#!/usr/bin/make -f
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+# CGO_ENABLED=0 gives fully static binaries: nothing dynamically linked to
+# track (see the dh_strip/dh_shlibdeps/dh_makeshlibs/dh_dwz overrides
+# below, which rely on exactly this). GOFLAGS=-trimpath keeps this build
+# host's filesystem paths out of the binaries. GOCACHE is pointed inside
+# the build tree rather than left at its default under $HOME, so the
+# build is hermetic to this package build and override_dh_auto_clean
+# below has one single place to remove it from.
+export CGO_ENABLED = 0
+export GOFLAGS = -trimpath
+export GOCACHE = $(CURDIR)/.gocache
+
+# This project does not vendor its Go module dependencies (see
+# AGENTS.md's "decisions already made"), so -mod=vendor is deliberately
+# not used here, unlike some Go packaging references. That means this
+# build needs network access (or a pre-warmed GOPATH/pkg/mod) to fetch
+# module sources, same as any other "go build" against this repo. That
+# is an accepted constraint on the build environment, not an oversight;
+# it is also why -d is required on the dpkg-buildpackage command line
+# (see the justfile's "deb" target): Build-Depends above names no Go
+# toolchain at all, so dpkg-checkbuilddeps would otherwise refuse to
+# build without one, even though a Go toolchain is exactly what actually
+# builds this package.
+
+# dpkg-architecture gives the Debian architecture name; Go wants its own
+# GOARCH spelling, which is not always the same string (e.g. Debian's
+# "armhf" is Go's "arm" plus GOARM=7). Only amd64 and arm64 are needed
+# today; fail loudly on anything else rather than silently falling back
+# to the build host's own architecture, which "go build" would otherwise
+# do without complaint.
+DEB_HOST_ARCH := $(shell dpkg-architecture -qDEB_HOST_ARCH)
+ifeq ($(DEB_HOST_ARCH),amd64)
+GOARCH_HOST := amd64
+else ifeq ($(DEB_HOST_ARCH),arm64)
+GOARCH_HOST := arm64
+else
+$(error unsupported Debian architecture $(DEB_HOST_ARCH): add a GOARCH mapping in debian/rules)
+endif
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	GOARCH=$(GOARCH_HOST) go build -ldflags "-s -w" -o unlocker ./cmd/unlocker
+	GOARCH=$(GOARCH_HOST) go build -ldflags "-s -w" -o keyholder ./cmd/keyholder
+
+override_dh_auto_test:
+	# Deliberately empty. The test suite needs real cryptsetup (loopback
+	# LUKS, CAP_SYS_ADMIN) and network access (relay and discovery
+	# transports), neither of which a package build provides or should
+	# rely on. CI runs both the plain and privileged suites separately
+	# (the go-test and go-test-privileged jobs).
+
+override_dh_auto_install:
+	install -D -m 0755 unlocker debian/tmp/usr/sbin/unlocker
+	install -D -m 0755 keyholder debian/tmp/usr/bin/keyholder
+	install -d debian/tmp/usr/lib/dracut/modules.d/90unlocker
+	install -m 0755 dracut/90unlocker/module-setup.sh dracut/90unlocker/unlocker-start.sh \
+		dracut/90unlocker/unlocker-stop.sh debian/tmp/usr/lib/dracut/modules.d/90unlocker/
+
+override_dh_auto_clean:
+	rm -f unlocker keyholder
+	rm -rf $(CURDIR)/.gocache
+
+# CGO_ENABLED=0 above means both binaries are fully static, so none of
+# the shared-library machinery below has anything to do. Running it
+# anyway would, on a cross build, pull in a target-architecture
+# binutils/objdump/etc purely to conclude "nothing to strip" or "nothing
+# to depend on", which is exactly the extra Build-Depends a cross build
+# should not need. dh_strip is also redundant on its own terms: linking
+# already happened with -ldflags "-s -w", so there is nothing left to
+# strip. dh_dwz would try to optimise Go's DWARF, which is already
+# compressed in a way dh_dwz does not understand and errors on.
+override_dh_strip:
+
+override_dh_shlibdeps:
+
+override_dh_makeshlibs:
+
+override_dh_dwz:

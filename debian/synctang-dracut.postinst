@@ -1,0 +1,31 @@
+#!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-or-later
+set -e
+
+case "$1" in
+	configure)
+		# A freshly installed or upgraded 90unlocker module does nothing
+		# until it is baked into an initrd. Regenerating every installed
+		# kernel's initrd here, rather than leaving it to the next kernel
+		# upgrade, is what makes "apt install synctang-dracut" alone
+		# enough to get a working remote-unlock boot. "|| true" because a
+		# missing or misconfigured dracut must not fail this package's
+		# install; the machine still boots on the console prompt either
+		# way, and dracut itself is only a Depends of synctang-unlocker's
+		# initrd-building counterpart, not of this package.
+		if command -v dracut > /dev/null 2>&1; then
+			dracut --force --regenerate-all || true
+		fi
+		;;
+
+	abort-upgrade | abort-remove | abort-deconfigure) ;;
+
+	*)
+		echo "postinst called with unknown argument \`$1'" >&2
+		exit 1
+		;;
+esac
+
+#DEBHELPER#
+
+exit 0

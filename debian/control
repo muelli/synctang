@@ -1,0 +1,51 @@
+Source: synctang
+Section: admin
+Priority: optional
+Maintainer: Tobias Mueller <muelli@cryptobitch.de>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Homepage: https://github.com/muelli/synctang
+Rules-Requires-Root: no
+
+Package: synctang-unlocker
+Architecture: any
+Depends: ${misc:Depends}, cryptsetup
+Description: on-demand LUKS unlocker, machine side (dracut agent)
+ synctang is an on-demand LUKS volume unlocker for dracut-based boots: a
+ machine asks, a human key holder on a laptop or phone answers. There is
+ no always-on server; unattended reboots are out of scope by design.
+ .
+ This package ships "unlocker", which runs inside the dracut initrd as a
+ systemd password agent, and on the booted system to enrol or revoke a
+ key holder's LUKS2 keyslot and token.
+
+Package: synctang-keyholder
+Architecture: any
+Depends: ${misc:Depends}
+Description: on-demand LUKS unlocker, key holder side (laptop CLI)
+ synctang is an on-demand LUKS volume unlocker for dracut-based boots: a
+ machine asks, a human key holder on a laptop or phone answers. There is
+ no always-on server; unattended reboots are out of scope by design.
+ .
+ This package ships "keyholder", the laptop-side CLI that holds a
+ long-term key and answers a machine's recovery attempts on demand.
+
+Package: synctang-dracut
+Architecture: all
+# dracut-core carries the module machinery this module plugs into, and
+# dracut-network carries the "network" module that 90unlocker's own
+# depends() asks for. Both are hard dependencies, not Recommends: if
+# either is missing, dracut silently drops 90unlocker from the initrd
+# and the machine boots with no agent and no error to say why, which is
+# precisely the failure this packaging exists to make hard to hit.
+Depends: ${misc:Depends}, synctang-unlocker, cryptsetup, ca-certificates,
+         dracut-core | dracut,
+         dracut-network
+Description: on-demand LUKS unlocker, dracut module
+ synctang is an on-demand LUKS volume unlocker for dracut-based boots: a
+ machine asks, a human key holder on a laptop or phone answers. There is
+ no always-on server; unattended reboots are out of scope by design.
+ .
+ This package ships the "90unlocker" dracut module, which starts the
+ unlocker agent alongside the ordinary console passphrase prompt during
+ early boot, and stops it before pivoting to the real root.

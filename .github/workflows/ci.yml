@@ -116,3 +116,85 @@ jobs:
         run: |
           export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
           ./gradlew assembleDebug testDebugUnitTest -Psynctang.goMobileTarget=android/amd64
+
+  build-deb:
+    runs-on: ubuntu-latest
+    permissions:
+      # Only the attestation step below needs any of these; the build
+      # and verification steps need no elevated permissions at all.
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The package version is 0.0.<commit count>-1, so a shallow
+          # clone would build every package as version 0.0.1-1.
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: Install packaging tools
+        # ubuntu-latest preconfigures several third-party apt repositories
+        # this project never uses (docker, nodesource, the GitLab runner
+        # repo); a stale signing key or hash mismatch in any single one of
+        # them makes apt-get update exit non-zero and fail the whole job,
+        # so strip everything except Ubuntu's own sources before updating.
+        run: |
+          sudo find /etc/apt/sources.list.d -type f ! -name 'ubuntu.sources' -delete
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends debhelper dpkg-dev fakeroot
+      - name: Generate debian/changelog
+        # Not committed: a version baked into a checked-in changelog goes
+        # stale the moment anything is tagged, so it is derived here, at
+        # build time, from the commit count instead, the same source the
+        # packaging uses for the version number itself.
+        run: |
+          version="0.0.$(git rev-list --count HEAD)-1"
+          {
+            echo "synctang ($version) unstable; urgency=medium"
+            echo
+            echo "  * CI build from commit ${GITHUB_SHA}."
+            echo
+            echo " -- synctang CI <noreply@github.com>  $(date -R)"
+          } > debian/changelog
+      - name: Build packages
+        run: |
+          mkdir -p dist
+          for arch in amd64 arm64; do
+            echo "::group::build $arch"
+            # dpkg-buildpackage cleans the source tree before each build
+            # by default, so the second architecture does not inherit the
+            # first one's leftovers. -d skips Build-Depends checking:
+            # debian/control names no Go toolchain, since setup-go already
+            # provided one, and dpkg-checkbuilddeps would otherwise reject
+            # the build for missing it.
+            dpkg-buildpackage -us -uc -b -d --host-arch "$arch"
+            mv ../*.deb dist/
+            echo "::endgroup::"
+          done
+      - name: Verify architecture and dracut payload
+        # Cross-built output is exactly the case that is easy to get
+        # silently wrong, e.g. a host binary mislabelled as the target
+        # architecture, so check what actually landed rather than trust
+        # the build to have done the right thing.
+        run: |
+          mkdir -p verify/amd64 verify/arm64
+          dpkg-deb -x dist/synctang-unlocker_*_arm64.deb verify/arm64
+          file verify/arm64/usr/sbin/unlocker | grep -q 'ARM aarch64'
+          dpkg-deb -x dist/synctang-unlocker_*_amd64.deb verify/amd64
+          file verify/amd64/usr/sbin/unlocker | grep -q 'x86-64'
+          dpkg-deb -c dist/synctang-dracut_*_all.deb | grep -q 'usr/lib/dracut/modules\.d/90unlocker/.*\.sh'
+      - uses: actions/attest-build-provenance@v2
+        # A pull request, including one from a fork, cannot obtain an
+        # id-token, so this step only runs for a push to main; the build
+        # and verification steps above still run on pull requests, so
+        # packaging breakage is still caught before merge.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          subject-path: dist/*.deb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: synctang-debs
+          path: dist/*.deb
+          retention-days: 7

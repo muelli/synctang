@@ -6,7 +6,9 @@
   AGPL-3.0-or-later`) on every source file. Every dependency tracked in
   `THIRD_PARTY.md`.
 - No em-dashes anywhere (`scripts/check-em-dash.sh`, run in CI); British
-  spelling, serial commas.
+  spelling, serial commas. Note the checker greps via `git grep`, so it
+  only sees tracked or staged files: a brand new untracked file passes
+  it vacuously. `git add` new files before trusting a clean run.
 - No AI attribution in commits or code. Git author is always
   `Tobias Mueller <muelli@cryptobitch.de>` (set per-commit with
   `-c user.name= -c user.email=`, not the host's global git config).
@@ -20,6 +22,16 @@
 - `STATUS.md` is current-state only, not a running log; update it in
   place rather than appending another session's worth of narrative.
   History lives in `git log`.
+- **The git index is shared state. Never commit while a subagent is
+  working in the same tree.** A subagent that has run `git add` (even
+  without committing, which is what it was told to do) leaves its work
+  staged, and the next `git add <one file> && git commit` from anyone
+  else sweeps all of it into that commit, under the wrong message.
+  That happened here: the entire Debian packaging landed inside a
+  commit titled "TESTREPORT: A6 and A7 verified end to end", and was
+  pushed before anyone noticed. Either give parallel agents worktree
+  isolation, or tell them not to touch `git` at all and check
+  `git status` immediately before every commit.
 
 ## Hard-won gotchas (each cost real debugging time; do not rediscover)
 
