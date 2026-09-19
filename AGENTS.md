@@ -156,6 +156,31 @@
   harness here for fifteen minutes after the work itself had finished.
   Add `-o ServerAliveInterval=3 -o ServerAliveCountMax=2`, or wrap the
   whole call in `timeout`.
+- **Android's touch mode makes the whole focus system inert**, on
+  purpose: a touchscreen with no keyboard has no focus and no focus
+  ring. A device enters it the moment anything taps the screen and
+  leaves it when a hardware key arrives. Every keyboard-navigation
+  assertion is therefore false in touch mode and true out of it, so an
+  instrumented test that does not pin it passes or fails depending on
+  what happened to the emulator earlier (the first green run of
+  `KeyboardNavigationTest` was green only because an `adb shell input
+  keyevent` had left that emulator out of touch mode). Call
+  `InstrumentationRegistry.getInstrumentation().setInTouchMode(false)`
+  in `@Before`. The same thing means a focus ring genuinely should not
+  appear on a phone being used by touch; test it with a keyboard.
+- **A `FocusRequester` is not usable in the `LaunchedEffect` that
+  first runs beside it.** The modifier node it belongs to attaches
+  during layout, after the effect is dispatched, so `requestFocus()`
+  throws "FocusRequester is not initialized". Swallowing that, which
+  is tempting since there is nothing useful to do with it, produces a
+  screen that simply arrives with nothing focused and looks exactly
+  like a feature that was never implemented. Wait a frame
+  (`withFrameNanos`) and retry a few times.
+- **A focus ring drawn in the theme's primary colour is invisible on a
+  filled Material button**, which is also the primary colour. Draw it
+  at the outer edge with the control inset inside it so it lands on
+  the background, and reserve the inset whether or not the ring is
+  showing, or focus shifts the layout.
 - **A dracut initrd's own DHCP lease is a different address than the
   fully-booted OS gets** on its own network restart post-pivot. The
   serial console and SSH are never reachable at the same address

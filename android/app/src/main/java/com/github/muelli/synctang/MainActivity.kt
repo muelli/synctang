@@ -31,10 +31,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -107,9 +111,13 @@ private fun PairingScreen(identity: Identity, model: UnlockViewModel) {
         onScanned = { scanned -> rejected = !model.pair(scanned) },
         modifier = Modifier
             .fillMaxWidth()
-            .height(260.dp),
+            .height(260.dp)
+            .notKeyboardFocusable(),
     )
 
+    // The manual field, not the scanner, is the keyboard path onto this
+    // screen, so it is what focus starts on.
+    val field = rememberAutoFocusRequester()
     OutlinedTextField(
         value = typed,
         onValueChange = {
@@ -118,11 +126,18 @@ private fun PairingScreen(identity: Identity, model: UnlockViewModel) {
         },
         label = { Text(stringResource(R.string.pair_manual_label)) },
         singleLine = false,
-        modifier = Modifier.fillMaxWidth(),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { rejected = !model.pair(typed) }),
+        modifier = Modifier
+            .fillMaxWidth()
+            .focusRequester(field)
+            .tabMovesFocus()
+            .focusRing(),
     )
     Button(
         onClick = { rejected = !model.pair(typed) },
         enabled = typed.isNotBlank(),
+        modifier = Modifier.focusRing(),
     ) {
         Text(stringResource(R.string.pair_manual_action))
     }
@@ -159,7 +174,10 @@ private fun EnrolmentDetails(identity: Identity) {
             fontFamily = FontFamily.Monospace,
         )
     }
-    OutlinedButton(onClick = { context.copyToClipboard(command) }) {
+    OutlinedButton(
+        onClick = { context.copyToClipboard(command) },
+        modifier = Modifier.focusRing(),
+    ) {
         Text(stringResource(R.string.pair_copy))
     }
     Text(identity.backingDescription(), style = MaterialTheme.typography.bodySmall)
@@ -169,12 +187,18 @@ private fun EnrolmentDetails(identity: Identity) {
 private fun ReadyScreen(state: UnlockUiState.Ready, model: UnlockViewModel) {
     MachineHeading(state.machine)
     Text(stringResource(R.string.unlock_waiting_hint), style = MaterialTheme.typography.bodyMedium)
-    Button(onClick = { model.connect() }, modifier = Modifier.fillMaxWidth()) {
+    Button(
+        onClick = { model.connect() },
+        modifier = Modifier
+            .fillMaxWidth()
+            .focusRequester(rememberAutoFocusRequester())
+            .focusRing(),
+    ) {
         Text(stringResource(R.string.unlock_action))
     }
     Spacer(Modifier.height(8.dp))
     EnrolmentDetails(state.identity)
-    TextButton(onClick = { model.forgetMachine() }) {
+    TextButton(onClick = { model.forgetMachine() }, modifier = Modifier.focusRing()) {
         Text(stringResource(R.string.unlock_forget))
     }
 }
@@ -186,10 +210,23 @@ private fun ConfirmCodeScreen(state: UnlockUiState.ConfirmCode, model: UnlockVie
     Text(stringResource(R.string.confirm_hint), style = MaterialTheme.typography.bodyMedium)
     Text(state.code, style = MaterialTheme.typography.displaySmall, fontFamily = FontFamily.Monospace)
     Labelled(stringResource(R.string.unlock_request_identity), state.peerId)
-    Button(onClick = { model.submitConfirmCode(state.code) }, modifier = Modifier.fillMaxWidth()) {
+    Button(
+        onClick = { model.submitConfirmCode(state.code) },
+        modifier = Modifier
+            .fillMaxWidth()
+            .focusRequester(rememberAutoFocusRequester())
+            .onEscape { model.cancel() }
+            .focusRing(),
+    ) {
         Text(stringResource(R.string.confirm_action))
     }
-    OutlinedButton(onClick = { model.cancel() }, modifier = Modifier.fillMaxWidth()) {
+    OutlinedButton(
+        onClick = { model.cancel() },
+        modifier = Modifier
+            .fillMaxWidth()
+            .onEscape { model.cancel() }
+            .focusRing(),
+    ) {
         Text(stringResource(R.string.unlock_decline))
     }
 }
@@ -205,10 +242,28 @@ private fun ApproveScreen(state: UnlockUiState.Approve, gate: BiometricGate, mod
     Labelled(stringResource(R.string.unlock_request_identity), state.peerId)
     Labelled(stringResource(R.string.unlock_request_key), state.kidHex)
 
-    Button(onClick = { model.approve(gate) }, modifier = Modifier.fillMaxWidth()) {
+    // Focus starts on Approve even though it is the consequential
+    // button, because approving still has to get past BiometricPrompt:
+    // a stray Enter cannot unlock anything on its own, and putting
+    // focus on Decline instead would mean every deliberate approval
+    // starts with a Tab.
+    Button(
+        onClick = { model.approve(gate) },
+        modifier = Modifier
+            .fillMaxWidth()
+            .focusRequester(rememberAutoFocusRequester())
+            .onEscape { model.cancel() }
+            .focusRing(),
+    ) {
         Text(stringResource(R.string.unlock_approve))
     }
-    OutlinedButton(onClick = { model.cancel() }, modifier = Modifier.fillMaxWidth()) {
+    OutlinedButton(
+        onClick = { model.cancel() },
+        modifier = Modifier
+            .fillMaxWidth()
+            .onEscape { model.cancel() }
+            .focusRing(),
+    ) {
         Text(stringResource(R.string.unlock_decline))
     }
 }
@@ -217,7 +272,13 @@ private fun ApproveScreen(state: UnlockUiState.Approve, gate: BiometricGate, mod
 private fun DoneScreen(state: UnlockUiState.Done, model: UnlockViewModel) {
     MachineHeading(state.machine)
     Text(stringResource(R.string.unlock_done), style = MaterialTheme.typography.bodyLarge)
-    Button(onClick = { model.refresh() }, modifier = Modifier.fillMaxWidth()) {
+    Button(
+        onClick = { model.refresh() },
+        modifier = Modifier
+            .fillMaxWidth()
+            .focusRequester(rememberAutoFocusRequester())
+            .focusRing(),
+    ) {
         Text(stringResource(R.string.unlock_again))
     }
 }
@@ -233,7 +294,13 @@ private fun FailedScreen(state: UnlockUiState.Failed, model: UnlockViewModel) {
             color = MaterialTheme.colorScheme.error,
         )
     }
-    Button(onClick = { model.refresh() }, modifier = Modifier.fillMaxWidth()) {
+    Button(
+        onClick = { model.refresh() },
+        modifier = Modifier
+            .fillMaxWidth()
+            .focusRequester(rememberAutoFocusRequester())
+            .focusRing(),
+    ) {
         Text(stringResource(R.string.error_retry))
     }
 }
