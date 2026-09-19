@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -35,6 +36,31 @@ const defaultRelayTimeout = 15 * time.Second
 // stay alive, hence a much shorter default here.
 const defaultAnnounceInterval = 10 * time.Second
 
+// levelTrace sits below slog's own lowest built-in level (Debug, -4),
+// for detail below what a caller's --log-level debug would want by
+// default (connection lifecycle events: relay joined, invitation
+// received, discovery lookup results) but that is genuinely useful
+// when actually diagnosing why a connection attempt is not working.
+// cmd/unlocker defines the identical constant independently rather
+// than importing it from here: this package depends only on
+// log/slog, and a numeric level has no reason to need a shared
+// symbol across packages.
+const levelTrace = slog.Level(-8)
+
+// defaultAnnounceURLs are the public Syncthing global discovery
+// announce endpoints: an authenticated POST identifying the announcer
+// by its TLS client certificate, which the discovery server reads
+// the Device ID off. This is deliberately not the same URL as
+// socket.DefaultDiscoveryURL: that one only answers unauthenticated
+// GET lookups for a peer's address, and does not accept announcements
+// at all. syncthing-socket's own server mode uses exactly these two
+// as its default (see its main.go "discovery" flag on the server
+// command), not exported from that module, so repeated here.
+var defaultAnnounceURLs = []string{
+	"https://discovery-announce-v4.syncthing.net/v2/?nolookup",
+	"https://discovery-announce-v6.syncthing.net/v2/?nolookup",
+}
+
 // SyncthingRelay is a Transport built on the public Syncthing relay
 // network and global discovery server: Listen connects to a relay and
 // announces this identity's Device ID plus that relay's address to
@@ -53,13 +79,48 @@ type SyncthingRelay struct {
 	// defaultRelayPoolURL.
 	RelayPoolURL string
 
-	// DiscoveryURL overrides the discovery server used to announce and
-	// look addresses up. Empty means socket.DefaultDiscoveryURL.
+	// DiscoveryURL overrides the discovery server used to look a
+	// peer's address up (Dial). Empty means socket.DefaultDiscoveryURL.
+	// This is not used for announcing; see AnnounceURLs.
 	DiscoveryURL string
+
+	// AnnounceURLs overrides the discovery announce endpoint(s) used
+	// to publish this identity's address while Listen waits. Empty
+	// means defaultAnnounceURLs. Announcing and looking addresses up
+	// are different Syncthing global discovery endpoints, not the
+	// same URL under a different HTTP method.
+	AnnounceURLs []string
 
 	// AnnounceInterval overrides how often Listen refreshes its
 	// discovery record. Zero means defaultAnnounceInterval.
 	AnnounceInterval time.Duration
+
+	// Logger receives trace-level detail on every connection attempt
+	// (relay join, discovery lookups and announces, handshake
+	// outcomes), for a caller that wants it. Nil means slog's default
+	// logger. This package depends only on log/slog (standard
+	// library, zero cost for a caller that does not want the detail,
+	// and portable to contexts such as Android's gomobile bind that
+	// have no systemd journal to write structured entries to at all);
+	// a caller that wants those, such as cmd/unlocker, constructs its
+	// own journal-backed *slog.Logger and sets it here rather than
+	// this package taking on that dependency itself.
+	Logger *slog.Logger
+
+	// httpClient overrides the HTTP client announceOnce uses, for
+	// tests to point it at a local httptest server with its own
+	// verifiable certificate instead of skipping TLS verification
+	// against the real public announce servers. Nil means the real
+	// client, built fresh per call with InsecureSkipVerify (see
+	// announceOnce for why that is safe here).
+	httpClient *http.Client
+}
+
+func (t *SyncthingRelay) logger() *slog.Logger {
+	if t.Logger != nil {
+		return t.Logger
+	}
+	return slog.Default()
 }
 
 // NewSyncthingRelay returns a SyncthingRelay identified by cert, using
@@ -184,9 +245,11 @@ func (t *SyncthingRelay) serverHandshake(raw net.Conn, authorizedPeers []string)
 		return nil, fmt.Errorf("transport: peer presented no certificate")
 	}
 	peerID := protocol.NewDeviceID(state.PeerCertificates[0].Raw)
+	t.logger().Log(context.Background(), levelTrace, "server handshake completed", "peer", peerID.String())
 
 	if len(authorizedPeers) > 0 && !containsDeviceID(authorizedPeers, peerID) {
 		tlsConn.Close()
+		t.logger().Warn("rejected an unauthorized peer", "peer", peerID.String())
 		return nil, fmt.Errorf("transport: peer %s is not authorized", peerID)
 	}
 
@@ -217,6 +280,7 @@ func (t *SyncthingRelay) clientHandshake(raw net.Conn, expectedPeerID string) (C
 		return nil, fmt.Errorf("transport: peer presented no certificate")
 	}
 	peerID := protocol.NewDeviceID(state.PeerCertificates[0].Raw)
+	t.logger().Log(context.Background(), levelTrace, "client handshake completed", "peer", peerID.String())
 	if expectedPeerID != "" && peerID.String() != expectedPeerID {
 		tlsConn.Close()
 		return nil, fmt.Errorf("transport: security mismatch: connected to %s, expected %s", peerID, expectedPeerID)
@@ -256,6 +320,28 @@ func (t *SyncthingRelay) announceInterval() time.Duration {
 	return defaultAnnounceInterval
 }
 
+func (t *SyncthingRelay) announceURLs() []string {
+	if len(t.AnnounceURLs) > 0 {
+		return t.AnnounceURLs
+	}
+	return defaultAnnounceURLs
+}
+
+func (t *SyncthingRelay) announceHTTPClient() *http.Client {
+	if t.httpClient != nil {
+		return t.httpClient
+	}
+	return &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				Certificates:       []tls.Certificate{t.Cert},
+				InsecureSkipVerify: true, //nolint:gosec // this is a request to the discovery server's own announce endpoint, not to the peer; the peer is verified separately over the resulting connection.
+			},
+		},
+		Timeout: 10 * time.Second,
+	}
+}
+
 // listenRelay connects to the relay pool, announces this identity's
 // address there to discovery, and returns the raw connection from the
 // first session invitation it receives.
@@ -269,6 +355,7 @@ func (t *SyncthingRelay) listenRelay(ctx context.Context) (net.Conn, error) {
 	if err != nil {
 		return nil, fmt.Errorf("transport: creating relay client: %w", err)
 	}
+	t.logger().Log(ctx, levelTrace, "relay client created", "pool", t.relayPoolURL())
 
 	relayCtx, cancelRelay := context.WithCancel(ctx)
 	defer cancelRelay()
@@ -284,6 +371,7 @@ func (t *SyncthingRelay) listenRelay(ctx context.Context) (net.Conn, error) {
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
+	t.logger().Log(ctx, levelTrace, "joined relay", "uri", rc.URI().String())
 
 	stopAnnounce := t.announceLoop(relayCtx, func() []string {
 		if uri := rc.URI(); uri != nil {
@@ -293,11 +381,13 @@ func (t *SyncthingRelay) listenRelay(ctx context.Context) (net.Conn, error) {
 	})
 	defer stopAnnounce()
 
+	t.logger().Log(ctx, levelTrace, "waiting for a session invitation")
 	select {
 	case inv, ok := <-rc.Invitations():
 		if !ok {
 			return nil, fmt.Errorf("transport: relay invitations channel closed")
 		}
+		t.logger().Log(ctx, levelTrace, "session invitation received")
 		return client.JoinSession(ctx, inv)
 	case <-ctx.Done():
 		return nil, fmt.Errorf("transport: waiting for a session invitation: %w", ctx.Err())
@@ -313,6 +403,7 @@ func (t *SyncthingRelay) dialRelay(ctx context.Context, peerID string) (net.Conn
 		return nil, fmt.Errorf("transport: invalid peer Device ID %q: %w", peerID, err)
 	}
 
+	t.logger().Log(ctx, levelTrace, "looking peer up on discovery", "peer", targetID.String(), "url", t.discoveryURL())
 	record, err := socket.LookupRecord(ctx, targetID.String(), t.discoveryURL())
 	if err != nil {
 		return nil, fmt.Errorf("transport: discovery lookup for %s: %w", targetID, err)
@@ -320,6 +411,7 @@ func (t *SyncthingRelay) dialRelay(ctx context.Context, peerID string) (net.Conn
 	if record == nil || len(record.Addresses) == 0 {
 		return nil, fmt.Errorf("transport: no addresses announced for peer %s", targetID)
 	}
+	t.logger().Log(ctx, levelTrace, "discovery lookup returned addresses", "peer", targetID.String(), "addresses", strings.Join(record.Addresses, ","))
 
 	var directAddrs, relayAddrs []string
 	for _, addr := range record.Addresses {
@@ -390,7 +482,12 @@ func (t *SyncthingRelay) announceLoop(ctx context.Context, addresses func() []st
 			if err := t.announceOnce(ctx, addresses()); err != nil {
 				// Best effort: a failed announce is retried on the next
 				// tick rather than aborting the whole listen attempt.
-				_ = err
+				// Logged, not discarded: a silently-forever-failing
+				// announce is indistinguishable from a silently
+				// succeeding one from the console, which is exactly
+				// how this used to POST to the wrong endpoint for a
+				// long time before anyone noticed.
+				t.logger().Warn("announce failed", "error", err)
 			}
 			select {
 			case <-ctx.Done():
@@ -408,10 +505,14 @@ func (t *SyncthingRelay) announceLoop(ctx context.Context, addresses func() []st
 	}
 }
 
-// announceOnce POSTs one discovery announcement, authenticated by t.Cert
-// on the TLS connection to the discovery server itself (the server reads
-// the announcer's identity off that certificate, not off the request
-// body), mirroring syncthing-socket's own unexported announce() in spirit.
+// announceOnce POSTs one discovery announcement to every configured
+// announce URL, authenticated by t.Cert on the TLS connection to each
+// discovery server itself (the server reads the announcer's identity
+// off that certificate, not off the request body), mirroring
+// syncthing-socket's own unexported announce() in spirit. It succeeds
+// if any URL accepts the announcement (a machine may only have IPv4
+// or only IPv6 connectivity to the two defaults), and fails only if
+// every one of them does.
 func (t *SyncthingRelay) announceOnce(ctx context.Context, addresses []string) error {
 	if len(addresses) == 0 {
 		return nil
@@ -424,29 +525,33 @@ func (t *SyncthingRelay) announceOnce(ctx context.Context, addresses []string) e
 		return fmt.Errorf("transport: marshalling announce payload: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.discoveryURL(), bytes.NewReader(payload))
+	httpClient := t.announceHTTPClient()
+
+	var lastErr error
+	for _, announceURL := range t.announceURLs() {
+		if err := t.postAnnounce(ctx, httpClient, announceURL, payload); err != nil {
+			lastErr = err
+			continue
+		}
+		return nil
+	}
+	return fmt.Errorf("transport: announce failed on every URL, last error: %w", lastErr)
+}
+
+func (t *SyncthingRelay) postAnnounce(ctx context.Context, httpClient *http.Client, announceURL string, payload []byte) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, announceURL, bytes.NewReader(payload))
 	if err != nil {
-		return fmt.Errorf("transport: building announce request: %w", err)
+		return fmt.Errorf("building announce request to %s: %w", announceURL, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	httpClient := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				Certificates:       []tls.Certificate{t.Cert},
-				InsecureSkipVerify: true, //nolint:gosec // this is a request to the identity's own discovery server, not to the peer; the peer is verified separately over the resulting connection.
-			},
-		},
-		Timeout: 10 * time.Second,
-	}
-
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("transport: announce request: %w", err)
+		return fmt.Errorf("announce request to %s: %w", announceURL, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("transport: announce returned HTTP %d", resp.StatusCode)
+		return fmt.Errorf("announce to %s returned HTTP %d", announceURL, resp.StatusCode)
 	}
 	return nil
 }
