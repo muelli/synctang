@@ -134,3 +134,22 @@ object PairingPayload {
 
 internal fun ByteArray.toHex(): String =
     joinToString("") { "%02x".format(it) }
+
+/**
+ * The command to run on the machine, once, so that this phone can
+ * unlock it. Built as a string rather than shown as two loose hex
+ * values because that is the form it is actually used in, and kept
+ * out of the Composable so that it can be tested: the flags have to
+ * be exactly right, and getting one wrong produces a phone that is
+ * refused at unlock time with nothing to point back at the command.
+ *
+ * --recipient-transport-id, not --transport-id. The latter sets the
+ * machine's own transport identity; this is the identity of the party
+ * allowed to unlock it.
+ */
+fun enrolCommand(publicKeyHex: String, deviceId: String): String =
+    "unlocker enrol --device /dev/... \\\n" +
+        "  --pubkey $publicKeyHex \\\n" +
+        "  --recipient-transport-id $deviceId \\\n" +
+        "  --existing-passphrase-file /path/to/passphrase \\\n" +
+        "  --name phone"

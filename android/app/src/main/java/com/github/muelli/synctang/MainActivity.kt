@@ -147,10 +147,7 @@ private fun PairingScreen(identity: Identity, model: UnlockViewModel) {
 private fun EnrolmentDetails(identity: Identity) {
     val context = LocalContext.current
     val command = remember(identity) {
-        "unlocker enrol --device /dev/... \\\n" +
-            "  --pubkey ${identity.publicKeyHex} \\\n" +
-            "  --transport-id ${identity.deviceId} \\\n" +
-            "  --name phone"
+        enrolCommand(identity.publicKeyHex, identity.deviceId)
     }
 
     Text(stringResource(R.string.pair_enrol_title), style = MaterialTheme.typography.titleMedium)

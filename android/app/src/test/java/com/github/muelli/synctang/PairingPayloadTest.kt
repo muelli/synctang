@@ -2,7 +2,9 @@
 package com.github.muelli.synctang
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -43,5 +45,50 @@ class PairingPayloadTest {
         assertNull(PairingPayload.parse(id.replace("-", "").dropLast(1)))
         // The base32 alphabet has no 0, 1, 8 or 9.
         assertNull(PairingPayload.parse(id.replace("-", "").replaceFirst("A", "0")))
+    }
+}
+
+/**
+ * The enrolment screen's whole job is to hand over a command that can
+ * be pasted and will work. It got the flag wrong: it printed
+ * --transport-id, which sets the *machine's* own transport identity,
+ * where it meant --recipient-transport-id, the flag that records who
+ * is allowed to unlock. Pasting it would have told the machine to
+ * adopt the phone's Device ID as its own and to enrol a recipient
+ * with no transport identity at all, so the phone would then have
+ * been refused as an unauthorized peer, with nothing on either screen
+ * to suggest the command had been the problem. It also omitted
+ * --existing-passphrase-file, which enrol requires.
+ */
+class EnrolCommandTest {
+
+    private val command = enrolCommand(
+        publicKeyHex = "04aabb",
+        deviceId = "ABCDEFG-HIJKLMN-OPQRSTU-VWXYZ23-4567ABC-DEFGHIJ-KLMNOPQ-RSTUVWX",
+    )
+
+    @Test
+    fun namesTheRecipientFlagAndNotTheMachinesOwn() {
+        assertTrue(
+            "the phone's Device ID must be given as the recipient's: $command",
+            command.contains("--recipient-transport-id ABCDEFG-"),
+        )
+        assertFalse(
+            "--transport-id sets the machine's own identity, not the recipient's: $command",
+            Regex("(^|\\s)--transport-id\\s").containsMatchIn(command),
+        )
+    }
+
+    @Test
+    fun includesThePassphraseFileEnrolRequires() {
+        assertTrue(
+            "enrol refuses to run without an existing passphrase: $command",
+            command.contains("--existing-passphrase-file"),
+        )
+    }
+
+    @Test
+    fun carriesThePublicKey() {
+        assertTrue(command.contains("--pubkey 04aabb"))
     }
 }
