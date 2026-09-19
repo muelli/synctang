@@ -24,10 +24,23 @@ fi
 # The initqueue can run a hook more than once, and one agent is enough.
 [ -e /run/unlocker-luks.pid ] && return 0
 
+# rd.unlocker.confirm_code=1 turns on confirm-code mode: the agent prints a
+# six-digit code to this console and refuses to send a recovery request until a
+# key holder reads it back, so a thief holding only the disk cannot complete an
+# unlock over the network. Off by default, deliberately: it requires a human
+# with eyes on this machine's console, which is exactly what the ordinary
+# remote-unlock case does not have. Opt in per machine, the same way
+# rd.unlocker=0 opts out of the whole agent.
+confirm_code_flag=""
+if getargbool 0 rd.unlocker.confirm_code; then
+	confirm_code_flag="--confirm-code"
+	info "unlocker: confirm-code mode enabled"
+fi
+
 # Setting up a resolver is deliberately left to the agent. This hook runs when udev
 # has settled, which is before the network is up, so anything decided here would be
 # decided at the one moment when the answer is always "no resolver yet".
 
-unlocker agent > /dev/console 2>&1 &
+unlocker agent $confirm_code_flag > /dev/console 2>&1 &
 echo $! > /run/unlocker-luks.pid
 info "unlocker: password agent started"

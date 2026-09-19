@@ -85,6 +85,23 @@ listening for the next attempt until it receives `SIGTERM` (which
 `dracut/90unlocker/unlocker-stop.sh` sends before pivoting to the real
 root).
 
+## Boot-time options (dracut)
+
+At boot the agent is started by `dracut/90unlocker/unlocker-start.sh`,
+from dracut's `initqueue/settled` hook, alongside the ordinary console
+passphrase prompt rather than instead of it: whoever answers first
+wins, and the console keeps working either way. Two kernel command
+line options control it:
+
+- `rd.unlocker=0`: do not start the agent at all. The escape hatch for
+  when the network path itself is what is broken and you just want the
+  console prompt.
+- `rd.unlocker.confirm_code=1`: start the agent in confirm-code mode
+  (see "Threat model" below). Off by default, deliberately: it
+  requires a human with eyes on that machine's console to read the code
+  back, which the ordinary remote-unlock case does not have. Opt in per
+  machine.
+
 ## Transport: local network and the Internet, at once
 
 `unlocker agent` and `keyholder unlock` do not have to guess in advance
