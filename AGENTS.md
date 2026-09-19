@@ -93,6 +93,20 @@
   warnings, the generic "Process completed with exit code N"), useful
   when there is no token for the log-download API, but never the
   actual log text a build tool printed.
+- **`act` (`go install github.com/nektos/act@latest`) runs a workflow
+  job locally against Docker** and is available in this environment;
+  try it before spending several real-CI round trips chasing a CI
+  failure blind (`act push -j <job> -P
+  ubuntu-latest=catthehacker/ubuntu:act-latest`). Confirmed it correctly
+  parses this repo's `ci.yml` and reproduces failures. Caveat, also
+  confirmed directly: its default runner image does not carry
+  GitHub-hosted runners' large pre-installed toolchains
+  (`ubuntu-latest`'s real pre-installed Android SDK: `ANDROID_HOME`
+  came back empty under `act`, where the real runner has one), so a
+  job that depends on those needs `--env` overrides to approximate
+  them, or a real CI run for that part specifically; treat `act` as a
+  fast first-pass filter for workflow logic, not a full replacement for
+  a real runner.
 - **A dracut initrd's own DHCP lease is a different address than the
   fully-booted OS gets** on its own network restart post-pivot. The
   serial console and SSH are never reachable at the same address
