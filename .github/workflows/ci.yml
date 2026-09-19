@@ -97,6 +97,17 @@ jobs:
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
         working-directory: .
       - name: Build and test
-        run: ./gradlew assembleDebug testDebugUnitTest
+        # Only one ABI: CI is validating that the code compiles and the
+        # unit tests pass, not producing a release artifact, and
+        # build.gradle.kts's own buildGoMobile task already supports
+        # this exact flag for that reason. Building all four ABIs
+        # (the default) means gomobile bind cross-compiling and
+        # linking mrcore, its NDK C toolchain dependency, four times
+        # over, which is both slow and the more likely of the two
+        # remaining candidates (the other being an actual test
+        # failure) for whatever is behind this step's plain "Process
+        # completed with exit code 1", the only detail available
+        # without log access.
+        run: ./gradlew assembleDebug testDebugUnitTest -Psynctang.goMobileTarget=android/amd64
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/27.2.12479018
