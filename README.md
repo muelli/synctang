@@ -14,10 +14,11 @@ Status: work in progress, see `STATUS.md`.
 - `mrcore`: the MR-1 protocol (enrol, recover, token format) and the
   transport interface, as a Go package shared by everything else.
 - `unlocker`: the machine-side binary. Runs in the dracut initrd and,
-  after boot, as a systemd password agent. Subcommands: `enrol`, `agent`,
-  `status`, `pair`.
+  after boot, as a systemd password agent. Subcommands: `enrol` (add a
+  recipient, or `--remove` one) and `agent`. `status` and `pair` are
+  planned, not built.
 - `keyholder`: the Ubuntu laptop CLI. Subcommands: `init`, `unlock`,
-  `pair`, `export-pubkey`.
+  `export-pubkey`. `pair` is planned, not built.
 - Android app (`android/`): the phone key holder. Pairs by QR code, unlocks
   behind `BiometricPrompt`, keeps its key in the Android Keystore.
 - `dracut/90unlocker`: the dracut module.
@@ -25,8 +26,7 @@ Status: work in progress, see `STATUS.md`.
 ## Quick start
 
 Filled in as each component reaches a runnable state; see `STATUS.md` for
-what is not here yet (`unlocker status`, both `pair` subcommands, and the
-Android app).
+what is not here yet (`unlocker status` and both `pair` subcommands).
 
 ### keyholder (laptop), file backend
 
@@ -63,7 +63,8 @@ which a key holder needs to dial it.
 ### Recovering (machine listening, laptop answering)
 
 On the machine (or against a plain loopback image, with `--direct-addr`
-bypassing the real relay network for a local test):
+bypassing discovery and the relay network entirely for a local test;
+see "Transport" below for what runs instead when it is not given):
 
 ```
 go run ./cmd/unlocker agent --device /path/to/your/luks-device-or-image \
@@ -127,9 +128,15 @@ point `S = s.G` and `kid = SHA-256(S)`.
 
 **Enrol** (machine, once per key holder):
 
-1. Generate a random 32-byte volume secret `P`; add it as a new LUKS2
-   keyslot with `cryptsetup luksAddKey` (the existing passphrase is
-   required). `[V]` `mrcore.Enrol` plus `cmd/unlocker`'s `enrolRecipient`.
+1. Generate a random 32-byte volume secret `P`; hex-encode it and add
+   *that* as a new LUKS2 keyslot with `cryptsetup luksAddKey` (the
+   existing passphrase is required), never the raw bytes: systemd's
+   ask-password protocol (used at recovery time, below) silently
+   truncates a raw binary answer at its first embedded NUL byte, which
+   a uniformly random 32-byte secret contains roughly one enrolment in
+   eight. Found running against a real deployment; see `STATUS.md`.
+   `[V]` `mrcore.Enrol`, `cmd/unlocker`'s `enrolRecipient` and
+   `luksKeyMaterial`.
 2. Pick a random scalar `c`, compute `C = c.G` and `K = c.S`. Derive
    `k = HKDF-SHA256(x(K), salt = kid, info = "mr-1 enrol")`.
 3. `ct = AES-256-GCM(k, nonce, P)`.
@@ -167,9 +174,11 @@ point `S = s.G` and `kid = SHA-256(S)`.
    `mrcore/mr1_test.go`'s `TestEnrolRecoverXOnlyRoundTrip` and
    `TestRecoverWrongKeyFails` (a wrong key holder, or the wrong sign
    candidate, fails the AEAD tag with an error, never a panic).
-4. Decrypt `P`, verify it actually opens the volume
-   (`cryptsetup open --test-passphrase`), answer systemd's password
-   agent request, and wipe `e` and `P` from memory.
+4. Decrypt `P`, hex-encode it (the same encoding enrolment added to the
+   keyslot, for the same reason), verify that the encoded form actually
+   opens the volume (`cryptsetup open --test-passphrase`), answer
+   systemd's password agent request with it, and wipe `e`, `P` and the
+   encoded form from memory.
 
 Properties, compared with Tang: the key holder never learns `P` or `K`
 (identical blinding); a passive or active network attacker learns
@@ -264,8 +273,27 @@ makes.
 
 ## Rotation and revocation
 
-To be documented alongside `keyholder pair`/`unlocker enrol --replace` and
-`unlocker enrol --remove` once WP3 and WP4 land.
+**Revocation**: `unlocker enrol --remove <recipient-transport-id>`
+destroys that recipient's own LUKS2 keyslot (`cryptsetup luksKillSlot`)
+and removes its entry from the token, leaving every other recipient's
+keyslot and token entry untouched:
+
+```
+echo -n 'your-existing-luks-passphrase' > /tmp/passphrase
+go run ./cmd/unlocker enrol --device /path/to/your/luks-device-or-image \
+  --remove <recipient's transport-id, from keyholder export-pubkey> \
+  --existing-passphrase-file /tmp/passphrase
+rm /tmp/passphrase
+```
+
+`[V]` `cmd/unlocker/enrol.go`'s `removeRecipient`; the revoked
+recipient's own recovered secret genuinely stops opening the device,
+not merely dropped from the token.
+
+**Rotation** (`keyholder init --rotate`, `unlocker enrol --replace`) and
+`keyholder pair`/`unlocker pair` are not built yet; rotating a key today
+means enrolling a freshly generated one under a new transport identity
+and removing the old one as above.
 
 ## Unattended boot
 
