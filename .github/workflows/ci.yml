@@ -100,14 +100,19 @@ jobs:
         # Only one ABI: CI is validating that the code compiles and the
         # unit tests pass, not producing a release artifact, and
         # build.gradle.kts's own buildGoMobile task already supports
-        # this exact flag for that reason. Building all four ABIs
-        # (the default) means gomobile bind cross-compiling and
-        # linking mrcore, its NDK C toolchain dependency, four times
-        # over, which is both slow and the more likely of the two
-        # remaining candidates (the other being an actual test
-        # failure) for whatever is behind this step's plain "Process
-        # completed with exit code 1", the only detail available
-        # without log access.
-        run: ./gradlew assembleDebug testDebugUnitTest -Psynctang.goMobileTarget=android/amd64
-        env:
-          ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/27.2.12479018
+        # this exact flag for that reason.
+        #
+        # ANDROID_NDK_HOME is computed here with real shell expansion,
+        # not `env: ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/...`:
+        # that `${{ }}` expression context only sees variables set via
+        # a workflow/job/step env: key, not ANDROID_SDK_ROOT baked into
+        # the runner image at the OS level, so it silently evaluated to
+        # empty and produced ANDROID_NDK_HOME=/ndk/27.2.12479018 (got
+        # the actual Gradle error via a token, after several rounds of
+        # fixing real-but-different earlier failures in this same job
+        # without log access): gomobile bind rejected that path because
+        # its meta/platforms.json is missing, i.e. it is not a real NDK
+        # root at all.
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
+          ./gradlew assembleDebug testDebugUnitTest -Psynctang.goMobileTarget=android/amd64
