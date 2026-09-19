@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/muelli/synctang/mrcore/transport"
 	"github.com/syncthing/syncthing/lib/protocol"
@@ -147,6 +148,7 @@ func runUnlock(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	transportKeyFile := transportKeyFileFlag(fs)
 	directAddr := fs.String("direct-addr", "", "dial this address directly, bypassing relay and discovery (testing only)")
 	yes := fs.Bool("yes", false, "skip the approval prompt")
+	timeout := fs.Duration("timeout", defaultUnlockTimeout, "give up dialling the machine after this long")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -178,12 +180,24 @@ func runUnlock(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	if err := runUnlockOnce(context.Background(), s, cert, machineID, *directAddr, *yes, stdin, stdout); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
+	defer cancel()
+
+	if err := runUnlockOnce(ctx, s, cert, machineID, *directAddr, *yes, stdin, stdout); err != nil {
 		fmt.Fprintf(stderr, "keyholder: %v\n", err)
 		return 1
 	}
 	return 0
 }
+
+// defaultUnlockTimeout bounds how long "unlock" will keep retrying the
+// dial (mrcore/transport.SyncthingRelay.Dial now retries the relay path
+// indefinitely on its own, until told to stop): a machine that is
+// genuinely not there, or an unenrolled or mistyped transport ID, must
+// eventually give up and say so rather than hang forever. Two minutes
+// covers the relay pool's own connection churn (see the transport
+// package's dialRelay comment) with room to spare.
+const defaultUnlockTimeout = 2 * time.Minute
 
 func wipe(b []byte) {
 	for i := range b {
