@@ -1,8 +1,8 @@
 # Test report
 
 Filled in as WP7 (VM acceptance) proceeds. `[V]` verified as described,
-`[I]` inferred, `[U]` unknown, pending. See `STATUS.md` for the session
-log this report is drawn from.
+`[I]` inferred, `[U]` unknown, pending. See `STATUS.md` for current
+overall state, and `git log` for the history this report is drawn from.
 
 ## Versions
 
