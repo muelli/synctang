@@ -71,7 +71,12 @@ jobs:
         with:
           go-version: "1.25"
       - name: Install the NDK
-        run: sdkmanager --install "ndk;27.2.12479018"
+        # sdkmanager blocks on an interactive license prompt for any
+        # component it does not already have cached (the runner's
+        # pre-installed NDK is a different version, 27.3.13750724, so
+        # this one is a fresh download); "yes |" is the standard
+        # non-interactive workaround, there being no --yes flag.
+        run: yes | sdkmanager --install "ndk;27.2.12479018"
         working-directory: .
       - name: Install gomobile
         run: |
