@@ -29,6 +29,12 @@ const defaultRelayPoolURL = "dynamic+https://relays.syncthing.net/endpoint"
 // request, join), independently of the caller's own context deadline.
 const defaultRelayTimeout = 15 * time.Second
 
+// dialRelayRetryInterval is how long dialRelay waits between attempts.
+// Not load-bearing; matches dialDirect's own spirit (retry rather than
+// fail once), just slower, since a relay attempt is far more expensive
+// than a bare TCP dial.
+const dialRelayRetryInterval = 3 * time.Second
+
 // defaultAnnounceInterval is how often SyncthingRelay.Listen refreshes its
 // discovery record while it waits for a dialer. socket.DefaultAnnounceInterval
 // (30 minutes) is tuned for a long-running daemon; a pairing wait is short
@@ -394,10 +400,40 @@ func (t *SyncthingRelay) listenRelay(ctx context.Context) (net.Conn, error) {
 	}
 }
 
-// dialRelay looks peerID's address up on discovery, then either dials it
-// directly or joins a relay session with it, whichever the address list
-// offers.
+// dialRelay repeatedly looks peerID up on discovery and tries to reach
+// it, until it succeeds or ctx is done. The public Syncthing relay
+// pool's own connections rotate over time for reasons outside this
+// project's control (individual relays disconnect clients
+// periodically), which leaves discovery's address list carrying a mix
+// of the listener's current relay and stale entries from ones it has
+// since left; a single attempt through that list, tried once, often
+// lands on a stale entry and fails even though the listener is
+// genuinely reachable via a different address in the same list a few
+// seconds later. dialDirect already retries for exactly this class of
+// reason (see its own comment); this is the same idea applied to the
+// relay path, found necessary by testing against a real deployment
+// rather than assumed up front.
 func (t *SyncthingRelay) dialRelay(ctx context.Context, peerID string) (net.Conn, error) {
+	var lastErr error
+	for {
+		conn, err := t.dialRelayOnce(ctx, peerID)
+		if err == nil {
+			return conn, nil
+		}
+		lastErr = err
+		t.logger().Log(ctx, levelTrace, "dial attempt failed, retrying", "peer", peerID, "error", err)
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("%w (last attempt: %v)", ctx.Err(), lastErr)
+		case <-time.After(dialRelayRetryInterval):
+		}
+	}
+}
+
+// dialRelayOnce is dialRelay's single attempt: one discovery lookup,
+// then either a direct dial or a relay session join, whichever the
+// address list offers.
+func (t *SyncthingRelay) dialRelayOnce(ctx context.Context, peerID string) (net.Conn, error) {
 	targetID, err := protocol.DeviceIDFromString(peerID)
 	if err != nil {
 		return nil, fmt.Errorf("transport: invalid peer Device ID %q: %w", peerID, err)
