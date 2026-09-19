@@ -25,9 +25,29 @@ not here. See `TESTREPORT.md` for the acceptance table (A1-A11).
 - **WP6** (dracut module `90unlocker`): done. `enrol` auto-rebuilding
   the initrd is not wired in; currently a manual `dracut --force` step.
 - **WP7** (VM acceptance): see `TESTREPORT.md`. A1, A2, A3, A5, A6,
-  A7, A9, A10 and A11 verified on the real VM. A8 is verified by test
-  but not yet end to end on the VM. A4 is the only one blocked, on
-  real hardware (WP0).
+  A7, A8, A9, A10 and A11 all verified. A4 is the only one left, and
+  the only one blocked: it needs real StrongBox hardware (WP0).
+
+## Test VMs
+
+Two, for different jobs.
+
+- A shared VM on someone else's hypervisor (`synctang-test-2604`),
+  which is where the boot-time acceptance runs against a real
+  deployment happened. This side does not hold its passphrase, so
+  anything that might leave it unbootable cannot be run there.
+- A disposable local one, built by `scripts/make-test-vm.sh` and run
+  by `scripts/run-test-vm.sh` under QEMU with nested KVM: a real
+  LUKS2 root, dracut initrd, serial console on a TCP socket, and a
+  passphrase this side chose. `scripts/provision-test-vm.sh` installs
+  the unlocker, the dracut module and enrolled recipients into the
+  image over a loop device, without booting it.
+  `scripts/test-vm-net.sh` puts it on a private bridge so it shares a
+  real layer 2 segment with the host, which local discovery needs and
+  QEMU's user-mode networking cannot provide; that bridge has no
+  route off it, so it is also A11's condition by default. Rebuild
+  costs about four minutes, so it is genuinely throwaway: A8 destroys
+  a keyslot on it, which is exactly why it exists.
 
 ## CI
 
