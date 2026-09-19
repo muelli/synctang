@@ -5,6 +5,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties
 import android.security.keystore.StrongBoxUnavailableException
+import java.security.GeneralSecurityException
 import java.security.KeyFactory
 import java.security.KeyPairGenerator
 import java.security.KeyStore
@@ -89,11 +90,24 @@ class KeyHolderKey(
     private fun generate() {
         try {
             generateAttemptingStrongBox()
-        } catch (e: IllegalStateException) {
+        } catch (e: GeneralSecurityException) {
             // The Keystore refuses to create an authentication-bound
             // key on a phone with no biometric enrolled at all. That is
             // a thing the user can fix, not a bug, so it must not reach
             // the screen as a raw exception message.
+            //
+            // It does not raise the useful IllegalStateException to the
+            // caller, though: it raises an
+            // InvalidAlgorithmParameterException wrapping it. Catching
+            // the inner type alone, which this used to do, meant the
+            // mapping never ran and a fresh install on a phone with no
+            // fingerprint showed the raw exception and a "Try again"
+            // button that could only fail the same way.
+            if (requireUserAuthentication && e.looksLikeMissingBiometricEnrolment()) {
+                throw BiometricEnrolmentRequired(e)
+            }
+            throw e
+        } catch (e: IllegalStateException) {
             throw BiometricEnrolmentRequired(e)
         }
     }
@@ -244,6 +258,32 @@ class KeyHolderKey(
  */
 class BiometricEnrolmentRequired(cause: Throwable) :
     Exception("no biometric is enrolled on this phone", cause)
+
+/**
+ * Whether this failure is the Keystore refusing to create an
+ * authentication-bound key because nothing is enrolled to
+ * authenticate with.
+ *
+ * Decided on the cause chain's types rather than on the message text:
+ * the wording belongs to whichever Android version is running and is
+ * not a promise, while the shape (a parameter rejection caused by an
+ * IllegalStateException) is what the platform actually documents
+ * itself as doing. Walks the chain defensively, since a cause cycle
+ * is legal enough to construct and an infinite loop here would hang
+ * the first screen of the app.
+ */
+internal fun Throwable.looksLikeMissingBiometricEnrolment(): Boolean {
+    var cause: Throwable? = this
+    var seen = 0
+    while (cause != null && seen < 16) {
+        if (cause is IllegalStateException) {
+            return true
+        }
+        cause = cause.cause
+        seen++
+    }
+    return false
+}
 
 /**
  * BigInteger.toByteArray() emits a two's complement encoding: a leading

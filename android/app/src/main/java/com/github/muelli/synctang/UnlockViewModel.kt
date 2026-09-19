@@ -112,6 +112,12 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
                     getApplication<Application>().getString(R.string.error_no_biometric),
                 )
             } catch (e: Exception) {
+                // The screen only ever shows a one-line message, so
+                // without this the stack behind an unexpected failure
+                // is gone. Finding out that the Keystore wraps its
+                // "no biometric enrolled" error took a throwaway build
+                // added just to print this.
+                android.util.Log.e(LOG_TAG, "could not prepare this phone's identity", e)
                 UnlockUiState.Failed(null, e.friendlyMessage())
             }
         }
@@ -304,5 +310,7 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
  * that distinguishes "the machine is not waiting" from "the relay is
  * unreachable".
  */
+internal const val LOG_TAG = "synctang"
+
 internal fun Exception.friendlyMessage(): String =
     message?.takeIf { it.isNotBlank() } ?: this::class.java.simpleName

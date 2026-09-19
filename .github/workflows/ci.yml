@@ -239,3 +239,85 @@ jobs:
           name: synctang-debs
           path: dist/*.deb
           retention-days: 7
+
+  build-apk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # versionCode is the commit count, so a shallow clone would
+          # build every APK as version 1 and silently break updates for
+          # anyone who already installed an earlier one.
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: Install the NDK
+        run: |
+          SDKMANAGER=$(command -v sdkmanager || find "$ANDROID_HOME" -type f -name sdkmanager 2>/dev/null | head -1)
+          if [ -z "$SDKMANAGER" ]; then
+            echo "sdkmanager not found under \$ANDROID_HOME ($ANDROID_HOME)" >&2
+            exit 1
+          fi
+          yes | "$SDKMANAGER" --install "ndk;27.2.12479018"
+        working-directory: .
+      - name: Install gomobile
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+        working-directory: .
+      - name: Build the APK
+        # Every ABI, unlike the android job above, which builds one for
+        # speed because it only needs to know the code compiles. This
+        # one produces something a human installs on a phone whose
+        # architecture nobody here knows.
+        #
+        # Debug rather than release: there is no release signing config
+        # in this repository, and an unsigned release APK cannot be
+        # installed at all, so a "release" build here would produce a
+        # file that looks more official and works less. The debug
+        # signing key is Android's standard one; nothing about the
+        # Keystore or StrongBox behaviour this app exists to exercise
+        # differs between the two build types.
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
+          ./gradlew assembleDebug
+      - name: Show what was built
+        # An APK carrying the wrong set of ABIs installs fine and then
+        # fails at the first call into the gomobile library, which is a
+        # long way from the cause, so the ABIs are checked here rather
+        # than discovered on a phone.
+        run: |
+          APK=$(find app/build/outputs/apk/debug -name '*.apk' | head -1)
+          echo "built $APK"
+          unzip -l "$APK" | grep -E 'lib/|\.so$' | awk '{print $4}' | cut -d/ -f2 | sort -u
+      - uses: actions/attest-build-provenance@v2
+        # As with build-deb: a fork's pull request cannot obtain an
+        # id-token, so this only runs for a push to main.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          subject-path: android/app/build/outputs/apk/debug/*.apk
+      - uses: actions/upload-artifact@v4
+        # Note for whoever installs these: the debug signing key is
+        # generated on the runner if it is not already there, so APKs
+        # from two different CI runs are not necessarily signed by the
+        # same key. Android refuses to update an installed app with a
+        # differently-signed one, so moving between builds can need an
+        # uninstall first. Acceptable for something used to test on a
+        # phone; it would not be for anything people actually rely on.
+        with:
+          name: synctang-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 30
