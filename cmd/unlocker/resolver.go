@@ -3,7 +3,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -110,6 +112,7 @@ func ensureResolver() {
 func ensureResolverAt(path string, sources, stateFiles []string) {
 	if info, err := os.Stat(path); err == nil && info.Size() > 0 {
 		if content, err := os.ReadFile(path); err == nil && looksLikeResolvConf(string(content)) {
+			slog.Log(context.Background(), levelTrace, "resolv.conf already usable", "path", path)
 			return
 		}
 	}
@@ -121,6 +124,7 @@ func ensureResolverAt(path string, sources, stateFiles []string) {
 				continue
 			}
 			if os.WriteFile(path, content, 0o644) == nil {
+				slog.Debug("wrote resolv.conf from a network module's own resolver file", "source", candidate)
 				return
 			}
 		}
@@ -137,6 +141,7 @@ func ensureResolverAt(path string, sources, stateFiles []string) {
 				continue
 			}
 			if os.WriteFile(path, []byte(rendered), 0o644) == nil {
+				slog.Debug("wrote resolv.conf from systemd-networkd DHCP state", "source", candidate)
 				return
 			}
 		}
@@ -145,6 +150,7 @@ func ensureResolverAt(path string, sources, stateFiles []string) {
 	// Nothing on disk offered a real nameserver. Rather than retry
 	// indefinitely against a resolver that is not there, or none at
 	// all, fall back to a public one directly.
+	slog.Warn("no working resolver found on disk, falling back to a public resolver")
 	os.WriteFile(path, []byte(fallbackResolvConf), 0o644)
 }
 

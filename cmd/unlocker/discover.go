@@ -3,7 +3,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 )
@@ -42,12 +44,15 @@ func findMr1Device() (string, error) {
 		return "", fmt.Errorf("enumerating block devices: %w", err)
 	}
 
-	for _, device := range blockDevices(string(data)) {
+	candidates := blockDevices(string(data))
+	slog.Log(context.Background(), levelTrace, "scanning block devices for an mr-1 token", "candidates", strings.Join(candidates, ","))
+	for _, device := range candidates {
 		dump, err := runCommand(nil, "cryptsetup", "luksDump", device)
 		if err != nil {
 			continue // not LUKS, or not readable; both ordinary here
 		}
 		if len(tokenIDsOfType(string(dump), mrTokenType)) > 0 {
+			slog.Debug("found the mr-1 device", "device", device)
 			return device, nil
 		}
 	}

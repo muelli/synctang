@@ -13,6 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"math/big"
 	"os"
 	"os/signal"
@@ -146,9 +147,18 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, "path to this machine's persistent transport identity")
 	askPasswordDir := fs.String("ask-password-dir", defaultAskPasswordDir, "systemd ask-password directory")
 	directAddr := fs.String("direct-addr", "", "listen on this address directly, bypassing relay and discovery (testing only)")
+	logLevelFlag := fs.String("log-level", string(logLevelInfo), "logging level: trace, debug, info, warn, error")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+
+	logLevel, err := parseLogLevel(*logLevelFlag)
+	if err != nil {
+		fmt.Fprintf(stderr, "unlocker: %v\n", err)
+		return 2
+	}
+	logger := newLogger(logLevel)
+	slog.SetDefault(logger)
 
 	cert, err := transport.LoadOrCreateCert(*machineKeyFile)
 	if err != nil {
@@ -171,7 +181,7 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer cancel()
 
-	tr := transport.NewSyncthingRelay(cert)
+	tr := &transport.SyncthingRelay{Cert: cert, Logger: logger}
 	for ctx.Err() == nil {
 		// Checked on every pass, not once at startup: this hook runs
 		// from dracut's initqueue "settled", which fires once udev has
@@ -193,7 +203,7 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 			// network or every device enumeration is guaranteed done).
 			found, err := findMr1Device()
 			if err != nil {
-				fmt.Fprintf(stderr, "unlocker: %v\n", err)
+				logger.Log(ctx, levelTrace, "device discovery failed, will retry", "error", err)
 				select {
 				case <-ctx.Done():
 				case <-time.After(agentRetryInterval):
@@ -203,15 +213,18 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 			activeDevice = found
 		}
 
+		logger.Log(ctx, levelTrace, "starting a recovery attempt", "device", activeDevice)
 		err := runAgentOnce(ctx, activeDevice, cert, *name, confirmCode, *askPasswordDir,
 			transport.ListenOptions{DirectAddr: *directAddr}, tr)
 		switch {
 		case err == nil:
 			fmt.Fprintln(stdout, "unlocker: unlocked")
+			logger.Info("recovery attempt succeeded")
 		case ctx.Err() != nil:
 			// Shutting down; the error is just ctx being cancelled mid-attempt.
 		default:
 			fmt.Fprintf(stderr, "unlocker: %v\n", err)
+			logger.Error("recovery attempt failed", "error", err)
 		}
 
 		select {

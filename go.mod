@@ -9,6 +9,7 @@ go 1.26.0
 
 require (
 	filippo.io/nistec v0.0.4
+	github.com/coreos/go-systemd/v22 v22.7.0
 	github.com/syncthing/syncthing v1.30.0
 	syncthing-socket v0.1.1-alpha.0.20260909182828-518875db93fe
 )
@@ -22,7 +23,6 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/charmbracelet/x/ansi v0.9.3 // indirect
 	github.com/charmbracelet/x/mosaic v0.0.0-20250702191427-5bdfc8f2e4ff // indirect
-	github.com/coreos/go-systemd/v22 v22.7.0 // indirect
 	github.com/creack/pty v1.1.24 // indirect
 	github.com/ebitengine/purego v0.8.3 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
