@@ -86,6 +86,83 @@ func TestRunEnrolEndToEnd(t *testing.T) {
 	}
 }
 
+// A8, exercised at the CLI level: "enrol --remove" revokes exactly the
+// named recipient and leaves the other one enrolled.
+func TestRunEnrolRemoveEndToEnd(t *testing.T) {
+	existingPassphrase := []byte("existing-test-passphrase")
+	device := formatLoopbackImage(t, existingPassphrase)
+
+	passphraseFile := filepath.Join(t.TempDir(), "passphrase")
+	if err := os.WriteFile(passphraseFile, existingPassphrase, 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	S1, err := mrcore.P256().ScalarBaseMult(mustScalar(t))
+	if err != nil {
+		t.Fatalf("ScalarBaseMult: %v", err)
+	}
+	S2, err := mrcore.P256().ScalarBaseMult(mustScalar(t))
+	if err != nil {
+		t.Fatalf("ScalarBaseMult: %v", err)
+	}
+
+	for _, recipient := range []struct {
+		pubkey []byte
+		id     string
+	}{
+		{S1, "KH-1"},
+		{S2, "KH-2"},
+	} {
+		var stdout, stderr bytes.Buffer
+		code := run([]string{
+			"enrol",
+			"--device", device,
+			"--pubkey", hex.EncodeToString(recipient.pubkey),
+			"--existing-passphrase-file", passphraseFile,
+			"--recipient-transport-id", recipient.id,
+			"--machine-key-file", filepath.Join(t.TempDir(), "machine.pem"),
+		}, &stdout, &stderr)
+		if code != 0 {
+			t.Fatalf("run enrol %s: exit %d, stderr %q", recipient.id, code, stderr.String())
+		}
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"enrol",
+		"--device", device,
+		"--existing-passphrase-file", passphraseFile,
+		"--remove", "KH-1",
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run enrol --remove: exit %d, stderr %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "revoked recipient KH-1") {
+		t.Errorf("expected confirmation of the revocation, got stdout %q", stdout.String())
+	}
+
+	dump, err := runCommand(nil, "cryptsetup", "luksDump", device)
+	if err != nil {
+		t.Fatalf("luksDump: %v", err)
+	}
+	tokenIDs := tokenIDsOfType(string(dump), mrTokenType)
+	exported, err := runCommand(nil, "cryptsetup", "token", "export",
+		"--token-id", itoaForTest(tokenIDs[0]), device)
+	if err != nil {
+		t.Fatalf("token export: %v", err)
+	}
+	var tok mrcore.Token
+	if err := json.Unmarshal(exported, &tok); err != nil {
+		t.Fatalf("unmarshal exported token: %v", err)
+	}
+	if len(tok.Recipients) != 1 {
+		t.Fatalf("expected 1 recipient after --remove, got %d", len(tok.Recipients))
+	}
+	if id, ok := tok.Recipients[0].TransportDeviceID(); !ok || id != "KH-2" {
+		t.Fatalf("surviving recipient = (%q, %v), want (%q, true)", id, ok, "KH-2")
+	}
+}
+
 func mustScalar(t *testing.T) []byte {
 	t.Helper()
 	s, err := mrcore.P256().RandomScalar()

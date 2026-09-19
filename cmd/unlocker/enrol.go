@@ -96,6 +96,70 @@ func enrolRecipient(device string, existingPassphrase, recipientPublicKey []byte
 	return nil
 }
 
+// removeRecipient revokes one enrolled key holder from device,
+// identified by its transport Device ID (the same string
+// Recipient.TransportDeviceID returns, and the one printed by
+// "keyholder export-pubkey"). Both the token's Recipient entry and its
+// LUKS2 keyslot are destroyed: leaving the keyslot in place would let
+// whoever still holds the revoked recipient's P (or a copy of it made
+// before revocation) open device directly, without going through the
+// key holder or the token at all. existingPassphrase authenticates the
+// keyslot removal, exactly as it does for enrolRecipient's luksAddKey.
+func removeRecipient(device string, existingPassphrase []byte, recipientTransportID string) error {
+	dump, err := runCommand(nil, "cryptsetup", "luksDump", device)
+	if err != nil {
+		return fmt.Errorf("reading LUKS header: %w", err)
+	}
+
+	tok, existingTokenID, err := loadToken(string(dump), device, "", "")
+	if err != nil {
+		return err
+	}
+	if existingTokenID < 0 {
+		return fmt.Errorf("%s has no enrolled mr-1 recipients", device)
+	}
+	if len(tok.Keyslots) != len(tok.Recipients) {
+		return fmt.Errorf("token integrity check failed: %d keyslots for %d recipients, refusing to guess which is which",
+			len(tok.Keyslots), len(tok.Recipients))
+	}
+
+	idx := -1
+	for i, rec := range tok.Recipients {
+		if id, ok := rec.TransportDeviceID(); ok && id == recipientTransportID {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return fmt.Errorf("no enrolled recipient with transport id %s", recipientTransportID)
+	}
+	keyslot := tok.Keyslots[idx]
+
+	if _, err := runCommand(existingPassphrase, "cryptsetup", "luksKillSlot", "--batch-mode",
+		device, keyslot, "--key-file=-", fmt.Sprintf("--keyfile-size=%d", len(existingPassphrase))); err != nil {
+		return fmt.Errorf("destroying keyslot %s: %w", keyslot, err)
+	}
+
+	tok.Keyslots = append(tok.Keyslots[:idx], tok.Keyslots[idx+1:]...)
+	tok.Recipients = append(tok.Recipients[:idx], tok.Recipients[idx+1:]...)
+
+	tokenJSON, err := json.Marshal(tok)
+	if err != nil {
+		return fmt.Errorf("encoding token: %w", err)
+	}
+
+	if _, err := runCommand(nil, "cryptsetup", "token", "remove",
+		"--token-id", strconv.Itoa(existingTokenID), device); err != nil {
+		return fmt.Errorf("removing the previous token version: %w", err)
+	}
+	if _, err := runCommand(tokenJSON, "cryptsetup", "token", "import",
+		"--token-id", strconv.Itoa(existingTokenID), device); err != nil {
+		return fmt.Errorf("writing token: %w", err)
+	}
+
+	return nil
+}
+
 // loadToken finds this device's existing mr-1 token, if any, and
 // returns it along with its token ID (or -1 if there is none yet, in
 // which case a fresh token carrying machineName/transportID is

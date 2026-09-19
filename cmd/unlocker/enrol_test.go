@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -147,6 +148,130 @@ func TestEnrolSecondRecipientAppends(t *testing.T) {
 	if len(tok.Keyslots) != 2 {
 		t.Fatalf("expected 2 keyslots named in the merged token, got %v", tok.Keyslots)
 	}
+}
+
+// A8: revoking one recipient must destroy exactly its own keyslot,
+// leaving the other recipient able to recover its own P and open the
+// device with it, exactly as before.
+func TestRemoveRecipientRevokesOnlyThatOne(t *testing.T) {
+	existingPassphrase := []byte("existing-test-passphrase")
+	device := formatLoopbackImage(t, existingPassphrase)
+
+	g := mrcore.P256()
+	s1, _ := g.RandomScalar()
+	S1, _ := g.ScalarBaseMult(s1)
+	s2, _ := g.RandomScalar()
+	S2, _ := g.ScalarBaseMult(s2)
+
+	if err := enrolRecipient(device, existingPassphrase, S1, "test-machine", "MACHINE-ID", "KH-1"); err != nil {
+		t.Fatalf("enrolRecipient 1: %v", err)
+	}
+	if err := enrolRecipient(device, existingPassphrase, S2, "test-machine", "MACHINE-ID", "KH-2"); err != nil {
+		t.Fatalf("enrolRecipient 2: %v", err)
+	}
+
+	beforeTok := exportTokenForTest(t, device)
+	if len(beforeTok.Recipients) != 2 {
+		t.Fatalf("expected 2 recipients before removal, got %d", len(beforeTok.Recipients))
+	}
+	var rec1 mrcore.Recipient
+	for _, rec := range beforeTok.Recipients {
+		if id, _ := rec.TransportDeviceID(); id == "KH-1" {
+			rec1 = rec
+		}
+	}
+
+	p1 := recoverPForTest(t, g, rec1, s1)
+
+	if err := removeRecipient(device, existingPassphrase, "KH-1"); err != nil {
+		t.Fatalf("removeRecipient: %v", err)
+	}
+
+	dump, err := runCommand(nil, "cryptsetup", "luksDump", device)
+	if err != nil {
+		t.Fatalf("luksDump: %v", err)
+	}
+	slots := usedKeyslots(string(dump))
+	if len(slots) != 2 {
+		t.Fatalf("expected 2 keyslots after removal (existing passphrase + KH-2), got %v", slots)
+	}
+
+	afterTok := exportTokenForTest(t, device)
+	if len(afterTok.Recipients) != 1 {
+		t.Fatalf("expected 1 recipient after removal, got %d", len(afterTok.Recipients))
+	}
+	gotID, ok := afterTok.Recipients[0].TransportDeviceID()
+	if !ok || gotID != "KH-2" {
+		t.Fatalf("expected the surviving recipient to be KH-2, got (%q, %v)", gotID, ok)
+	}
+
+	if _, err := runCommand(p1, "cryptsetup", "open", "--test-passphrase",
+		"--key-file=-", fmt.Sprintf("--keyfile-size=%d", len(p1)), device); err == nil {
+		t.Fatal("the revoked recipient's P still opens the device")
+	}
+
+	p2 := recoverPForTest(t, g, afterTok.Recipients[0], s2)
+	if _, err := runCommand(p2, "cryptsetup", "open", "--test-passphrase",
+		"--key-file=-", fmt.Sprintf("--keyfile-size=%d", len(p2)), device); err != nil {
+		t.Fatalf("the surviving recipient's P no longer opens the device: %v", err)
+	}
+}
+
+// removeRecipient with an unknown transport id must fail rather than
+// silently doing nothing or, worse, guessing which keyslot to destroy.
+func TestRemoveRecipientUnknownIDFails(t *testing.T) {
+	existingPassphrase := []byte("existing-test-passphrase")
+	device := formatLoopbackImage(t, existingPassphrase)
+
+	g := mrcore.P256()
+	s, _ := g.RandomScalar()
+	S, _ := g.ScalarBaseMult(s)
+	if err := enrolRecipient(device, existingPassphrase, S, "test-machine", "MACHINE-ID", "KH-1"); err != nil {
+		t.Fatalf("enrolRecipient: %v", err)
+	}
+
+	if err := removeRecipient(device, existingPassphrase, "NO-SUCH-ID"); err == nil {
+		t.Fatal("removeRecipient succeeded for an id that was never enrolled")
+	}
+}
+
+func exportTokenForTest(t *testing.T, device string) mrcore.Token {
+	t.Helper()
+	dump, err := runCommand(nil, "cryptsetup", "luksDump", device)
+	if err != nil {
+		t.Fatalf("luksDump: %v", err)
+	}
+	tokenIDs := tokenIDsOfType(string(dump), mrTokenType)
+	if len(tokenIDs) != 1 {
+		t.Fatalf("expected exactly one mr-1 token, got %v", tokenIDs)
+	}
+	exported, err := runCommand(nil, "cryptsetup", "token", "export",
+		"--token-id", itoaForTest(tokenIDs[0]), device)
+	if err != nil {
+		t.Fatalf("token export: %v", err)
+	}
+	var tok mrcore.Token
+	if err := json.Unmarshal(exported, &tok); err != nil {
+		t.Fatalf("unmarshal exported token: %v", err)
+	}
+	return tok
+}
+
+func recoverPForTest(t *testing.T, g mrcore.Group, rec mrcore.Recipient, s []byte) []byte {
+	t.Helper()
+	e, X, err := mrcore.ChallengeStart(g, rec.C)
+	if err != nil {
+		t.Fatalf("ChallengeStart: %v", err)
+	}
+	y, err := g.ScalarMult(X, s)
+	if err != nil {
+		t.Fatalf("key holder ScalarMult: %v", err)
+	}
+	p, err := mrcore.FinishFullPoint(g, e, rec, y)
+	if err != nil {
+		t.Fatalf("FinishFullPoint: %v", err)
+	}
+	return p
 }
 
 func itoaForTest(n int) string {

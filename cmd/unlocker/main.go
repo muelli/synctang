@@ -80,8 +80,29 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 	transportID := fs.String("transport-id", "", "this machine's transport identity")
 	recipientTransportID := fs.String("recipient-transport-id", "", "the recipient's own transport identity (from keyholder export-pubkey), if known")
 	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, "path to this machine's persistent transport identity")
+	remove := fs.String("remove", "", "revoke the enrolled recipient with this transport id instead of adding one")
 	if err := fs.Parse(args); err != nil {
 		return 2
+	}
+
+	if *remove != "" {
+		if *device == "" || *passphraseFile == "" {
+			fmt.Fprintln(stderr, "unlocker: --device and --existing-passphrase-file are required with --remove")
+			return 2
+		}
+		passphrase, err := readPassphrase(*passphraseFile)
+		if err != nil {
+			fmt.Fprintf(stderr, "unlocker: %v\n", err)
+			return 1
+		}
+		defer wipe(passphrase)
+
+		if err := removeRecipient(*device, passphrase, *remove); err != nil {
+			fmt.Fprintf(stderr, "unlocker: %v\n", err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "revoked recipient %s on %s\n", *remove, *device)
+		return 0
 	}
 
 	if *device == "" || *pubkeyHex == "" || *passphraseFile == "" {
