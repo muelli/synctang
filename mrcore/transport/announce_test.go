@@ -6,9 +6,11 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 )
@@ -162,5 +164,91 @@ func TestAnnounceLoopLogsThroughCustomLogger(t *testing.T) {
 
 	if len(messages) == 0 {
 		t.Fatal("expected the failing announce to be logged through the custom Logger, got nothing")
+	}
+}
+
+// A machine waiting at its LUKS prompt announces its current relay
+// address every announceInterval. The relay client it asks for that
+// address returns nil whenever it is not currently connected to a
+// relay, and announceOnce treats "no addresses" as nothing to do and
+// returns success. Together that means a machine which has lost its
+// relay announces nothing, reports nothing, and looks exactly like one
+// that is announcing fine, until whoever comes to unlock it finds it
+// unreachable. Observed for real: a test VM announced once, then went
+// silent for nine minutes with no log line of any kind while its
+// discovery record went stale and the relay forgot it.
+func TestAnnounceLoopWarnsWhenThereIsNothingToAnnounce(t *testing.T) {
+	var messages []string
+	relay := &SyncthingRelay{
+		Cert:             testCert(t),
+		AnnounceInterval: 5 * time.Millisecond,
+		Logger:           slog.New(recordingHandler{messages: &messages}),
+	}
+
+	stop := relay.announceLoop(context.Background(), func() []string { return nil })
+	time.Sleep(30 * time.Millisecond)
+	stop()
+
+	if len(messages) == 0 {
+		t.Fatal("a loop that announced nothing at all logged nothing at all")
+	}
+}
+
+// watchRelayLoss is what stops Listen waiting forever on a relay client
+// that has given up. The upstream client never closes its invitations
+// channel, not even when its Serve has returned "could not find a
+// connectable relay", so the obvious "case inv, ok := <-Invitations()"
+// cannot detect this: ok is never false. Without a watchdog the agent
+// blocks on that channel for the rest of the boot.
+func TestWatchRelayLossReportsARelayThatNeverComesBack(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	err := watchRelayLoss(ctx, func() *url.URL { return nil }, func() error { return nil },
+		30*time.Millisecond, 5*time.Millisecond)
+	if err == nil {
+		t.Fatal("expected an error for a relay client that never has a URI")
+	}
+	if ctx.Err() != nil {
+		t.Fatal("watchRelayLoss waited for ctx rather than reporting the loss itself")
+	}
+}
+
+// Relays rotate: the dynamic client disconnects from one and connects
+// to the next, and its URI is nil in between. That gap is normal and
+// must not fail a listen that is about to keep working.
+func TestWatchRelayLossToleratesABriefGap(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	live, _ := url.Parse("relay://192.0.2.1:22067")
+	err := watchRelayLoss(ctx, func() *url.URL {
+		if time.Since(start) < 30*time.Millisecond {
+			return nil
+		}
+		return live
+	}, func() error { return nil }, 80*time.Millisecond, 5*time.Millisecond)
+	if err != nil {
+		t.Fatalf("a 30ms gap under an 80ms grace should not be reported as a loss: %v", err)
+	}
+}
+
+// A relay client whose Serve has already returned is done, and waiting
+// out the grace period for it changes nothing.
+func TestWatchRelayLossReportsAStoppedClientImmediately(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	live, _ := url.Parse("relay://192.0.2.1:22067")
+	start := time.Now()
+	err := watchRelayLoss(ctx, func() *url.URL { return live },
+		func() error { return errors.New("could not find a connectable relay") },
+		time.Hour, 5*time.Millisecond)
+	if err == nil {
+		t.Fatal("expected an error for a relay client whose Serve has returned")
+	}
+	if time.Since(start) > time.Second {
+		t.Fatal("waited for the grace period instead of reporting the stopped client at once")
 	}
 }

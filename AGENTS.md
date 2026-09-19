@@ -75,6 +75,22 @@
   control connection until the connection it produced is actually done
   being used (i.e. wire the teardown into that `Conn`'s `Close()`, not
   a `defer` right after joining).
+- **The Syncthing relay client never closes its invitations channel**,
+  not even when its `Serve` has returned "could not find a connectable
+  relay". So `case inv, ok := <-rc.Invitations()` can never see
+  `ok == false`, and anything waiting on that channel alone waits for
+  ever. Its dynamic client also sets its URI to nil whenever it is
+  between relays, and our announce closure returns no addresses in
+  that state, which `announceOnce` treats as nothing to do and
+  reports as success. Together those two produce the nastiest failure
+  this project has had: a machine at its LUKS prompt loses its relay,
+  gives up on the whole pool, then sits there printing "waiting for a
+  key holder" while announcing nothing and listening to nobody, for
+  ever, with not one line of log to say so. Its discovery record goes
+  stale and the relay answers "not found" for it. `watchRelayLoss`
+  exists solely to notice this and fail the attempt so the agent's
+  outer loop can build a fresh client; do not remove it on the
+  assumption that the channel close will do the job.
 - **`transport.Multi` (races `LocalDiscovery` against
   `SyncthingRelay`) can pick a different winning transport on each
   side independently**, since each side races on its own with no

@@ -29,6 +29,19 @@ const defaultRelayPoolURL = "dynamic+https://relays.syncthing.net/endpoint"
 // request, join), independently of the caller's own context deadline.
 const defaultRelayTimeout = 15 * time.Second
 
+// defaultRelayLossGrace is how long the relay client may be without a
+// relay before Listen treats the attempt as failed and starts a fresh
+// one. It has to be longer than an ordinary relay rotation, during
+// which the dynamic client is briefly between relays and its URI is
+// nil, and short enough that a machine sitting at its LUKS prompt is
+// not unreachable for long. Thirty seconds is comfortably both.
+const defaultRelayLossGrace = 30 * time.Second
+
+// relayLossPollInterval is how often that condition is checked. The
+// relay client exposes no event for losing its relay, only state to
+// read, so this is a poll and cannot be anything else.
+const relayLossPollInterval = time.Second
+
 // dialRelayRetryInterval is how long dialRelay waits between attempts.
 // Not load-bearing; matches dialDirect's own spirit (retry rather than
 // fail once), just slower, since a relay attempt is far more expensive
@@ -100,6 +113,11 @@ type SyncthingRelay struct {
 	// AnnounceInterval overrides how often Listen refreshes its
 	// discovery record. Zero means defaultAnnounceInterval.
 	AnnounceInterval time.Duration
+
+	// RelayLossGrace overrides how long Listen tolerates the relay
+	// client having no relay before failing the attempt so a fresh one
+	// can be made. Zero means defaultRelayLossGrace.
+	RelayLossGrace time.Duration
 
 	// Logger receives trace-level detail on every connection attempt
 	// (relay join, discovery lookups and announces, handshake
@@ -379,6 +397,16 @@ func (t *SyncthingRelay) discoveryURL() string {
 	return socket.DefaultDiscoveryURL
 }
 
+// relayLossGrace is how long this listener tolerates having no relay
+// before giving up on the attempt, so that the caller can start a
+// fresh one. Zero means defaultRelayLossGrace.
+func (t *SyncthingRelay) relayLossGrace() time.Duration {
+	if t.RelayLossGrace != 0 {
+		return t.RelayLossGrace
+	}
+	return defaultRelayLossGrace
+}
+
 func (t *SyncthingRelay) announceInterval() time.Duration {
 	if t.AnnounceInterval > 0 {
 		return t.AnnounceInterval
@@ -478,8 +506,21 @@ func (t *SyncthingRelay) listenRelay(ctx context.Context) (raw net.Conn, cleanup
 		return nil
 	})
 
+	// The relay client never closes its invitations channel, so waiting
+	// on it alone is waiting forever once the client has given up; see
+	// watchRelayLoss.
+	relayLost := make(chan error, 1)
+	go func() {
+		if err := watchRelayLoss(relayCtx, rc.URI, rc.Error, t.relayLossGrace(), relayLossPollInterval); err != nil {
+			relayLost <- err
+		}
+	}()
+
 	t.logger().Log(ctx, levelTrace, "waiting for a session invitation")
 	select {
+	case err := <-relayLost:
+		cleanup()
+		return nil, nil, fmt.Errorf("transport: %w", err)
 	case inv, ok := <-rc.Invitations():
 		if !ok {
 			cleanup()
@@ -615,6 +656,56 @@ func (t *SyncthingRelay) dialRelayOnce(ctx context.Context, peerID string) (net.
 	return nil, fmt.Errorf("transport: connecting to %s: %w", targetID, lastErr)
 }
 
+// watchRelayLoss blocks until the relay client described by uri and
+// serveErr has stopped being usable, and returns why; it returns nil
+// only when ctx is done first.
+//
+// This exists because there is no way to be told. The upstream relay
+// client hands out an invitations channel that it never closes, not
+// even once its Serve has returned "could not find a connectable
+// relay", so the natural "case inv, ok := <-Invitations()" can never
+// observe ok == false and a listener blocks on it forever. Its
+// dynamic client also sets its URI to nil whenever it is not currently
+// connected to a relay, which is the only readable signal that
+// anything is wrong.
+//
+// Found the hard way, on a VM sitting at its LUKS prompt: the relay
+// connection dropped, the client worked through its relay list, gave
+// up, and from then on the agent printed nothing, announced nothing,
+// and waited on a channel nobody would ever write to, while still
+// reporting "waiting for a key holder" on the console. Nine minutes
+// later its discovery record was stale and the public relay answered
+// "not found" for it. A machine that quietly stops being reachable
+// while claiming to wait is the worst failure this project can have,
+// because the whole point is that nobody is standing in front of it.
+func watchRelayLoss(ctx context.Context, uri func() *url.URL, serveErr func() error, grace, poll time.Duration) error {
+	ticker := time.NewTicker(poll)
+	defer ticker.Stop()
+
+	var lostSince time.Time
+	for {
+		if err := serveErr(); err != nil {
+			return fmt.Errorf("relay client stopped: %w", err)
+		}
+		if uri() != nil {
+			lostSince = time.Time{}
+		} else {
+			if lostSince.IsZero() {
+				lostSince = time.Now()
+			}
+			if time.Since(lostSince) >= grace {
+				return fmt.Errorf("no relay for %s", grace)
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+		}
+	}
+}
+
 // announceLoop periodically POSTs addresses() to discovery, identifying
 // this SyncthingRelay by its own TLS client certificate (the discovery
 // server derives the announcer's Device ID from that certificate, the
@@ -630,7 +721,18 @@ func (t *SyncthingRelay) announceLoop(ctx context.Context, addresses func() []st
 		defer ticker.Stop()
 
 		for {
-			if err := t.announceOnce(ctx, addresses()); err != nil {
+			addrs := addresses()
+			if len(addrs) == 0 {
+				// Not a no-op worth staying quiet about. The relay
+				// client returns no address whenever it has no relay,
+				// so this is how a machine that has silently stopped
+				// being reachable looks from the inside: a loop
+				// ticking away, announcing nothing, reporting
+				// success. watchRelayLoss is what acts on it; this is
+				// what makes it visible on the console.
+				t.logger().Warn("nothing to announce: no relay address available")
+			}
+			if err := t.announceOnce(ctx, addrs); err != nil {
 				// Best effort: a failed announce is retried on the next
 				// tick rather than aborting the whole listen attempt.
 				// Logged, not discarded: a silently-forever-failing
