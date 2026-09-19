@@ -162,17 +162,14 @@ func (t *SyncthingRelay) Listen(ctx context.Context, opts ListenOptions) (Conn, 
 
 // Dial implements Transport.
 func (t *SyncthingRelay) Dial(ctx context.Context, opts DialOptions) (Conn, error) {
-	var raw net.Conn
-	var err error
 	if opts.DirectAddr != "" {
-		raw, err = t.dialDirect(ctx, opts.DirectAddr)
-	} else {
-		raw, err = t.dialRelay(ctx, opts.PeerID)
+		raw, err := t.dialDirect(ctx, opts.DirectAddr)
+		if err != nil {
+			return nil, err
+		}
+		return t.clientHandshake(raw, opts.PeerID)
 	}
-	if err != nil {
-		return nil, err
-	}
-	return t.clientHandshake(raw, opts.PeerID)
+	return t.dialRelay(ctx, opts.PeerID)
 }
 
 // listenDirect accepts exactly one plain TCP connection on addr, or
@@ -413,10 +410,10 @@ func (t *SyncthingRelay) listenRelay(ctx context.Context) (net.Conn, error) {
 // reason (see its own comment); this is the same idea applied to the
 // relay path, found necessary by testing against a real deployment
 // rather than assumed up front.
-func (t *SyncthingRelay) dialRelay(ctx context.Context, peerID string) (net.Conn, error) {
+func (t *SyncthingRelay) dialRelay(ctx context.Context, peerID string) (Conn, error) {
 	var lastErr error
 	for {
-		conn, err := t.dialRelayOnce(ctx, peerID)
+		conn, err := t.dialRelayAttempt(ctx, peerID)
 		if err == nil {
 			return conn, nil
 		}
@@ -430,9 +427,26 @@ func (t *SyncthingRelay) dialRelay(ctx context.Context, peerID string) (net.Conn
 	}
 }
 
-// dialRelayOnce is dialRelay's single attempt: one discovery lookup,
-// then either a direct dial or a relay session join, whichever the
-// address list offers.
+// dialRelayAttempt is dialRelay's single attempt: one discovery
+// lookup, a relay session join (or a direct dial, whichever the
+// address list offers), and the TLS handshake on top of it. All three
+// are retried together, not just the lookup and join: a session that
+// joins successfully at the relay level can still fail its handshake
+// (observed directly: the same Device ID's relay session sometimes
+// joins fine and then the handshake gets EOF), and that is just as
+// much a sign of "this attempt did not pan out, try a fresh one" as a
+// lookup or join failure is.
+func (t *SyncthingRelay) dialRelayAttempt(ctx context.Context, peerID string) (Conn, error) {
+	raw, err := t.dialRelayOnce(ctx, peerID)
+	if err != nil {
+		return nil, err
+	}
+	return t.clientHandshake(raw, peerID)
+}
+
+// dialRelayOnce is dialRelayAttempt's connection-establishment half:
+// one discovery lookup, then either a direct dial or a relay session
+// join, whichever the address list offers.
 func (t *SyncthingRelay) dialRelayOnce(ctx context.Context, peerID string) (net.Conn, error) {
 	targetID, err := protocol.DeviceIDFromString(peerID)
 	if err != nil {
