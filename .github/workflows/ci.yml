@@ -56,12 +56,39 @@ jobs:
           java-version: "21"
       # The app links a gomobile .aar built from mobile/ and mrcore/,
       # so this job needs a Go toolchain and an NDK as well as the SDK.
+      # The SDK itself needs no setup step at all: actions/runner-images
+      # documents ubuntu-latest as already carrying a full Android SDK
+      # (ANDROID_HOME, ANDROID_SDK_ROOT, sdkmanager on PATH, build-tools
+      # 34.0.0 among others already installed). android-actions/
+      # setup-android@v3 was failing outright on every single run on
+      # this repository since the very first push (checked via the
+      # GitHub API's own run history, never once green), well before
+      # even reaching its own NDK/SDK component steps; since the SDK it
+      # would set up already exists, removing it rather than debugging
+      # a third-party action blind (no log access in the environment
+      # that found this) is the actual fix, not a workaround.
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
-      - uses: android-actions/setup-android@v3
       - name: Install the NDK
-        run: sdkmanager --install "ndk;27.2.12479018"
+        # Two separate things needed fixing here, one at a time,
+        # without log access to see which: sdkmanager blocks on an
+        # interactive license prompt for any component it does not
+        # already have cached (the runner's pre-installed NDK is a
+        # different version, 27.3.13750724, so this one is a fresh
+        # download; "yes |" is the standard non-interactive
+        # workaround, there being no --yes flag), and
+        # actions/runner-images documents ANDROID_HOME as set but
+        # does not confirm cmdline-tools/sdkmanager is actually on
+        # PATH, so this locates it explicitly rather than assuming.
+        run: |
+          SDKMANAGER=$(command -v sdkmanager || find "$ANDROID_HOME" -type f -name sdkmanager 2>/dev/null | head -1)
+          if [ -z "$SDKMANAGER" ]; then
+            echo "sdkmanager not found under \$ANDROID_HOME ($ANDROID_HOME)" >&2
+            exit 1
+          fi
+          echo "using sdkmanager at $SDKMANAGER"
+          yes | "$SDKMANAGER" --install "ndk;27.2.12479018"
         working-directory: .
       - name: Install gomobile
         run: |
@@ -70,6 +97,22 @@ jobs:
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
         working-directory: .
       - name: Build and test
-        run: ./gradlew assembleDebug testDebugUnitTest
-        env:
-          ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/27.2.12479018
+        # Only one ABI: CI is validating that the code compiles and the
+        # unit tests pass, not producing a release artifact, and
+        # build.gradle.kts's own buildGoMobile task already supports
+        # this exact flag for that reason.
+        #
+        # ANDROID_NDK_HOME is computed here with real shell expansion,
+        # not `env: ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/...`:
+        # that `${{ }}` expression context only sees variables set via
+        # a workflow/job/step env: key, not ANDROID_SDK_ROOT baked into
+        # the runner image at the OS level, so it silently evaluated to
+        # empty and produced ANDROID_NDK_HOME=/ndk/27.2.12479018 (got
+        # the actual Gradle error via a token, after several rounds of
+        # fixing real-but-different earlier failures in this same job
+        # without log access): gomobile bind rejected that path because
+        # its meta/platforms.json is missing, i.e. it is not a real NDK
+        # root at all.
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
+          ./gradlew assembleDebug testDebugUnitTest -Psynctang.goMobileTarget=android/amd64

@@ -525,3 +525,64 @@ just the earlier console-unblocked boot). See `TESTREPORT.md`.
   as the 12 literal characters `passphrase\n`, consuming a real,
   wrong password attempt. `$'...'` or an actual `\n`/`\r` byte in the
   script, not a shell string literal, is what is needed.
+
+## 2026-09-19, session 4: the `android` CI job goes green for the first time
+
+Picked up on "fix android CI". No log access at first, same
+constraint as the earlier sweep that only found and reported the
+problem; fixed three real, distinct, verified-by-the-failure-point-
+moving-forward issues in a row anyway, each reasoned from public facts
+rather than guessed blind:
+
+1. `android-actions/setup-android@v3` failing outright, on literally
+   every run since the repository's first commit: removed it.
+   `actions/runner-images` documents `ubuntu-latest` as already
+   carrying a full Android SDK (`ANDROID_HOME`, `ANDROID_SDK_ROOT`,
+   `sdkmanager`, build-tools including 34.0.0, all pre-installed), so
+   the whole step was setting up something already there.
+2. `sdkmanager --install "ndk;..."` blocking on an interactive
+   license prompt for the one NDK version this project pins (not
+   among the pre-installed ones, so a fresh download): piped `yes`.
+   Also stopped assuming `sdkmanager` is on `PATH` (the runner docs
+   confirm the SDK env vars, not that) and located it explicitly.
+3. Reduced the CI build to one Android ABI rather than gomobile
+   bind's default of all four, matching a flag `build.gradle.kts`
+   already documented for exactly this: release builds need every
+   ABI, CI validating "does this compile and pass its tests" does
+   not.
+
+All three were real and each moved the failure genuinely forward
+(confirmed each time by which step failed next), but the job still
+failed after all three, down to "Build and test" itself with nothing
+visible beyond "Process completed with exit code 1": GitHub only
+server-renders high-level annotations into the public job page (a
+trick worth remembering: `https://github.com/{owner}/{repo}/actions/
+runs/{run}/job/{job}` returns real HTML unauthenticated, with
+`<annotation-message>` elements for warnings and the generic
+per-step failure line, but never the actual log text). Reported this
+honestly rather than keep guessing blind on an unbounded Gradle/
+Android error space, and asked for either a scoped token or the
+actual error text.
+
+Got the real error via a token: `gomobile bind` rejected
+`ANDROID_NDK_HOME` because its `meta/platforms.json` was missing,
+i.e. it was not a real NDK root at all. The value had come out as
+`/ndk/27.2.12479018`, missing its `$ANDROID_SDK_ROOT` prefix
+entirely. Root cause: the step's `env:` block used
+`${{ env.ANDROID_SDK_ROOT }}`, GitHub Actions' own expression syntax,
+which only resolves variables set via a workflow/job/step `env:` key;
+`ANDROID_SDK_ROOT` here comes from the runner image itself, an
+OS-level environment variable, invisible to that expression context,
+which silently evaluated to empty rather than erroring. Fixed by
+computing `ANDROID_NDK_HOME` with real shell expansion inside the
+`run:` script instead (`export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/
+ndk/..."`), the same way the NDK-install step already correctly used
+`$ANDROID_HOME`. `[V]` the `android` CI job is green, commit
+`59614d8`, the first time ever on this repository.
+
+Worth remembering generally: `${{ env.X }}` and a shell script's `$X`
+in the same workflow file look interchangeable and are not; the
+former is GitHub Actions' own limited expression context (workflow/
+job/step `env:` keys, not the runner's OS environment), the latter is
+whatever the shell actually sees. Silent, not an error, when the
+former misses.
