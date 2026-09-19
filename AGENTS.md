@@ -119,6 +119,27 @@
   them, or a real CI run for that part specifically; treat `act` as a
   fast first-pass filter for workflow logic, not a full replacement for
   a real runner.
+- **Sending to a multicast group from an unbound UDP socket needs a
+  route to that group, which in practice means the default route.**
+  Nothing on an ordinary host covers `239.0.0.0/8`, so on a machine
+  with no default route the write fails outright with "network is
+  unreachable". This bit `LocalDiscovery` exactly backwards: a machine
+  with no default route is a machine with no Internet, which is the
+  one case local discovery exists for, so it worked only where it was
+  not needed. Bind each sending socket to a specific interface address
+  (`net.ListenUDP` with a real `IP`, then `WriteToUDP`); the kernel
+  then sends out that interface with no route lookup to fail. When
+  testing "no Internet", delete the default route of **both** address
+  families: a dead-but-present IPv6 default route still counts as a
+  route, and makes the evidence for a LAN-only claim circumstantial.
+- **`ssh -o ConnectTimeout=N` does not bound an established session.**
+  Polling a rebooting machine with `ssh host true` to detect when it
+  goes down will eventually catch it mid-shutdown: the TCP connection
+  is already up, the peer then vanishes without a FIN, and ssh hangs
+  indefinitely with no timeout in play. It wedged an unattended reboot
+  harness here for fifteen minutes after the work itself had finished.
+  Add `-o ServerAliveInterval=3 -o ServerAliveCountMax=2`, or wrap the
+  whole call in `timeout`.
 - **A dracut initrd's own DHCP lease is a different address than the
   fully-booted OS gets** on its own network restart post-pivot. The
   serial console and SSH are never reachable at the same address

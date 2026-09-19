@@ -24,13 +24,10 @@ not here. See `TESTREPORT.md` for the acceptance table (A1-A11).
   Real-device retest is WP0's blocker above, shared.
 - **WP6** (dracut module `90unlocker`): done. `enrol` auto-rebuilding
   the initrd is not wired in; currently a manual `dracut --force` step.
-- **WP7** (VM acceptance): see `TESTREPORT.md`. A1, A2, A3, A5, A8, A9
-  verified on the real VM. A4 blocked on real hardware (WP0). A6
-  unit-tested only, not end-to-end. A7 and A10 unblocked (A3 passes)
-  but not yet run. A11 (offline/LAN-only, beyond the original plan):
-  the transport itself confirmed against the real VM; a full recovery
-  specifically carried over it, rather than the relay, is not yet the
-  one that happened to win a real-VM race.
+- **WP7** (VM acceptance): see `TESTREPORT.md`. A1, A2, A3, A5, A6,
+  A7, A9, A10 and A11 verified on the real VM. A8 is verified by test
+  but not yet end to end on the VM. A4 is the only one blocked, on
+  real hardware (WP0).
 
 ## CI
 
@@ -73,7 +70,7 @@ reproducibility are untested and not claimed.
   `slices.Contains` instead of a hand-rolled equivalent, caching the
   discovery HTTP client); not applied, undecided whether before or
   after the rest of WP7 closes out.
-- `[I]` `LocalDiscovery` binds to whichever network interface the
-  kernel picks by default; a host with more than one active interface
-  might announce on only one of them. Not fixed; `SyncthingRelay`
-  remains the fallback for that case.
+- `[U]` `LocalDiscovery` is IPv4 multicast only. A LAN that is IPv6
+  only would fall back to `SyncthingRelay`, which defeats the point
+  on a LAN with no Internet. Not hit in testing (every network this
+  has run on had IPv4), so not built.
