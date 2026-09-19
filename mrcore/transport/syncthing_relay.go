@@ -141,23 +141,40 @@ func NewSyncthingRelay(cert tls.Certificate) *SyncthingRelay {
 type conn struct {
 	*tls.Conn
 	peerID string
+
+	// onClose, if set, runs once Close is called: the relay path uses
+	// this to keep this listener registered with the relay server for
+	// as long as this connection is in use, and to only deregister it
+	// once the caller is done. See listenRelay's own comment for why
+	// that timing matters.
+	onClose func()
 }
 
 func (c *conn) PeerID() string { return c.peerID }
 
+func (c *conn) Close() error {
+	err := c.Conn.Close()
+	if c.onClose != nil {
+		c.onClose()
+	}
+	return err
+}
+
 // Listen implements Transport.
 func (t *SyncthingRelay) Listen(ctx context.Context, opts ListenOptions) (Conn, error) {
-	var raw net.Conn
-	var err error
 	if opts.DirectAddr != "" {
-		raw, err = t.listenDirect(ctx, opts.DirectAddr)
-	} else {
-		raw, err = t.listenRelay(ctx)
+		raw, err := t.listenDirect(ctx, opts.DirectAddr)
+		if err != nil {
+			return nil, err
+		}
+		return t.serverHandshake(raw, opts.AuthorizedPeers, nil)
 	}
+
+	raw, cleanup, err := t.listenRelay(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return t.serverHandshake(raw, opts.AuthorizedPeers)
+	return t.serverHandshake(raw, opts.AuthorizedPeers, cleanup)
 }
 
 // Dial implements Transport.
@@ -179,7 +196,21 @@ func (t *SyncthingRelay) listenDirect(ctx context.Context, addr string) (net.Con
 	if err != nil {
 		return nil, fmt.Errorf("transport: direct listen on %s: %w", addr, err)
 	}
+	conn, err := acceptWithContext(ctx, ln)
+	if err != nil {
+		return nil, fmt.Errorf("transport: direct listen on %s: %w", addr, err)
+	}
+	return conn, nil
+}
 
+// acceptWithContext accepts exactly one connection from ln, closing ln
+// (whether or not a connection was actually pending) before returning
+// either way: a single-shot listener has nothing further to offer
+// once this returns, and leaving it open would leak a socket bound to
+// a port nothing is using any more. Shared by SyncthingRelay's and
+// LocalDiscovery's direct-listen paths, which are otherwise identical
+// down to the ctx-cancellation behaviour.
+func acceptWithContext(ctx context.Context, ln net.Listener) (net.Conn, error) {
 	type result struct {
 		conn net.Conn
 		err  error
@@ -193,13 +224,10 @@ func (t *SyncthingRelay) listenDirect(ctx context.Context, addr string) (net.Con
 	select {
 	case <-ctx.Done():
 		ln.Close()
-		return nil, fmt.Errorf("transport: direct listen on %s: %w", addr, ctx.Err())
+		return nil, ctx.Err()
 	case r := <-ch:
 		ln.Close()
-		if r.err != nil {
-			return nil, fmt.Errorf("transport: direct listen on %s: %w", addr, r.err)
-		}
-		return r.conn, nil
+		return r.conn, r.err
 	}
 }
 
@@ -208,6 +236,15 @@ func (t *SyncthingRelay) listenDirect(ctx context.Context, addr string) (net.Con
 // ordinary race of a dialer starting fractionally before the listener
 // it is trying to reach.
 func (t *SyncthingRelay) dialDirect(ctx context.Context, addr string) (net.Conn, error) {
+	return dialTCPRetrying(ctx, addr)
+}
+
+// dialTCPRetrying is dialDirect's body, shared with LocalDiscovery's
+// dial path once it has learned the machine's address from a local
+// announcement: that address is only ever a few milliseconds stale,
+// but the listener side may not have called Accept yet, so the same
+// short retry applies.
+func dialTCPRetrying(ctx context.Context, addr string) (net.Conn, error) {
 	d := net.Dialer{}
 	var lastErr error
 	for {
@@ -218,7 +255,7 @@ func (t *SyncthingRelay) dialDirect(ctx context.Context, addr string) (net.Conn,
 		lastErr = err
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("transport: direct dial to %s: %w (last attempt: %v)", addr, ctx.Err(), lastErr)
+			return nil, fmt.Errorf("dial to %s: %w (last attempt: %v)", addr, ctx.Err(), lastErr)
 		case <-time.After(20 * time.Millisecond):
 		}
 	}
@@ -230,33 +267,53 @@ func (t *SyncthingRelay) dialDirect(ctx context.Context, addr string) (net.Conn,
 // check runs strictly after the handshake, against a cryptographically
 // verified identity, never against anything the dialer merely claimed
 // beforehand.
-func (t *SyncthingRelay) serverHandshake(raw net.Conn, authorizedPeers []string) (Conn, error) {
+// onClose, if non-nil, is attached to the returned Conn (run once the
+// caller closes it) on success, and run immediately on any failure
+// path here, since there is then no Conn to attach it to.
+func (t *SyncthingRelay) serverHandshake(raw net.Conn, authorizedPeers []string, onClose func()) (Conn, error) {
+	return doServerHandshake(t.Cert, t.logger(), raw, authorizedPeers, onClose)
+}
+
+// doServerHandshake is serverHandshake's body, a free function so
+// LocalDiscovery can share it: the TLS handshake and Device ID checks
+// are exactly the same regardless of how the two sides found each
+// other.
+func doServerHandshake(cert tls.Certificate, logger *slog.Logger, raw net.Conn, authorizedPeers []string, onClose func()) (Conn, error) {
 	tlsConf := &tls.Config{
-		Certificates: []tls.Certificate{t.Cert},
+		Certificates: []tls.Certificate{cert},
 		ClientAuth:   tls.RequestClientCert,
 		MinVersion:   tls.VersionTLS13,
 	}
 	tlsConn := tls.Server(raw, tlsConf)
 	if err := tlsConn.Handshake(); err != nil {
 		raw.Close()
+		if onClose != nil {
+			onClose()
+		}
 		return nil, fmt.Errorf("transport: server handshake: %w", err)
 	}
 
 	state := tlsConn.ConnectionState()
 	if len(state.PeerCertificates) == 0 {
 		tlsConn.Close()
+		if onClose != nil {
+			onClose()
+		}
 		return nil, fmt.Errorf("transport: peer presented no certificate")
 	}
 	peerID := protocol.NewDeviceID(state.PeerCertificates[0].Raw)
-	t.logger().Log(context.Background(), levelTrace, "server handshake completed", "peer", peerID.String())
+	logger.Log(context.Background(), levelTrace, "server handshake completed", "peer", peerID.String())
 
 	if len(authorizedPeers) > 0 && !containsDeviceID(authorizedPeers, peerID) {
 		tlsConn.Close()
-		t.logger().Warn("rejected an unauthorized peer", "peer", peerID.String())
+		if onClose != nil {
+			onClose()
+		}
+		logger.Warn("rejected an unauthorized peer", "peer", peerID.String())
 		return nil, fmt.Errorf("transport: peer %s is not authorized", peerID)
 	}
 
-	return &conn{Conn: tlsConn, peerID: peerID.String()}, nil
+	return &conn{Conn: tlsConn, peerID: peerID.String(), onClose: onClose}, nil
 }
 
 // clientHandshake completes a TLS 1.3 client handshake on raw, then
@@ -266,8 +323,14 @@ func (t *SyncthingRelay) serverHandshake(raw net.Conn, authorizedPeers []string)
 // certificate authority; the Device ID check immediately below is the
 // real verification, exactly as syncthing-socket's own RunClient does it.
 func (t *SyncthingRelay) clientHandshake(raw net.Conn, expectedPeerID string) (Conn, error) {
+	return doClientHandshake(t.Cert, t.logger(), raw, expectedPeerID)
+}
+
+// doClientHandshake is clientHandshake's body, a free function so
+// LocalDiscovery can share it.
+func doClientHandshake(cert tls.Certificate, logger *slog.Logger, raw net.Conn, expectedPeerID string) (Conn, error) {
 	tlsConf := &tls.Config{
-		Certificates:       []tls.Certificate{t.Cert},
+		Certificates:       []tls.Certificate{cert},
 		InsecureSkipVerify: true, //nolint:gosec // verified below via the Syncthing Device ID instead.
 		MinVersion:         tls.VersionTLS13,
 	}
@@ -283,7 +346,7 @@ func (t *SyncthingRelay) clientHandshake(raw net.Conn, expectedPeerID string) (C
 		return nil, fmt.Errorf("transport: peer presented no certificate")
 	}
 	peerID := protocol.NewDeviceID(state.PeerCertificates[0].Raw)
-	t.logger().Log(context.Background(), levelTrace, "client handshake completed", "peer", peerID.String())
+	logger.Log(context.Background(), levelTrace, "client handshake completed", "peer", peerID.String())
 	if expectedPeerID != "" && peerID.String() != expectedPeerID {
 		tlsConn.Close()
 		return nil, fmt.Errorf("transport: security mismatch: connected to %s, expected %s", peerID, expectedPeerID)
@@ -347,53 +410,91 @@ func (t *SyncthingRelay) announceHTTPClient() *http.Client {
 
 // listenRelay connects to the relay pool, announces this identity's
 // address there to discovery, and returns the raw connection from the
-// first session invitation it receives.
-func (t *SyncthingRelay) listenRelay(ctx context.Context) (net.Conn, error) {
+// first session invitation it receives, along with a cleanup function
+// the caller must call exactly once when it is done with that
+// connection (on any error return here, listenRelay has already called
+// it itself, so there is nothing left for the caller to do).
+//
+// The relay server drops every session belonging to a device the
+// moment that device's own control connection to the relay
+// disconnects (strelaysrv's listener.go calls dropSessions(id) on
+// exactly that event, "to realize the client is no longer there
+// faster"), including a session that only just finished being joined.
+// An earlier version of this function tore its control connection
+// (cancelRelay) down as soon as it had joined one session, via a plain
+// defer; that raced the relay server's own cleanup against the
+// still-pending TLS handshake on the connection just handed back,
+// which is exactly what a real deployment's "server handshake: EOF"
+// on nearly every attempt turned out to be (confirmed by reading
+// strelaysrv's source after a human with hypervisor access captured
+// that failure live against the actual public relay pool). The control
+// connection must instead stay registered for as long as the session
+// itself is in use, not merely until it is joined; the returned
+// cleanup is wired into the eventual Conn's Close() by the caller, not
+// invoked here on the success path.
+func (t *SyncthingRelay) listenRelay(ctx context.Context) (raw net.Conn, cleanup func(), err error) {
 	u, err := url.Parse(t.relayPoolURL())
 	if err != nil {
-		return nil, fmt.Errorf("transport: invalid relay pool URL: %w", err)
+		return nil, nil, fmt.Errorf("transport: invalid relay pool URL: %w", err)
 	}
 
 	rc, err := client.NewClient(u, []tls.Certificate{t.Cert}, defaultRelayTimeout)
 	if err != nil {
-		return nil, fmt.Errorf("transport: creating relay client: %w", err)
+		return nil, nil, fmt.Errorf("transport: creating relay client: %w", err)
 	}
 	t.logger().Log(ctx, levelTrace, "relay client created", "pool", t.relayPoolURL())
 
 	relayCtx, cancelRelay := context.WithCancel(ctx)
-	defer cancelRelay()
-	go rc.Serve(relayCtx) //nolint:errcheck // surfaced below via rc.Error, and relayCtx is cancelled on return.
+	go rc.Serve(relayCtx) //nolint:errcheck // surfaced below via rc.Error, and relayCtx is cancelled by cleanup.
+
+	// stopAnnounce is filled in once the announce loop actually starts;
+	// cleanup must tolerate being called before that.
+	var stopAnnounce func()
+	cleanup = func() {
+		if stopAnnounce != nil {
+			stopAnnounce()
+		}
+		cancelRelay()
+	}
 
 	for rc.URI() == nil {
 		if err := rc.Error(); err != nil {
-			return nil, fmt.Errorf("transport: relay client: %w", err)
+			cleanup()
+			return nil, nil, fmt.Errorf("transport: relay client: %w", err)
 		}
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("transport: waiting for relay connection: %w", ctx.Err())
+			cleanup()
+			return nil, nil, fmt.Errorf("transport: waiting for relay connection: %w", ctx.Err())
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
 	t.logger().Log(ctx, levelTrace, "joined relay", "uri", rc.URI().String())
 
-	stopAnnounce := t.announceLoop(relayCtx, func() []string {
+	stopAnnounce = t.announceLoop(relayCtx, func() []string {
 		if uri := rc.URI(); uri != nil {
 			return []string{uri.String()}
 		}
 		return nil
 	})
-	defer stopAnnounce()
 
 	t.logger().Log(ctx, levelTrace, "waiting for a session invitation")
 	select {
 	case inv, ok := <-rc.Invitations():
 		if !ok {
-			return nil, fmt.Errorf("transport: relay invitations channel closed")
+			cleanup()
+			return nil, nil, fmt.Errorf("transport: relay invitations channel closed")
 		}
 		t.logger().Log(ctx, levelTrace, "session invitation received")
-		return client.JoinSession(ctx, inv)
+		raw, err := client.JoinSession(ctx, inv)
+		if err != nil {
+			cleanup()
+			return nil, nil, err
+		}
+		return raw, cleanup, nil
 	case <-ctx.Done():
-		return nil, fmt.Errorf("transport: waiting for a session invitation: %w", ctx.Err())
+		cleanup()
+		return nil, nil, fmt.Errorf("transport: waiting for a session invitation: %w", ctx.Err())
 	}
 }
 
