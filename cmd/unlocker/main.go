@@ -154,14 +154,30 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	fmt.Fprintf(stdout, "this machine's transport id: %s\n", protocol.NewDeviceID(cert.Certificate[0]))
-	if machineIdentityIsNew {
+	if shouldWarnAboutNewIdentity(machineIdentityIsNew, *machineKeyFile) {
 		fmt.Fprintf(stderr,
-			"unlocker: created a new transport identity at %s, so the id above is this host's, not the enrolled device's.\n"+
-				"unlocker: if --device is a disk image for another machine, pass --machine-key-file pointing into that image\n"+
-				"unlocker: and re-run, or the key holder will pair against an id no machine ever announces.\n",
+			"unlocker: created a new transport identity at %s, so the id above is this host's.\n"+
+				"unlocker: if --device is a disk image for another machine, pass --machine-key-file pointing\n"+
+				"unlocker: into that image and re-run, or the key holder will pair against an id no machine\n"+
+				"unlocker: ever announces.\n",
 			*machineKeyFile)
 	}
 	return 0
+}
+
+// shouldWarnAboutNewIdentity reports whether enrol has just invented a
+// machine identity in a way the caller probably did not intend.
+//
+// Creating one at a path the caller named is exactly what they asked
+// for, and the id printed then belongs to the enrolled device.
+// Creating one at the default path while enrolling somebody else's
+// disk image is the mistake worth catching: the id printed is this
+// host's, and a key holder paired against it waits for a machine that
+// announces a different one. enrol cannot tell the two situations
+// apart from --device alone, so it goes by whether the caller said
+// where the identity lives.
+func shouldWarnAboutNewIdentity(isNew bool, keyFile string) bool {
+	return isNew && keyFile == defaultMachineKeyFile
 }
 
 // generateConfirmCode picks a random 6-digit code, printed on this

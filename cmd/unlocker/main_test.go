@@ -255,8 +255,12 @@ func TestRunEnrolWarnsWhenItCreatesAMachineIdentity(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("first enrol: exit %d, stderr %q", code, stderr)
 	}
-	if !strings.Contains(stderr, "--machine-key-file") {
-		t.Errorf("creating a new machine identity should say so and name the flag, got stderr %q", stderr)
+	// A path the caller named explicitly, as here, is not a mistake:
+	// creating an identity there is what they asked for and the
+	// printed id is the enrolled device's. Warning anyway is a false
+	// alarm, which is what this did the first time it fired for real.
+	if strings.Contains(stderr, "--machine-key-file") {
+		t.Errorf("an explicitly named key file should not be warned about, got stderr %q", stderr)
 	}
 
 	// Second run loads the identity it just wrote, which is the
@@ -268,5 +272,28 @@ func TestRunEnrolWarnsWhenItCreatesAMachineIdentity(t *testing.T) {
 	}
 	if strings.Contains(stderr, "--machine-key-file") {
 		t.Errorf("loading an existing identity should be quiet, got stderr %q", stderr)
+	}
+}
+
+// The footgun itself, which cannot be exercised through the CLI
+// without writing to the real /etc: enrolling a disk image for another
+// machine, without saying where that machine's identity lives, prints
+// this host's id as though it were the machine's.
+func TestWarnsOnlyWhenTheIdentityPathWasNotChosen(t *testing.T) {
+	cases := []struct {
+		name    string
+		isNew   bool
+		keyFile string
+		want    bool
+	}{
+		{"created at the default path", true, defaultMachineKeyFile, true},
+		{"created where the caller asked", true, "/tmp/some-image/etc/unlocker/machine.pem", false},
+		{"loaded an existing default", false, defaultMachineKeyFile, false},
+		{"loaded an existing explicit one", false, "/tmp/some-image/etc/unlocker/machine.pem", false},
+	}
+	for _, c := range cases {
+		if got := shouldWarnAboutNewIdentity(c.isNew, c.keyFile); got != c.want {
+			t.Errorf("%s: shouldWarnAboutNewIdentity = %v, want %v", c.name, got, c.want)
+		}
 	}
 }
