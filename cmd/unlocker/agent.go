@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/muelli/synctang/mrcore"
 	"github.com/muelli/synctang/mrcore/transport"
@@ -131,6 +132,19 @@ func runAgentOnce(ctx context.Context, device string, machineCert tls.Certificat
 			result.Error = outcome.Error()
 		}
 		_ = mrcore.WriteMessage(conn, result)
+		// Writing is not delivering. Closing immediately after the
+		// write tears down the relay control connection, and the relay
+		// server drops every session belonging to a device the instant
+		// that happens, so the verdict can be discarded in transit by
+		// the very act of finishing with the connection. Seen exactly
+		// that way: the machine unlocked and said so, and the key
+		// holder was told the machine never reported an outcome.
+		//
+		// So wait for the key holder to close first, which it does as
+		// soon as it has read the verdict, and give up after a moment
+		// if it does not: this is the last thing either side has to
+		// say, and the unlock has already happened regardless.
+		waitForPeerClose(conn, resultLingerTimeout)
 		return outcome
 	}
 
@@ -165,6 +179,34 @@ func runAgentOnce(ctx context.Context, device string, machineCert tls.Certificat
 	}
 
 	return report(nil)
+}
+
+// resultLingerTimeout bounds how long the agent waits for the key
+// holder to finish reading its verdict before closing regardless.
+const resultLingerTimeout = 3 * time.Second
+
+// waitForPeerClose blocks until the peer closes the connection or
+// timeout elapses, whichever is first.
+//
+// The read is expected to fail: what is being waited for is the peer
+// going away, which is how it signals that it has what it needs. The
+// goroutine outlives this function when the timeout wins, and is
+// released by the caller's own Close.
+func waitForPeerClose(conn io.Reader, timeout time.Duration) {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		buf := make([]byte, 1)
+		for {
+			if _, err := conn.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(timeout):
+	}
 }
 
 // verifyPassphrase checks that p actually opens device before it is ever

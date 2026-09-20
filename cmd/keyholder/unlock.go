@@ -104,7 +104,7 @@ func runUnlockOnce(ctx context.Context, s []byte, cert tls.Certificate, machineI
 	// delivers it nowhere.
 	var result mrcore.RecoverResult
 	if err := mrcore.ReadMessage(conn, &result); err != nil {
-		return fmt.Errorf("answer sent, but the machine did not report the outcome: %w", err)
+		return fmt.Errorf("answer sent, but the machine did not report the outcome, so it may or may not have unlocked: %w", err)
 	}
 	if !result.OK {
 		return fmt.Errorf("the machine could not use the answer: %s", result.Error)
