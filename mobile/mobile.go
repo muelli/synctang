@@ -277,6 +277,47 @@ func (s *Session) Connect() error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.timeoutSeconds)*time.Second)
 	defer cancel()
 
+	// Retry the whole attempt, not just the dial.
+	//
+	// A relay session can die between being established and being
+	// used, so both sides see EOF partway through the exchange rather
+	// than a dial failure: the machine writes Hello and its request
+	// into a socket nobody is reading, and this side reads EOF where
+	// Hello should be. A fresh attempt is a fresh, independent race on
+	// both sides, so retrying converges where repeating does not.
+	//
+	// cmd/keyholder has done this since the same failure was found
+	// against a real deployment; the app did not, so against the real
+	// relay pool the phone usually failed where the laptop, dialling
+	// the same machine at the same moment, did not. Confirmed on real
+	// hardware: "reading hello: EOF" here at the same time as
+	// "reading recover response: EOF" on the machine, with no
+	// unauthorized-peer rejection on either side.
+	var lastErr error
+	for {
+		lastErr = s.connectOnceLocked(ctx, cert)
+		if lastErr == nil {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("mobile: gave up dialling %s after %ds (last attempt: %w)",
+				s.machineID, s.timeoutSeconds, lastErr)
+		case <-time.After(connectRetryInterval):
+		}
+	}
+}
+
+// connectRetryInterval is how long Connect waits between attempts.
+// Matches cmd/keyholder's unlockRetryInterval: fast enough not to
+// waste the caller's timeout budget, slow enough not to hammer the
+// relay pool.
+const connectRetryInterval = 2 * time.Second
+
+// connectOnceLocked is one attempt: dial, read Hello, read whatever
+// follows it. Any failure leaves the session with no connection, so
+// the next attempt starts clean.
+func (s *Session) connectOnceLocked(ctx context.Context, cert tls.Certificate) error {
 	tr := transport.NewSyncthingRelay(cert)
 	conn, err := tr.Dial(ctx, transport.DialOptions{
 		PeerID:     s.machineID,
@@ -297,36 +338,56 @@ func (s *Session) Connect() error {
 	return s.readChallengeLocked()
 }
 
-// readChallengeLocked reads the one message that follows Hello. The
-// machine sends either a confirm-code challenge or the recovery
-// request, and the MR-1 framing carries no message type tag, so the
-// two are told apart by which fields the JSON actually names: a
-// confirm-code challenge has a code and no point, a recovery request
-// has a point and no code.
+// readChallengeLocked reads the ConfirmCodeChallenge that always
+// follows Hello, and, when no code is required, goes straight on to
+// the recovery request behind it.
+//
+// The machine sends a ConfirmCodeChallenge in this position whether or
+// not it was started with --confirm-code; an empty Code means "not
+// required". That is the project's convention, stated in
+// cmd/keyholder/unlock.go and implemented in cmd/unlocker/agent.go:
+// the messages are told apart by their fixed position in the exchange,
+// because the MR-1 framing carries no type tag.
+//
+// This used to guess instead, by looking at which fields the decoded
+// JSON happened to name, and an empty ConfirmCodeChallenge names
+// neither a code nor a point. So against any machine not running in
+// confirm-code mode, which is the default and the ordinary case, the
+// app failed with "machine sent neither a confirm code nor a recovery
+// request" and could never unlock anything. Found on real hardware
+// against a real machine; every test passed, because the fake machine
+// in mobile_test.go was the one thing in the project that did not
+// follow the convention either.
 func (s *Session) readChallengeLocked() error {
-	var msg struct {
-		Code string `json:"code"`
-		Kid  []byte `json:"kid"`
-		X    []byte `json:"X"`
-	}
-	if err := mrcore.ReadMessage(s.conn, &msg); err != nil {
+	var challenge mrcore.ConfirmCodeChallenge
+	if err := mrcore.ReadMessage(s.conn, &challenge); err != nil {
 		s.closeLocked()
-		return fmt.Errorf("mobile: reading challenge: %w", err)
+		return fmt.Errorf("mobile: reading confirm code challenge: %w", err)
 	}
+	if challenge.Code != "" {
+		s.confirmCode = challenge.Code
+		return nil
+	}
+	s.confirmCode = ""
+	return s.readRecoverRequestLocked()
+}
 
-	switch {
-	case len(msg.X) > 0:
-		s.confirmCode = ""
-		s.kid = msg.Kid
-		s.x = msg.X
-		return nil
-	case msg.Code != "":
-		s.confirmCode = msg.Code
-		return nil
-	default:
+// readRecoverRequestLocked reads the recovery request, which follows
+// either the empty confirm-code challenge or the key holder's answer
+// to a real one.
+func (s *Session) readRecoverRequestLocked() error {
+	var req mrcore.RecoverRequest
+	if err := mrcore.ReadMessage(s.conn, &req); err != nil {
 		s.closeLocked()
-		return errors.New("mobile: machine sent neither a confirm code nor a recovery request")
+		return fmt.Errorf("mobile: reading recovery request: %w", err)
 	}
+	if len(req.X) == 0 {
+		s.closeLocked()
+		return errors.New("mobile: machine sent a recovery request with no challenge point")
+	}
+	s.kid = req.Kid
+	s.x = req.X
+	return nil
 }
 
 // MachineName is the name the machine gave for itself in its Hello. It
@@ -380,7 +441,7 @@ func (s *Session) SubmitConfirmCode(code string) error {
 		return fmt.Errorf("mobile: sending confirm code: %w", err)
 	}
 	s.confirmCode = ""
-	return s.readChallengeLocked()
+	return s.readRecoverRequestLocked()
 }
 
 // RequestKid identifies which enrolled key holder the machine is

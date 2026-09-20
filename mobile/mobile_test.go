@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/muelli/synctang/mrcore"
 	"github.com/muelli/synctang/mrcore/transport"
@@ -186,11 +187,22 @@ func runSession(t *testing.T, v vectors, withConfirmCode bool) {
 			machineErr <- err
 			return
 		}
+		// Unconditional, exactly as cmd/unlocker/agent.go does it: the
+		// machine always sends a ConfirmCodeChallenge in this position
+		// and an empty Code means "not required". This used to be sent
+		// only when withConfirmCode was set, which made the fake
+		// machine the one thing in the project that did not follow the
+		// convention, and hid a bug that made the app unable to unlock
+		// any machine not running in confirm-code mode.
+		code := ""
 		if withConfirmCode {
-			if err := mrcore.WriteMessage(conn, mrcore.ConfirmCodeChallenge{Code: confirmCode}); err != nil {
-				machineErr <- err
-				return
-			}
+			code = confirmCode
+		}
+		if err := mrcore.WriteMessage(conn, mrcore.ConfirmCodeChallenge{Code: code}); err != nil {
+			machineErr <- err
+			return
+		}
+		if withConfirmCode {
 			var answer mrcore.ConfirmCodeResponse
 			if err := mrcore.ReadMessage(conn, &answer); err != nil {
 				machineErr <- err
@@ -360,3 +372,95 @@ var (
 type errString string
 
 func (e errString) Error() string { return string(e) }
+
+// A relay session can die between being established and being used,
+// and both sides then see EOF partway through the exchange rather than
+// a dial failure. The laptop client survives that by retrying the
+// whole attempt (cmd/keyholder's runUnlock loop); a fresh attempt is a
+// fresh, independent race on both sides, so retrying converges rather
+// than repeating the same mismatch.
+//
+// The app did not retry. It made exactly one attempt and showed the
+// raw error, so against a real machine over the real relay pool it
+// usually failed while the laptop against the same machine did not.
+// Seen on real hardware: "mobile: reading hello: EOF" on the phone at
+// the same moment as "reading recover response: EOF" on the machine,
+// with no unauthorized-peer rejection on either side.
+func TestSessionConnectRetriesUntilTheMachineAnswers(t *testing.T) {
+	v := loadVectors(t)
+
+	const (
+		addr        = "127.0.0.1:34519"
+		phoneSeed   = "retry test phone seed"
+		machineSeed = "retry test machine seed"
+		machineName = "flaky machine"
+		failures    = 2
+	)
+
+	phoneID, err := DeviceIDForSeed(phoneSeed)
+	if err != nil {
+		t.Fatalf("DeviceIDForSeed: %v", err)
+	}
+	machineID, err := DeviceIDForSeed(machineSeed)
+	if err != nil {
+		t.Fatalf("DeviceIDForSeed: %v", err)
+	}
+	machineCert, err := socket.GenerateDeterministicCert(machineSeed)
+	if err != nil {
+		t.Fatalf("machine cert: %v", err)
+	}
+
+	served := make(chan int, 1)
+	go func() {
+		tr := transport.NewSyncthingRelay(machineCert)
+		for attempt := 0; ; attempt++ {
+			conn, err := tr.Listen(context.Background(), transport.ListenOptions{
+				AuthorizedPeers: []string{phoneID},
+				DirectAddr:      addr,
+			})
+			if err != nil {
+				return
+			}
+			// The first few attempts die the way a dropped relay
+			// session does: the peer is gone, nothing is written.
+			if attempt < failures {
+				conn.Close()
+				continue
+			}
+			_ = mrcore.WriteMessage(conn, mrcore.Hello{Name: machineName})
+			_ = mrcore.WriteMessage(conn, mrcore.ConfirmCodeChallenge{Code: ""})
+			_ = mrcore.WriteMessage(conn, mrcore.RecoverRequest{
+				Kid: mustHex(t, v.Enrol.Kid),
+				X:   mustHex(t, v.Recover.X),
+			})
+			served <- attempt
+			// Hold the connection open so the client can read it.
+			time.Sleep(2 * time.Second)
+			conn.Close()
+			return
+		}
+	}()
+
+	s := NewSession(machineID, phoneSeed)
+	s.SetDirectAddr(addr)
+	s.SetTimeoutSeconds(30)
+	if err := s.Connect(); err != nil {
+		t.Fatalf("Connect should have retried past the dropped sessions, got %v", err)
+	}
+	defer s.Close()
+
+	if !s.HasRequest() {
+		t.Fatal("expected a recovery request after a successful retry")
+	}
+	if s.MachineName() != machineName {
+		t.Errorf("MachineName = %q, want %q", s.MachineName(), machineName)
+	}
+	select {
+	case attempt := <-served:
+		if attempt != failures {
+			t.Errorf("machine served attempt %d, want %d", attempt, failures)
+		}
+	default:
+		t.Fatal("machine never served a full exchange")
+	}
+}
