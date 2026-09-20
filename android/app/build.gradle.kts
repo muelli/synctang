@@ -56,7 +56,25 @@ android {
     }
 
     buildTypes {
+        // -Psynctang.noBiometric=true builds an app whose key is not
+        // gated behind a biometric prompt, so that the unlock flow can
+        // be driven end to end by an automated test on an emulator,
+        // which cannot present a fingerprint. It is a testing
+        // affordance and nothing else.
+        //
+        // It is honoured in debug builds only. The release branch below
+        // hardcodes false regardless of what the property says, so
+        // there is no combination of flags that produces a release APK
+        // whose disk-unlocking key can be used without authentication.
+        // The app checks BuildConfig.DEBUG as well at the point of use,
+        // so removing that guard takes two deliberate edits, not one.
+        val noBiometric = (findProperty("synctang.noBiometric") as String?)?.toBoolean() ?: false
+
+        getByName("debug") {
+            buildConfigField("boolean", "NO_BIOMETRIC", noBiometric.toString())
+        }
         release {
+            buildConfigField("boolean", "NO_BIOMETRIC", "false")
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
@@ -71,6 +89,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         // Pinned against the Kotlin version in the root build file;

@@ -58,7 +58,12 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val gate = BiometricGateImpl(this)
+        // The gate is an interface, so test mode swaps it rather than
+        // threading a flag through the unlock flow: there is then no
+        // branch inside the flow that could behave differently in the
+        // build people actually use.
+        val gate: BiometricGate =
+            if (TestMode.noBiometric) OpenGate else BiometricGateImpl(this)
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 Surface(modifier = Modifier.fillMaxSize()) {

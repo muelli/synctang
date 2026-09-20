@@ -81,7 +81,13 @@ data class Identity(
 class UnlockViewModel(application: Application) : AndroidViewModel(application) {
 
     private val store = PairingStore(application)
-    private val key = KeyHolderKey()
+    // Alias and gating both come from TestMode, together: an ungated
+    // key lives under its own alias so it can never be mistaken for
+    // the real one.
+    private val key = KeyHolderKey(
+        alias = TestMode.aliasFor(TestMode.noBiometric),
+        requireUserAuthentication = !TestMode.noBiometric,
+    )
 
     private val _state = MutableStateFlow<UnlockUiState>(UnlockUiState.Working(Machine("", "")))
     val state: StateFlow<UnlockUiState> = _state.asStateFlow()
