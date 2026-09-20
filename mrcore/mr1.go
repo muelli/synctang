@@ -50,7 +50,7 @@ func Enrol(g Group, s []byte) (p []byte, rec Recipient, err error) {
 	if err != nil {
 		return nil, Recipient{}, fmt.Errorf("mrcore: enrol: %w", err)
 	}
-	defer wipe(c)
+	defer Wipe(c)
 
 	C, err := g.ScalarBaseMult(c)
 	if err != nil {
@@ -61,7 +61,7 @@ func Enrol(g Group, s []byte) (p []byte, rec Recipient, err error) {
 	if err != nil {
 		return nil, Recipient{}, fmt.Errorf("mrcore: enrol: %w", err)
 	}
-	defer wipe(K)
+	defer Wipe(K)
 
 	kid := sha256.Sum256(s)
 
@@ -69,7 +69,7 @@ func Enrol(g Group, s []byte) (p []byte, rec Recipient, err error) {
 	if err != nil {
 		return nil, Recipient{}, fmt.Errorf("mrcore: enrol: %w", err)
 	}
-	defer wipe(k)
+	defer Wipe(k)
 
 	nonce := make([]byte, nonceLen)
 	if _, err := rand.Read(nonce); err != nil {
@@ -132,13 +132,13 @@ func ChallengeStart(g Group, c []byte) (e, x []byte, err error) {
 
 	E, err := g.ScalarBaseMult(e)
 	if err != nil {
-		wipe(e)
+		Wipe(e)
 		return nil, nil, fmt.Errorf("mrcore: challenge start: %w", err)
 	}
 
 	X, err := g.Add(c, E)
 	if err != nil {
-		wipe(e)
+		Wipe(e)
 		return nil, nil, fmt.Errorf("mrcore: challenge start: %w", err)
 	}
 
@@ -150,13 +150,13 @@ func ChallengeStart(g Group, c []byte) (e, x []byte, err error) {
 // keyholder or Tang's server does. e is the ephemeral scalar from the
 // matching ChallengeStart call; it is wiped before returning.
 func FinishFullPoint(g Group, e []byte, rec Recipient, y []byte) (p []byte, err error) {
-	defer wipe(e)
+	defer Wipe(e)
 
 	eS, err := g.ScalarMult(rec.S, e)
 	if err != nil {
 		return nil, fmt.Errorf("mrcore: finish: %w", err)
 	}
-	defer wipe(eS)
+	defer Wipe(eS)
 
 	return finishWithY(g, rec, eS, y)
 }
@@ -167,13 +167,13 @@ func FinishFullPoint(g Group, e []byte, rec Recipient, y []byte) (p []byte, err 
 // turn; the AEAD tag picks the right one. e is the ephemeral scalar
 // from the matching ChallengeStart call; it is wiped before returning.
 func FinishXOnly(g Group, e []byte, rec Recipient, xOnly []byte) (p []byte, err error) {
-	defer wipe(e)
+	defer Wipe(e)
 
 	eS, err := g.ScalarMult(rec.S, e)
 	if err != nil {
 		return nil, fmt.Errorf("mrcore: finish: %w", err)
 	}
-	defer wipe(eS)
+	defer Wipe(eS)
 
 	evenY, oddY, err := g.LiftX(xOnly)
 	if err != nil {
@@ -200,13 +200,13 @@ func finishWithY(g Group, rec Recipient, eS, y []byte) (p []byte, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("mrcore: finish: %w", err)
 	}
-	defer wipe(Kp)
+	defer Wipe(Kp)
 
 	k, err := deriveKey(g, Kp, rec.Kid)
 	if err != nil {
 		return nil, fmt.Errorf("mrcore: finish: %w", err)
 	}
-	defer wipe(k)
+	defer Wipe(k)
 
 	secret, err := aeadOpen(k, rec.Nonce, rec.Ciphertext)
 	if err != nil {
@@ -223,7 +223,7 @@ func deriveKey(g Group, k, kid []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("deriving key: %w", err)
 	}
-	defer wipe(xK)
+	defer Wipe(xK)
 
 	key, err := hkdf.Key(sha256.New, xK, kid, hkdfInfo, 32)
 	if err != nil {
@@ -268,11 +268,16 @@ func newGCM(key []byte) (cipher.AEAD, error) {
 	return gcm, nil
 }
 
-// wipe zeroes b in place. It is best effort: Go's garbage collector may
-// have already copied the bytes elsewhere, but zeroing the slice we
-// still hold is cheap and removes one copy from memory promptly.
-func wipe(b []byte) {
-	for i := range b {
-		b[i] = 0
-	}
+// Wipe zeroes a slice that held a secret.
+//
+// The body is the builtin, which does exactly this; the function
+// exists for two reasons that a bare clear() call would lose. It says
+// at the call site that the slice held key material rather than that
+// it is being reused, and it is one place to change if this ever
+// needs to become something the compiler is forbidden to elide. Go
+// offers no explicit_bzero, so neither this nor a hand-written loop
+// is guaranteed to survive optimisation; pretending otherwise would
+// be worse than knowing it.
+func Wipe(b []byte) {
+	clear(b)
 }

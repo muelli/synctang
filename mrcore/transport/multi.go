@@ -3,6 +3,7 @@
 package transport
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -194,10 +195,7 @@ func (m *Multi) race(ctx context.Context, retryFailed bool, attempt func(context
 const defaultMultiRetryInterval = 2 * time.Second
 
 func (m *Multi) retryInterval() time.Duration {
-	if m.RetryInterval != 0 {
-		return m.RetryInterval
-	}
-	return defaultMultiRetryInterval
+	return cmp.Or(m.RetryInterval, defaultMultiRetryInterval)
 }
 
 // cancelOnCloseConn releases the winning attempt's context when the

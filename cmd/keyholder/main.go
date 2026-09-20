@@ -9,6 +9,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/muelli/synctang/mrcore"
 	"io"
 	"os"
 	"time"
@@ -90,7 +91,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "keyholder: %v\n", err)
 		return 1
 	}
-	defer wipe(s)
+	defer mrcore.Wipe(s)
 
 	// The transport identity is created alongside the MR-1 key: both
 	// together are "this key holder's identity". Unlike the scalar, it is
@@ -172,7 +173,7 @@ func runUnlock(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "keyholder: %v\n", err)
 		return 1
 	}
-	defer wipe(s)
+	defer mrcore.Wipe(s)
 
 	cert, err := transport.LoadOrCreateCert(*transportKeyFile)
 	if err != nil {
@@ -222,9 +223,3 @@ const unlockRetryInterval = 2 * time.Second
 // covers the relay pool's own connection churn (see the transport
 // package's dialRelay comment) with room to spare.
 const defaultUnlockTimeout = 2 * time.Minute
-
-func wipe(b []byte) {
-	for i := range b {
-		b[i] = 0
-	}
-}

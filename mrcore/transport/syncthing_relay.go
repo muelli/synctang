@@ -4,6 +4,7 @@ package transport
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -406,27 +407,18 @@ func containsDeviceID(ids []string, id protocol.DeviceID) bool {
 }
 
 func (t *SyncthingRelay) relayPoolURL() string {
-	if t.RelayPoolURL != "" {
-		return t.RelayPoolURL
-	}
-	return defaultRelayPoolURL
+	return cmp.Or(t.RelayPoolURL, defaultRelayPoolURL)
 }
 
 func (t *SyncthingRelay) discoveryURL() string {
-	if t.DiscoveryURL != "" {
-		return t.DiscoveryURL
-	}
-	return socket.DefaultDiscoveryURL
+	return cmp.Or(t.DiscoveryURL, socket.DefaultDiscoveryURL)
 }
 
 // relayLossGrace is how long this listener tolerates having no relay
 // before giving up on the attempt, so that the caller can start a
 // fresh one. Zero means defaultRelayLossGrace.
 func (t *SyncthingRelay) relayLossGrace() time.Duration {
-	if t.RelayLossGrace != 0 {
-		return t.RelayLossGrace
-	}
-	return defaultRelayLossGrace
+	return cmp.Or(t.RelayLossGrace, defaultRelayLossGrace)
 }
 
 // sameAddresses reports whether two address lists are equal, order
@@ -439,10 +431,7 @@ func sameAddresses(a, b []string) bool {
 // announceRefresh is how often an unchanged record is republished.
 // Zero means defaultAnnounceRefresh.
 func (t *SyncthingRelay) announceRefresh() time.Duration {
-	if t.AnnounceRefresh != 0 {
-		return t.AnnounceRefresh
-	}
-	return defaultAnnounceRefresh
+	return cmp.Or(t.AnnounceRefresh, defaultAnnounceRefresh)
 }
 
 func (t *SyncthingRelay) announceInterval() time.Duration {

@@ -3,6 +3,7 @@
 package transport
 
 import (
+	"cmp"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -95,24 +96,15 @@ func (l *LocalDiscovery) logger() *slog.Logger {
 }
 
 func (l *LocalDiscovery) groupAddr() string {
-	if l.GroupAddr != "" {
-		return l.GroupAddr
-	}
-	return defaultLocalGroupAddr
+	return cmp.Or(l.GroupAddr, defaultLocalGroupAddr)
 }
 
 func (l *LocalDiscovery) port() int {
-	if l.Port != 0 {
-		return l.Port
-	}
-	return defaultLocalPort
+	return cmp.Or(l.Port, defaultLocalPort)
 }
 
 func (l *LocalDiscovery) announceInterval() time.Duration {
-	if l.AnnounceInterval != 0 {
-		return l.AnnounceInterval
-	}
-	return defaultLocalAnnounceInterval
+	return cmp.Or(l.AnnounceInterval, defaultLocalAnnounceInterval)
 }
 
 func (l *LocalDiscovery) groupUDPAddr() *net.UDPAddr {
@@ -363,26 +355,18 @@ func (l *LocalDiscovery) waitForAnnouncement(ctx context.Context, peerID string)
 	}()
 
 	// ReadFromUDP below has no ctx of its own, so cancellation is
-	// implemented the same way as acceptWithContext: closing the
-	// sockets from a second goroutine unblocks the reads. Whichever of
-	// the two Close calls (this one, or the deferred one above) runs
-	// second is a harmless no-op.
-	stopWatching := make(chan struct{})
-	watchDone := make(chan struct{})
-	go func() {
-		defer close(watchDone)
-		select {
-		case <-ctx.Done():
-			for _, c := range conns {
-				c.Close()
-			}
-		case <-stopWatching:
+	// implemented by closing the sockets, which unblocks the reads.
+	// context.AfterFunc does the bookkeeping: it runs the close if ctx
+	// is cancelled, and the stop it returns cancels that arrangement
+	// when this function leaves first. Whichever of the two Close
+	// calls (this one, or the deferred one above) runs second is a
+	// harmless no-op.
+	stopWatching := context.AfterFunc(ctx, func() {
+		for _, c := range conns {
+			c.Close()
 		}
-	}()
-	defer func() {
-		close(stopWatching)
-		<-watchDone
-	}()
+	})
+	defer stopWatching()
 
 	// One reader per interface, first match wins. The channel is
 	// buffered for every reader so that the losers, which nobody is

@@ -5,6 +5,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/subtle"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -69,6 +70,25 @@ func runAgentOnce(ctx context.Context, device string, machineCert tls.Certificat
 	}
 	defer conn.Close()
 
+	return runExchange(ctx, conn, tok, device, machineName, confirmCode, askPasswordDir)
+}
+
+// runExchange is everything that happens once a key holder is on the
+// other end of conn: greet it, put the confirm code to it if there is
+// one, ask it to answer a challenge, check what comes back actually
+// opens the volume, hand that to systemd, and tell the key holder how
+// it went.
+//
+// Split out from runAgentOnce because the two halves fail for quite
+// different reasons and want reading separately: everything above is
+// this machine getting ready and finding somebody to talk to, and
+// everything here is a conversation with a party that may be lying.
+func runExchange(
+	ctx context.Context,
+	conn transport.Conn,
+	tok mrcore.Token,
+	device, machineName, confirmCode, askPasswordDir string,
+) error {
 	// Bound the exchange itself, not just the wait for a connection.
 	//
 	// Every read below is a blocking read with no deadline of its own,
@@ -88,15 +108,10 @@ func runAgentOnce(ctx context.Context, device string, machineCert tls.Certificat
 	// type it in.
 	exchangeCtx, cancelExchange := context.WithTimeout(ctx, exchangeTimeout)
 	defer cancelExchange()
-	exchangeDone := make(chan struct{})
-	defer close(exchangeDone)
-	go func() {
-		select {
-		case <-exchangeCtx.Done():
-			conn.Close()
-		case <-exchangeDone:
-		}
-	}()
+	// Closing the connection is what unblocks a read; context.AfterFunc
+	// arranges that for when the budget runs out, and the stop it
+	// returns unwinds the arrangement when the exchange finishes first.
+	defer context.AfterFunc(exchangeCtx, func() { conn.Close() })()
 
 	var matched *mrcore.Recipient
 	for i := range tok.Recipients {
@@ -121,7 +136,7 @@ func runAgentOnce(ctx context.Context, device string, machineCert tls.Certificat
 		if err := mrcore.ReadMessage(conn, &resp); err != nil {
 			return fmt.Errorf("unlocker: reading confirm code response: %w", err)
 		}
-		if resp.Code != confirmCode {
+		if !confirmCodeMatches(resp.Code, confirmCode) {
 			return fmt.Errorf("unlocker: wrong confirm code from %s", conn.PeerID())
 		}
 	}
@@ -130,7 +145,7 @@ func runAgentOnce(ctx context.Context, device string, machineCert tls.Certificat
 	if err != nil {
 		return fmt.Errorf("unlocker: starting challenge: %w", err)
 	}
-	defer wipe(e)
+	defer mrcore.Wipe(e)
 
 	if err := mrcore.WriteMessage(conn, mrcore.RecoverRequest{Kid: matched.Kid, X: X}); err != nil {
 		return fmt.Errorf("unlocker: sending recover request: %w", err)
@@ -189,7 +204,7 @@ func runAgentOnce(ctx context.Context, device string, machineCert tls.Certificat
 	if err != nil {
 		return report(fmt.Errorf("unlocker: finishing recovery: %w", err))
 	}
-	defer wipe(P)
+	defer mrcore.Wipe(P)
 
 	// keyMaterial, not P itself, is what actually unlocked the keyslot
 	// (enrolRecipient adds the hex form, never the raw secret) and
@@ -197,7 +212,7 @@ func runAgentOnce(ctx context.Context, device string, machineCert tls.Certificat
 	// raw random secret cannot go through systemd's ask-password
 	// protocol safely.
 	keyMaterial := luksKeyMaterial(P)
-	defer wipe(keyMaterial)
+	defer mrcore.Wipe(keyMaterial)
 
 	if err := verifyPassphrase(device, keyMaterial); err != nil {
 		return report(fmt.Errorf("unlocker: recovered secret does not open %s: %w", device, err))
@@ -208,6 +223,26 @@ func runAgentOnce(ctx context.Context, device string, machineCert tls.Certificat
 	}
 
 	return report(nil)
+}
+
+// confirmCodeMatches compares a relayed confirm code against the real
+// one without leaking, through how long it takes, how much of it was
+// right.
+//
+// The code exists for one situation: somebody has the key holder but
+// cannot see this machine's console, which is to say a stolen or
+// borrowed phone. That is exactly the attacker who gets to make
+// repeated attempts, since the same code is reused for every
+// connection during one agent run, and a plain string comparison
+// stops at the first differing byte. Six digits guessed blind is a
+// million tries; six digits guessed a character at a time is sixty.
+func confirmCodeMatches(got, want string) bool {
+	// Comparing lengths first only leaks the length, which is not
+	// secret: the code is always the same number of digits.
+	if len(got) != len(want) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
 }
 
 // exchangeTimeout bounds one recovery exchange once a key holder has
@@ -391,7 +426,7 @@ func answerAskPassword(dir string, p []byte) error {
 	defer conn.Close()
 
 	payload := append([]byte("+"), p...)
-	defer wipe(payload)
+	defer mrcore.Wipe(payload)
 
 	if _, err := conn.Write(payload); err != nil {
 		return fmt.Errorf("writing to %s: %w", req.socket, err)

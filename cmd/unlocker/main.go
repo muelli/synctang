@@ -13,6 +13,7 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
+	"github.com/muelli/synctang/mrcore"
 	"io"
 	"log/slog"
 	"math/big"
@@ -96,7 +97,7 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "unlocker: %v\n", err)
 			return 1
 		}
-		defer wipe(passphrase)
+		defer mrcore.Wipe(passphrase)
 
 		if err := removeRecipient(*device, passphrase, *remove); err != nil {
 			fmt.Fprintf(stderr, "unlocker: %v\n", err)
@@ -122,7 +123,7 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "unlocker: %v\n", err)
 		return 1
 	}
-	defer wipe(passphrase)
+	defer mrcore.Wipe(passphrase)
 
 	if err := enrolRecipient(*device, passphrase, pubkey, *name, *transportID, *recipientTransportID); err != nil {
 		fmt.Fprintf(stderr, "unlocker: %v\n", err)

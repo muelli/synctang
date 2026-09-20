@@ -259,3 +259,19 @@ func TestASilentKeyHolderDoesNotStrandTheMachine(t *testing.T) {
 		t.Fatal("the agent is still waiting on a silent key holder; the machine is stranded until it reboots")
 	}
 }
+
+// The confirm code defends against somebody holding the key holder
+// who cannot see the machine's console, and that same person is the
+// one who gets to keep guessing: the code is reused for every
+// connection during one agent run. So the comparison must not tell
+// them how much of a guess was right.
+func TestConfirmCodeComparison(t *testing.T) {
+	if !confirmCodeMatches("471902", "471902") {
+		t.Error("the right code was rejected")
+	}
+	for _, wrong := range []string{"", "4", "47190", "471903", "471902 ", "000000", "4719020"} {
+		if confirmCodeMatches(wrong, "471902") {
+			t.Errorf("%q accepted as the code", wrong)
+		}
+	}
+}

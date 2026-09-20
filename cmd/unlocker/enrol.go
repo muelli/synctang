@@ -49,7 +49,7 @@ func enrolRecipient(device string, existingPassphrase, recipientPublicKey []byte
 	if err != nil {
 		return fmt.Errorf("mrcore enrol: %w", err)
 	}
-	defer wipe(P)
+	defer mrcore.Wipe(P)
 
 	if recipientTransportID != "" {
 		rec.Transport = json.RawMessage(fmt.Sprintf(`{"device_id":%q}`, recipientTransportID))
@@ -63,12 +63,12 @@ func enrolRecipient(device string, existingPassphrase, recipientPublicKey []byte
 	// from the recovered P the same way at recovery time is what
 	// keeps the two in agreement.
 	keyMaterial := luksKeyMaterial(P)
-	defer wipe(keyMaterial)
+	defer mrcore.Wipe(keyMaterial)
 
 	stdin := make([]byte, 0, len(existingPassphrase)+len(keyMaterial))
 	stdin = append(stdin, existingPassphrase...)
 	stdin = append(stdin, keyMaterial...)
-	defer wipe(stdin)
+	defer mrcore.Wipe(stdin)
 
 	_, err = runCommand(stdin, "cryptsetup", "luksAddKey", "--batch-mode", device,
 		"--key-file=-", fmt.Sprintf("--keyfile-size=%d", len(existingPassphrase)),
@@ -197,10 +197,4 @@ func loadToken(dump, device, machineName, transportID string) (mrcore.Token, int
 		return mrcore.Token{}, -1, fmt.Errorf("decoding the existing token: %w", err)
 	}
 	return tok, id, nil
-}
-
-func wipe(b []byte) {
-	for i := range b {
-		b[i] = 0
-	}
 }
