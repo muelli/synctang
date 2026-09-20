@@ -212,3 +212,61 @@ func TestReadPassphraseStripsOneTrailingNewline(t *testing.T) {
 		})
 	}
 }
+
+// Enrolling a disk image belonging to some other machine is a
+// documented use (the README's quick start says "device-or-image"),
+// and in that case --machine-key-file's default is wrong: it points at
+// this host's own identity, which for an image is nobody's. enrol then
+// silently generates a brand new identity here and prints it as "this
+// machine's transport id", so a key holder paired against that id waits
+// for a machine that announces a different one, with nothing anywhere
+// to explain it. Hit exactly that way while enrolling a phone onto the
+// test VM's image.
+//
+// enrol cannot know which case it is in, so it says so when it creates
+// an identity rather than loading one.
+func TestRunEnrolWarnsWhenItCreatesAMachineIdentity(t *testing.T) {
+	existingPassphrase := []byte("existing-test-passphrase")
+	device := formatLoopbackImage(t, existingPassphrase)
+	passphraseFile := filepath.Join(t.TempDir(), "passphrase")
+	if err := os.WriteFile(passphraseFile, existingPassphrase, 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	S, err := mrcore.P256().ScalarBaseMult(mustScalar(t))
+	if err != nil {
+		t.Fatalf("ScalarBaseMult: %v", err)
+	}
+
+	keyFile := filepath.Join(t.TempDir(), "machine.pem")
+	enrol := func() (string, string, int) {
+		var stdout, stderr bytes.Buffer
+		code := run([]string{
+			"enrol",
+			"--device", device,
+			"--pubkey", hex.EncodeToString(S),
+			"--existing-passphrase-file", passphraseFile,
+			"--name", "cli-test-machine",
+			"--machine-key-file", keyFile,
+		}, &stdout, &stderr)
+		return stdout.String(), stderr.String(), code
+	}
+
+	_, stderr, code := enrol()
+	if code != 0 {
+		t.Fatalf("first enrol: exit %d, stderr %q", code, stderr)
+	}
+	if !strings.Contains(stderr, "--machine-key-file") {
+		t.Errorf("creating a new machine identity should say so and name the flag, got stderr %q", stderr)
+	}
+
+	// Second run loads the identity it just wrote, which is the
+	// ordinary case and must stay quiet: a warning printed every time
+	// is a warning nobody reads.
+	_, stderr, code = enrol()
+	if code != 0 {
+		t.Fatalf("second enrol: exit %d, stderr %q", code, stderr)
+	}
+	if strings.Contains(stderr, "--machine-key-file") {
+		t.Errorf("loading an existing identity should be quiet, got stderr %q", stderr)
+	}
+}

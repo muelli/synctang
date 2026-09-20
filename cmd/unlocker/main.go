@@ -135,12 +135,32 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 	// to hand to a key holder, in case it is ever needed (for example to
 	// fill in --recipient-transport-id on a later enrolment, mirrored the
 	// other way).
+	// Whether the identity already existed has to be established
+	// before LoadOrCreateCert, which does not say which it did.
+	//
+	// --device can be a disk image belonging to some other machine, a
+	// documented use, and then this flag's default is wrong: it points
+	// at this host's identity, which for an image is nobody's. enrol
+	// silently generates a new one and prints it as "this machine's
+	// transport id", so a key holder paired against that id waits
+	// forever for a machine announcing a different one. Hit exactly
+	// that way enrolling a phone onto a test VM's image.
+	_, statErr := os.Stat(*machineKeyFile)
+	machineIdentityIsNew := os.IsNotExist(statErr)
+
 	cert, err := transport.LoadOrCreateCert(*machineKeyFile)
 	if err != nil {
 		fmt.Fprintf(stderr, "unlocker: loading this machine's transport identity: %v\n", err)
 		return 1
 	}
 	fmt.Fprintf(stdout, "this machine's transport id: %s\n", protocol.NewDeviceID(cert.Certificate[0]))
+	if machineIdentityIsNew {
+		fmt.Fprintf(stderr,
+			"unlocker: created a new transport identity at %s, so the id above is this host's, not the enrolled device's.\n"+
+				"unlocker: if --device is a disk image for another machine, pass --machine-key-file pointing into that image\n"+
+				"unlocker: and re-run, or the key holder will pair against an id no machine ever announces.\n",
+			*machineKeyFile)
+	}
 	return 0
 }
 
