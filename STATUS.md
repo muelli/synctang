@@ -60,6 +60,17 @@ Two, for different jobs.
   costs about four minutes, so it is genuinely throwaway: A8 destroys
   a keyslot on it, which is exactly why it exists.
 
+## Fuzzing
+
+`mrcore/fuzz_test.go` covers the code that parses bytes chosen by
+somebody else: the wire messages, the LUKS2 token, and the x-only
+recovery path, which lifts a peer-supplied coordinate to a curve
+point. The property asserted is only "never panic", which is the one
+that matters for a machine at a LUKS prompt with nobody there to
+restart it. About 2.5 million executions found nothing. CI runs each
+target for 20 seconds, enough to catch a target that has stopped
+building rather than to mount a campaign.
+
 ## CI
 
 Green: `go-test`, `go-test-privileged`, `lint`, `em-dash-check`,

@@ -15,6 +15,24 @@ jobs:
           go-version: "1.25"
       - run: go build ./...
       - run: go test ./...
+      - name: Fuzz the parsers briefly
+        # Everything fuzzed here parses bytes somebody else chose: the
+        # wire messages arrive on a connection that is authenticated
+        # but not trusted (a stolen key holder is still an enrolled
+        # one), and FinishXOnly lifts a peer-supplied coordinate to a
+        # curve point. The property is just "never panic", which is
+        # the one that matters for a machine at a LUKS prompt with
+        # nobody there to restart it.
+        #
+        # Twenty seconds each is not a campaign; it is enough to catch
+        # a target that has stopped building or a regression an earlier
+        # run already found, and it keeps the corpus honest. Longer
+        # runs belong on a machine with time, not in every push.
+        run: |
+          for t in FuzzReadMessage FuzzTokenUnmarshal FuzzLiftX FuzzFinishXOnly; do
+            echo "== $t"
+            go test ./mrcore/ -run "^$t$" -fuzz "^$t$" -fuzztime=20s
+          done
 
   go-test-privileged:
     runs-on: ubuntu-latest
