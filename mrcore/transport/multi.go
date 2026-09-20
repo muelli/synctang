@@ -22,6 +22,9 @@ type Multi struct {
 type multiResult struct {
 	conn Conn
 	err  error
+	// index identifies which transport produced this result, so the
+	// winner's own context can be spared when the losers are cancelled.
+	index int
 }
 
 // Dial implements Transport.
@@ -49,31 +52,73 @@ func (m *Multi) race(ctx context.Context, attempt func(context.Context, Transpor
 		return nil, fmt.Errorf("transport: Multi has no transports configured")
 	}
 
-	raceCtx, cancel := context.WithCancel(ctx)
-
+	// One context per attempt, rather than one shared one.
+	//
+	// The winner's context must outlive the race. SyncthingRelay builds
+	// its relay client, its control connection and its announce loop on
+	// the context it is handed, and has to keep them alive: the relay
+	// server drops every session belonging to a device the instant that
+	// device's control connection disconnects. Cancelling the winner
+	// therefore does not tidy up a finished attempt, it destroys the
+	// session that attempt just produced, and both ends read EOF on a
+	// connection that completed its handshake a moment earlier.
+	//
+	// A shared raceCtx, cancelled as soon as a winner appeared, is what
+	// this used to do. Nothing offline could see it: LocalDiscovery has
+	// no control connection to lose and a DirectAddr listener has no
+	// relay at all, so every test passed while unlocking over the real
+	// relay pool failed nearly every time.
+	cancels := make([]context.CancelFunc, len(m.Transports))
 	results := make(chan multiResult, len(m.Transports))
-	for _, tr := range m.Transports {
-		tr := tr
+	for i, tr := range m.Transports {
+		i, tr := i, tr
+		attemptCtx, cancelAttempt := context.WithCancel(ctx)
+		cancels[i] = cancelAttempt
 		go func() {
-			conn, err := attempt(raceCtx, tr)
-			results <- multiResult{conn, err}
+			conn, err := attempt(attemptCtx, tr)
+			results <- multiResult{conn: conn, err: err, index: i}
 		}()
+	}
+
+	cancelAllExcept := func(winner int) {
+		for i, cancel := range cancels {
+			if i != winner {
+				cancel()
+			}
+		}
 	}
 
 	var errs []error
 	for i := 0; i < len(m.Transports); i++ {
 		r := <-results
 		if r.err == nil {
-			cancel()
+			cancelAllExcept(r.index)
 			if remaining := len(m.Transports) - i - 1; remaining > 0 {
 				go closeLateArrivals(results, remaining)
 			}
-			return r.conn, nil
+			// The winner is released when its connection is closed,
+			// which is when the session it produced is genuinely
+			// finished with, and not before.
+			return &cancelOnCloseConn{Conn: r.conn, cancel: cancels[r.index]}, nil
 		}
 		errs = append(errs, r.err)
 	}
-	cancel()
+	cancelAllExcept(-1)
 	return nil, errors.Join(errs...)
+}
+
+// cancelOnCloseConn releases the winning attempt's context when the
+// connection it produced is closed, so that the transport's own
+// background machinery lives exactly as long as the connection does.
+type cancelOnCloseConn struct {
+	Conn
+	cancel context.CancelFunc
+}
+
+func (c *cancelOnCloseConn) Close() error {
+	err := c.Conn.Close()
+	c.cancel()
+	return err
 }
 
 // closeLateArrivals drains the results still outstanding after race

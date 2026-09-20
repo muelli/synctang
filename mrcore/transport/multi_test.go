@@ -50,6 +50,8 @@ type fakeConn struct {
 
 func (f *fakeConn) PeerID() string { return f.id }
 
+func (f *fakeConn) Close() error { return nil }
+
 // trackedConn is a fakeConn that records whether Close was called,
 // safe for concurrent use: the background drain that closes a late
 // arrival runs on its own goroutine, separate from whichever
@@ -220,4 +222,60 @@ func TestMultiDialClosesALateSecondSuccess(t *testing.T) {
 	if !loser.isClosed() {
 		t.Fatal("a connection that finished after losing the race was never closed, leaking it")
 	}
+}
+
+// The winner's context must outlive the race.
+//
+// SyncthingRelay builds its relay client, its control connection to
+// the relay, and its announce loop on the context it is given, and
+// keeps them alive because the relay server drops every session
+// belonging to a device the moment that device's control connection
+// goes away. Cancelling the winner's context therefore does not tidy
+// up a finished attempt: it destroys the session that attempt just
+// produced, and both ends read EOF on a connection that had completed
+// its handshake a moment earlier.
+//
+// Found against a real machine over the real relay pool, and only
+// visible there: LocalDiscovery has no control connection to lose, and
+// a DirectAddr listener has no relay at all, so every unit test and
+// every offline test passed throughout. The machine's own console
+// gave it away, announcing "announce failed ... context canceled" at
+// the exact instant a key holder connected.
+func TestMultiDoesNotCancelTheWinner(t *testing.T) {
+	winner := &fakeTransport{conn: &fakeConn{}}
+	loser := &fakeTransport{delay: time.Hour}
+
+	m := &Multi{Transports: []Transport{winner, loser}}
+	conn, err := m.Dial(context.Background(), DialOptions{PeerID: "peer"})
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+
+	if err := winner.seenCtx.Err(); err != nil {
+		t.Fatalf("the winning transport's context was cancelled (%v), which tears down the connection it just returned", err)
+	}
+
+	// The loser must still be stopped, or a Multi with a slow
+	// transport leaks an attempt per unlock.
+	waitFor(t, func() bool { return loser.seenCtx != nil && loser.seenCtx.Err() != nil },
+		"the losing transport's context should have been cancelled")
+
+	// Closing the connection is what finally releases the winner.
+	if err := conn.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	waitFor(t, func() bool { return winner.seenCtx.Err() != nil },
+		"closing the connection should release the winner's context")
+}
+
+func waitFor(t *testing.T, cond func() bool, msg string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal(msg)
 }
