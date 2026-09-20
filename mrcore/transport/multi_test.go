@@ -279,3 +279,86 @@ func waitFor(t *testing.T, cond func() bool, msg string) {
 	}
 	t.Fatal(msg)
 }
+
+// blockingThenFailing fails its first attempt and succeeds on the
+// next, which is what a relay listen does when a stranger connects and
+// is refused: that attempt is over, and the next one has every chance
+// of working.
+type retryingTransport struct {
+	mu    sync.Mutex
+	calls int
+	conn  Conn
+}
+
+func (r *retryingTransport) attempt(ctx context.Context) (Conn, error) {
+	r.mu.Lock()
+	r.calls++
+	n := r.calls
+	r.mu.Unlock()
+	if n == 1 {
+		return nil, errors.New("rejected an unauthorized peer")
+	}
+	return r.conn, nil
+}
+
+func (r *retryingTransport) Dial(ctx context.Context, _ DialOptions) (Conn, error) {
+	return r.attempt(ctx)
+}
+func (r *retryingTransport) Listen(ctx context.Context, _ ListenOptions) (Conn, error) {
+	return r.attempt(ctx)
+}
+
+// A failed leg must not end the race, and must not leave it waiting on
+// the other leg for ever.
+//
+// The agent races LocalDiscovery against the relay. LocalDiscovery
+// blocks until somebody dials, which on a machine waiting at its LUKS
+// prompt may be hours or never. So when the relay leg failed, race sat
+// waiting for a LocalDiscovery result that was never coming: the agent
+// never retried, never re-announced, and the machine went dark for the
+// rest of the boot while still displaying "waiting for a key holder".
+//
+// Anyone could cause that deliberately. Device IDs are published on
+// discovery, and one connection from a stranger, refused exactly as it
+// should be, was enough to take the machine off the air until somebody
+// walked to it. Found by probing a machine that had been waiting
+// happily for seven hours.
+func TestMultiKeepsRacingAfterALegFails(t *testing.T) {
+	flaky := &retryingTransport{conn: &fakeConn{id: "eventual"}}
+	neverAnswers := &fakeTransport{delay: time.Hour}
+
+	m := &Multi{Transports: []Transport{flaky, neverAnswers}, RetryInterval: 10 * time.Millisecond}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	conn, err := m.Listen(ctx, ListenOptions{})
+	if err != nil {
+		t.Fatalf("Listen should have succeeded on the retried leg, got %v", err)
+	}
+	defer conn.Close()
+	if conn.PeerID() != "eventual" {
+		t.Errorf("PeerID = %q, want the retried transport's connection", conn.PeerID())
+	}
+}
+
+// With every leg failing and no deadline reached yet, race keeps
+// trying rather than giving up: a machine at its LUKS prompt has
+// nothing better to do, and the alternative is going dark.
+func TestMultiGivesUpOnlyWhenTheContextDoes(t *testing.T) {
+	alwaysFails := &fakeTransport{err: errors.New("no route")}
+	alsoFails := &fakeTransport{err: errors.New("not found")}
+
+	m := &Multi{Transports: []Transport{alwaysFails, alsoFails}, RetryInterval: 5 * time.Millisecond}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	if _, err := m.Listen(ctx, ListenOptions{}); err == nil {
+		t.Fatal("expected an error once the context expired")
+	}
+	if elapsed := time.Since(start); elapsed < 150*time.Millisecond {
+		t.Errorf("gave up after %s, should have kept retrying until the context expired", elapsed)
+	}
+}
