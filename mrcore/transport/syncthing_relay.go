@@ -48,12 +48,27 @@ const relayLossPollInterval = time.Second
 // than a bare TCP dial.
 const dialRelayRetryInterval = 3 * time.Second
 
-// defaultAnnounceInterval is how often SyncthingRelay.Listen refreshes its
-// discovery record while it waits for a dialer. socket.DefaultAnnounceInterval
-// (30 minutes) is tuned for a long-running daemon; a pairing wait is short
-// and one-shot, so the record needs to appear quickly rather than merely
-// stay alive, hence a much shorter default here.
-const defaultAnnounceInterval = 10 * time.Second
+// defaultAnnounceInterval is how often the announce loop looks to see
+// whether this listener's address has changed. It is not how often it
+// talks to discovery: an announcement only goes out when the address
+// is new, or when defaultAnnounceRefresh has elapsed.
+//
+// The check is local and free, so it can be frequent. What has to be
+// prompt is republishing after the relay pool moves this listener to a
+// different relay, because until that lands every key holder looking
+// the machine up is handed an address it has left.
+const defaultAnnounceInterval = 2 * time.Second
+
+// defaultAnnounceRefresh is how often an unchanged record is
+// republished, purely to keep it from expiring.
+//
+// This used to be the announce interval itself, at ten seconds, which
+// meant a POST to somebody else's free infrastructure every ten
+// seconds for the entire length of a wait, saying exactly what it said
+// the time before. syncthing-socket, whose discovery servers these
+// are, refreshes every thirty minutes; matching it is both the polite
+// number and the one known to keep a record alive.
+const defaultAnnounceRefresh = socket.DefaultAnnounceInterval
 
 // levelTrace sits below slog's own lowest built-in level (Debug, -4),
 // for detail below what a caller's --log-level debug would want by
@@ -110,9 +125,14 @@ type SyncthingRelay struct {
 	// same URL under a different HTTP method.
 	AnnounceURLs []string
 
-	// AnnounceInterval overrides how often Listen refreshes its
-	// discovery record. Zero means defaultAnnounceInterval.
+	// AnnounceInterval overrides how often Listen checks whether its
+	// address has changed, which is not how often it announces: see
+	// AnnounceRefresh. Zero means defaultAnnounceInterval.
 	AnnounceInterval time.Duration
+
+	// AnnounceRefresh overrides how often an unchanged discovery
+	// record is republished. Zero means defaultAnnounceRefresh.
+	AnnounceRefresh time.Duration
 
 	// RelayLossGrace overrides how long Listen tolerates the relay
 	// client having no relay before failing the attempt so a fresh one
@@ -405,6 +425,30 @@ func (t *SyncthingRelay) relayLossGrace() time.Duration {
 		return t.RelayLossGrace
 	}
 	return defaultRelayLossGrace
+}
+
+// sameAddresses reports whether two address lists are equal, order
+// included: the relay client hands back one address, and a change of
+// order would be a change of relay anyway.
+func sameAddresses(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// announceRefresh is how often an unchanged record is republished.
+// Zero means defaultAnnounceRefresh.
+func (t *SyncthingRelay) announceRefresh() time.Duration {
+	if t.AnnounceRefresh != 0 {
+		return t.AnnounceRefresh
+	}
+	return defaultAnnounceRefresh
 }
 
 func (t *SyncthingRelay) announceInterval() time.Duration {
@@ -720,9 +764,13 @@ func (t *SyncthingRelay) announceLoop(ctx context.Context, addresses func() []st
 		ticker := time.NewTicker(t.announceInterval())
 		defer ticker.Stop()
 
+		var lastAnnounced []string
+		var lastAt time.Time
+
 		for {
 			addrs := addresses()
-			if len(addrs) == 0 {
+			switch {
+			case len(addrs) == 0:
 				// Not a no-op worth staying quiet about. The relay
 				// client returns no address whenever it has no relay,
 				// so this is how a machine that has silently stopped
@@ -731,17 +779,23 @@ func (t *SyncthingRelay) announceLoop(ctx context.Context, addresses func() []st
 				// success. watchRelayLoss is what acts on it; this is
 				// what makes it visible on the console.
 				t.logger().Warn("nothing to announce: no relay address available")
+			case !sameAddresses(addrs, lastAnnounced) || time.Since(lastAt) >= t.announceRefresh():
+				if err := t.announceOnce(ctx, addrs); err != nil {
+					// Best effort: a failed announce is retried on the
+					// next tick rather than aborting the whole listen
+					// attempt. Logged, not discarded: a
+					// silently-forever-failing announce is
+					// indistinguishable from a silently succeeding one
+					// from the console, which is exactly how this used
+					// to POST to the wrong endpoint for a long time
+					// before anyone noticed.
+					t.logger().Warn("announce failed", "error", err)
+				} else {
+					lastAnnounced = append(lastAnnounced[:0], addrs...)
+					lastAt = time.Now()
+				}
 			}
-			if err := t.announceOnce(ctx, addrs); err != nil {
-				// Best effort: a failed announce is retried on the next
-				// tick rather than aborting the whole listen attempt.
-				// Logged, not discarded: a silently-forever-failing
-				// announce is indistinguishable from a silently
-				// succeeding one from the console, which is exactly
-				// how this used to POST to the wrong endpoint for a
-				// long time before anyone noticed.
-				t.logger().Warn("announce failed", "error", err)
-			}
+
 			select {
 			case <-ctx.Done():
 				return

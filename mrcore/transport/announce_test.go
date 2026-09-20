@@ -7,10 +7,13 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -250,5 +253,90 @@ func TestWatchRelayLossReportsAStoppedClientImmediately(t *testing.T) {
 	}
 	if time.Since(start) > time.Second {
 		t.Fatal("waited for the grace period instead of reporting the stopped client at once")
+	}
+}
+
+// countingAnnounceServer accepts announcements and records the bodies
+// it was sent, so a test can tell how often, and with what, a listener
+// actually talked to discovery.
+func countingAnnounceServer(t *testing.T) (*httptest.Server, func() []string) {
+	t.Helper()
+	var mu sync.Mutex
+	var bodies []string
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		bodies = append(bodies, string(b))
+		mu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]string(nil), bodies...)
+	}
+}
+
+// A machine waiting at its LUKS prompt has to appear on discovery
+// quickly, which is what the first announcement is for. Repeating that
+// announcement unchanged every few seconds for the rest of the wait
+// serves nobody: it is a POST to somebody else's free infrastructure,
+// once per interval, per waiting machine, saying exactly what it said
+// last time. syncthing-socket, whose discovery servers these are,
+// refreshes every thirty minutes.
+func TestAnnounceLoopDoesNotRepeatAnUnchangedRecord(t *testing.T) {
+	srv, bodies := countingAnnounceServer(t)
+	relay := &SyncthingRelay{
+		Cert:             testCert(t),
+		AnnounceURLs:     []string{srv.URL},
+		AnnounceInterval: 5 * time.Millisecond,
+	}
+	relay.httpClient = srv.Client()
+
+	stop := relay.announceLoop(context.Background(), func() []string {
+		return []string{"relay://192.0.2.1:22067"}
+	})
+	time.Sleep(120 * time.Millisecond)
+	stop()
+
+	if n := len(bodies()); n != 1 {
+		t.Errorf("announced %d times for one unchanged address, want 1", n)
+	}
+}
+
+// When the address does change, which happens every time the relay
+// pool moves a listener to a different relay, the new one has to reach
+// discovery immediately: until it does, every key holder looking the
+// machine up is handed an address it has left.
+func TestAnnounceLoopRepublishesAChangedAddress(t *testing.T) {
+	srv, bodies := countingAnnounceServer(t)
+	relay := &SyncthingRelay{
+		Cert:             testCert(t),
+		AnnounceURLs:     []string{srv.URL},
+		AnnounceInterval: 5 * time.Millisecond,
+	}
+	relay.httpClient = srv.Client()
+
+	var mu sync.Mutex
+	addr := "relay://192.0.2.1:22067"
+	stop := relay.announceLoop(context.Background(), func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return []string{addr}
+	})
+	time.Sleep(40 * time.Millisecond)
+	mu.Lock()
+	addr = "relay://192.0.2.99:22067"
+	mu.Unlock()
+	time.Sleep(60 * time.Millisecond)
+	stop()
+
+	got := bodies()
+	if len(got) != 2 {
+		t.Fatalf("announced %d times, want 2 (once per distinct address)", len(got))
+	}
+	if !strings.Contains(got[1], "192.0.2.99") {
+		t.Errorf("the second announcement should carry the new address, got %q", got[1])
 	}
 }
