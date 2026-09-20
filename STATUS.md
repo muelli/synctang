@@ -60,6 +60,20 @@ Two, for different jobs.
   costs about four minutes, so it is genuinely throwaway: A8 destroys
   a keyslot on it, which is exactly why it exists.
 
+## Adversarial testing
+
+Both ends assume the other may be lying, and both directions are
+tested that way. Against a key holder: off-curve points (the classical
+invalid-curve attack, refused by the group), non-canonical
+coordinates, malformed encodings and scalars, and the point at
+infinity (accepted by the group, since `s.O = O` leaks nothing, but
+refused by `ValidateChallengePoint` one layer up). Against a machine:
+answers computed with the wrong scalar, off-curve answers, and six
+shapes of malformed response, none of which reach the ask-password
+socket. Against the transport: hostile multicast announcements,
+impossible ports, and an impostor that answers with a valid
+certificate of its own.
+
 ## Fuzzing
 
 `mrcore/fuzz_test.go` covers the code that parses bytes chosen by

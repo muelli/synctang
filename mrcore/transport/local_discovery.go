@@ -140,16 +140,67 @@ func (l *LocalDiscovery) Listen(ctx context.Context, opts ListenOptions) (Conn, 
 
 // Dial implements Transport.
 func (l *LocalDiscovery) Dial(ctx context.Context, opts DialOptions) (Conn, error) {
-	addr, err := l.waitForAnnouncement(ctx, opts.PeerID)
-	if err != nil {
-		return nil, fmt.Errorf("transport: local discovery: %w", err)
+	// Keep listening after an announcement turns out to be useless.
+	//
+	// Anybody on the network can announce, and an announcement is only
+	// a hint: the TLS handshake afterwards pins the Device ID, so a
+	// neighbour cannot impersonate the machine. What a neighbour could
+	// do, while this took only the first matching announcement and
+	// gave up if it led nowhere, was announce the machine's own Device
+	// ID pointing at a dead port and thereby switch off local
+	// discovery altogether. That is the path that works with no
+	// Internet, which is to say the one left when the relay is
+	// unreachable, which is exactly when somebody is likely to be
+	// interfering with the network.
+	var lastErr error
+	for {
+		if err := ctx.Err(); err != nil {
+			if lastErr != nil {
+				return nil, fmt.Errorf("transport: local discovery: %w (last attempt: %v)", err, lastErr)
+			}
+			return nil, fmt.Errorf("transport: local discovery: %w", err)
+		}
+
+		addr, err := l.waitForAnnouncement(ctx, opts.PeerID)
+		if err != nil {
+			if lastErr != nil {
+				return nil, fmt.Errorf("transport: local discovery: %w (last attempt: %v)", err, lastErr)
+			}
+			return nil, fmt.Errorf("transport: local discovery: %w", err)
+		}
+
+		// Each announced address gets its own small budget rather than
+		// the caller's whole one. dialTCPRetrying keeps trying until
+		// its context is done, which is right for an address this
+		// machine announced itself and wrong for one a stranger sent:
+		// without a bound, a single spoofed announcement consumes the
+		// entire attempt and the dialler never gets back to listening.
+		attemptCtx, cancelAttempt := context.WithTimeout(ctx, announcedAddrTimeout)
+		raw, err := dialTCPRetrying(attemptCtx, addr)
+		cancelAttempt()
+		if err != nil {
+			lastErr = err
+			l.logger().Log(ctx, levelTrace, "announced address did not answer, still listening",
+				"addr", addr, "error", err)
+			continue
+		}
+
+		conn, err := doClientHandshake(l.Cert, l.logger(), raw, opts.PeerID)
+		if err != nil {
+			lastErr = err
+			l.logger().Log(ctx, levelTrace, "announced address was not the machine, still listening",
+				"addr", addr, "error", err)
+			continue
+		}
+		return conn, nil
 	}
-	raw, err := dialTCPRetrying(ctx, addr)
-	if err != nil {
-		return nil, fmt.Errorf("transport: local discovery: %w", err)
-	}
-	return doClientHandshake(l.Cert, l.logger(), raw, opts.PeerID)
 }
+
+// announcedAddrTimeout bounds one attempt at an address somebody
+// announced. Long enough for a machine that is still opening its
+// listener, short enough that a spoofed announcement costs a moment
+// rather than the whole unlock attempt.
+const announcedAddrTimeout = 3 * time.Second
 
 // multicastInterfaces returns the interfaces worth announcing on and
 // listening on: up, multicast-capable, not loopback, and carrying at
@@ -372,6 +423,14 @@ func (l *LocalDiscovery) listenSockets() []*net.UDPConn {
 	return conns
 }
 
+// usableAnnouncementPort reports whether a port from an announcement
+// could possibly be dialled. The announcement is unauthenticated UDP
+// from anybody on the network, so the number in it is whatever the
+// sender felt like putting there.
+func usableAnnouncementPort(port int) bool {
+	return port > 0 && port <= 65535
+}
+
 // readAnnouncementFor reads from conn until it sees an announcement
 // for peerID, or the socket is closed. Every other announcement (a
 // different machine, or unrelated traffic that happens to land on the
@@ -391,6 +450,9 @@ func readAnnouncementFor(conn *net.UDPConn, peerID string) (string, bool) {
 			continue
 		}
 		if ann.Magic != localAnnounceMagic || ann.DeviceID != peerID {
+			continue
+		}
+		if !usableAnnouncementPort(ann.Port) {
 			continue
 		}
 		return net.JoinHostPort(src.IP.String(), strconv.Itoa(ann.Port)), true

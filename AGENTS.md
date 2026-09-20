@@ -116,6 +116,19 @@
   does this on port 7101. The agent also tees warnings to the console
   for real deployments, where nobody has attached a second serial
   port.
+- **Local discovery announcements are unauthenticated UDP from
+  anybody on the network**, and that is fine for secrecy (the TLS
+  handshake afterwards pins the Device ID, so an impostor cannot
+  impersonate the machine) but not automatically fine for
+  availability. A neighbour announcing the machine's own Device ID
+  pointing at a dead port used to switch local discovery off
+  altogether, because `Dial` took the first matching announcement and
+  gave up if it led nowhere. It now keeps listening, and bounds each
+  announced address separately: `dialTCPRetrying` retries until its
+  context is done, which is right for an address the machine
+  announced itself and wrong for one a stranger sent. Note the address
+  comes from the datagram's source IP, never from the payload, so an
+  attacker can only point you at a port on their own machine.
 - **`transport.Multi` (races `LocalDiscovery` against
   `SyncthingRelay`) can pick a different winning transport on each
   side independently**, since each side races on its own with no
