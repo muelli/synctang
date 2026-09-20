@@ -13,7 +13,9 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/syncthing/syncthing/lib/protocol"
@@ -151,6 +153,11 @@ type SyncthingRelay struct {
 	// own journal-backed *slog.Logger and sets it here rather than
 	// this package taking on that dependency itself.
 	Logger *slog.Logger
+
+	// announceClientOnce guards announceClient, which is built on
+	// first use and then reused.
+	announceClientOnce sync.Once
+	announceClient     *http.Client
 
 	// httpClient overrides the HTTP client announceOnce uses, for
 	// tests to point it at a local httptest server with its own
@@ -395,13 +402,7 @@ func doClientHandshake(cert tls.Certificate, logger *slog.Logger, raw net.Conn, 
 }
 
 func containsDeviceID(ids []string, id protocol.DeviceID) bool {
-	s := id.String()
-	for _, want := range ids {
-		if want == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(ids, id.String())
 }
 
 func (t *SyncthingRelay) relayPoolURL() string {
@@ -432,15 +433,7 @@ func (t *SyncthingRelay) relayLossGrace() time.Duration {
 // included: the relay client hands back one address, and a change of
 // order would be a change of relay anyway.
 func sameAddresses(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
+	return slices.Equal(a, b)
 }
 
 // announceRefresh is how often an unchanged record is republished.
@@ -466,10 +459,26 @@ func (t *SyncthingRelay) announceURLs() []string {
 	return defaultAnnounceURLs
 }
 
+// announceHTTPClient returns the client announceOnce posts with,
+// building it once and reusing it.
+//
+// It used to be constructed per call, which meant a fresh
+// http.Transport, a fresh connection pool and a fresh TLS handshake
+// every time, with the previous one's idle connection left to time
+// out on its own. Harmless at one announcement per half hour and
+// wasteful at the ten-second interval this used to run at; either way
+// there is no reason to rebuild it.
 func (t *SyncthingRelay) announceHTTPClient() *http.Client {
 	if t.httpClient != nil {
 		return t.httpClient
 	}
+	t.announceClientOnce.Do(func() {
+		t.announceClient = t.newAnnounceHTTPClient()
+	})
+	return t.announceClient
+}
+
+func (t *SyncthingRelay) newAnnounceHTTPClient() *http.Client {
 	return &http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{

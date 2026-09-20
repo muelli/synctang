@@ -106,12 +106,14 @@ reproducibility are untested and not claimed.
   retrying a stale discovery record) were reported to the user as a
   written summary; not yet turned into patches or a PR, pending their
   say.
-- `[U]` A `mrcore`/transport code-review pass found several real
-  simplifications beyond the bugs already fixed (a `Token`
-  Marshal/Unmarshal refactor, `Group.Negate` via `ScalarMult(N-1)`,
-  `slices.Contains` instead of a hand-rolled equivalent, caching the
-  discovery HTTP client); not applied, undecided whether before or
-  after the rest of WP7 closes out.
+- `[U]` One item left from the `mrcore`/transport review: a `Token`
+  Marshal/Unmarshal refactor. The other three are done: `Group.Negate`
+  now multiplies by the group order minus one instead of doing modular
+  arithmetic on the y-coordinate with `big.Int`, which removes the
+  last hand-rolled field arithmetic in the package and hands it to
+  nistec's constant-time code; `slices.Contains`/`slices.Equal`
+  replace the hand-rolled equivalents; the announce HTTP client is
+  built once rather than per call.
 - `[U]` `LocalDiscovery` is IPv4 multicast only. A LAN that is IPv6
   only would fall back to `SyncthingRelay`, which defeats the point
   on a LAN with no Internet. Not hit in testing (every network this

@@ -110,6 +110,28 @@ const (
 	p256InfinityEncoded = 1 // point at infinity: a single 0x00 byte
 )
 
+// negateScalar is the group order minus one. Multiplying by it is
+// negation, since (n-1).P = n.P - P = -P for a point of order n.
+var negateScalar = negateScalarBytes()
+
+func negateScalarBytes() []byte {
+	n := new(big.Int).Sub(elliptic.P256().Params().N, big.NewInt(1))
+	out := make([]byte, p256CoordLen)
+	nb := n.Bytes()
+	copy(out[p256CoordLen-len(nb):], nb)
+	return out
+}
+
+// Negate returns -point.
+//
+// Implemented as multiplication by the group order minus one rather
+// than by subtracting the y-coordinate from the field prime. The
+// arithmetic is the same either way, but this hands it to nistec's
+// constant-time scalar multiplication instead of doing modular
+// arithmetic here with big.Int, which is variable-time and was the
+// only hand-rolled field arithmetic left in this package. Pinned
+// against the (x, p-y) definition by TestP256NegateMatchesTheField-
+// Definition, which computes the expected answer independently.
 func (p256Group) Negate(point []byte) ([]byte, error) {
 	if len(point) == p256InfinityEncoded && point[0] == 0 {
 		return point, nil // -infinity is infinity
@@ -118,21 +140,15 @@ func (p256Group) Negate(point []byte) ([]byte, error) {
 		return nil, errors.New("mrcore: negate requires an uncompressed point")
 	}
 
-	fieldPrime := elliptic.P256().Params().P
-	y := new(big.Int).SetBytes(point[1+p256CoordLen:])
-	y.Sub(fieldPrime, y)
-	y.Mod(y, fieldPrime)
-
-	out := make([]byte, p256PointLen)
-	out[0] = 0x04
-	copy(out[1:1+p256CoordLen], point[1:1+p256CoordLen])
-	yBytes := y.Bytes()
-	copy(out[p256PointLen-len(yBytes):], yBytes)
-
-	if _, err := nistec.NewP256Point().SetBytes(out); err != nil {
-		return nil, fmt.Errorf("mrcore: negated point is not on the curve: %w", err)
+	p, err := nistec.NewP256Point().SetBytes(point)
+	if err != nil {
+		return nil, fmt.Errorf("mrcore: invalid point: %w", err)
 	}
-	return out, nil
+	r, err := nistec.NewP256Point().ScalarMult(p, negateScalar)
+	if err != nil {
+		return nil, fmt.Errorf("mrcore: negate: %w", err)
+	}
+	return r.Bytes(), nil
 }
 
 func (p256Group) PointToX(point []byte) ([]byte, error) {

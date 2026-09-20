@@ -4,6 +4,8 @@ package mrcore
 
 import (
 	"bytes"
+	"crypto/elliptic"
+	"math/big"
 	"testing"
 )
 
@@ -174,5 +176,77 @@ func TestP256LiftX(t *testing.T) {
 	}
 	if !bytes.Equal(evenY, negP) && !bytes.Equal(oddY, negP) {
 		t.Fatalf("the other LiftX candidate must be -P:\n negP=%x\n evenY=%x\n oddY=%x", negP, evenY, oddY)
+	}
+}
+
+// Negation is pinned against an independent computation before it is
+// reimplemented, so a refactor of the arithmetic cannot quietly change
+// the answer. The reference here is the definition itself, -(x,y) =
+// (x, p-y), computed with big.Int rather than by the implementation
+// under test.
+func TestP256NegateMatchesTheFieldDefinition(t *testing.T) {
+	g := P256()
+	for i := 0; i < 32; i++ {
+		s, err := g.RandomScalar()
+		if err != nil {
+			t.Fatalf("RandomScalar: %v", err)
+		}
+		P, err := g.ScalarBaseMult(s)
+		if err != nil {
+			t.Fatalf("ScalarBaseMult: %v", err)
+		}
+
+		got, err := g.Negate(P)
+		if err != nil {
+			t.Fatalf("Negate: %v", err)
+		}
+
+		fieldPrime := elliptic.P256().Params().P
+		y := new(big.Int).SetBytes(P[1+p256CoordLen:])
+		y.Sub(fieldPrime, y)
+		y.Mod(y, fieldPrime)
+		want := make([]byte, p256PointLen)
+		want[0] = 0x04
+		copy(want[1:1+p256CoordLen], P[1:1+p256CoordLen])
+		yb := y.Bytes()
+		copy(want[p256PointLen-len(yb):], yb)
+
+		if !bytes.Equal(got, want) {
+			t.Fatalf("Negate disagrees with (x, p-y) on iteration %d", i)
+		}
+	}
+}
+
+// The property that actually matters downstream: P + (-P) is the
+// identity, which mrcore encodes as the single zero byte.
+func TestP256NegateCancels(t *testing.T) {
+	g := P256()
+	for i := 0; i < 16; i++ {
+		s, err := g.RandomScalar()
+		if err != nil {
+			t.Fatalf("RandomScalar: %v", err)
+		}
+		P, err := g.ScalarBaseMult(s)
+		if err != nil {
+			t.Fatalf("ScalarBaseMult: %v", err)
+		}
+		negP, err := g.Negate(P)
+		if err != nil {
+			t.Fatalf("Negate: %v", err)
+		}
+		sum, err := g.Add(P, negP)
+		if err != nil {
+			t.Fatalf("Add: %v", err)
+		}
+		if len(sum) != p256InfinityEncoded || sum[0] != 0 {
+			t.Fatalf("P + (-P) is not the identity, got %x", sum)
+		}
+		back, err := g.Negate(negP)
+		if err != nil {
+			t.Fatalf("Negate twice: %v", err)
+		}
+		if !bytes.Equal(back, P) {
+			t.Fatal("negating twice did not return the original point")
+		}
 	}
 }
