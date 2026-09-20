@@ -118,6 +118,14 @@ func TestUnlockAnswersMachineRecovery(t *testing.T) {
 			machineErrCh <- err
 			return
 		}
+		// The real machine reports the outcome as its last message,
+		// and a key holder now waits for it. A fake that skips it is a
+		// fake that does not behave like the thing under test, which
+		// is how the app's confirm-code bug survived every test.
+		if err := mrcore.WriteMessage(conn, mrcore.RecoverResult{OK: true}); err != nil {
+			machineErrCh <- err
+			return
+		}
 		recoveredCh <- gotP
 		machineErrCh <- nil
 	}()
@@ -209,6 +217,10 @@ func TestUnlockRelaysConfirmCode(t *testing.T) {
 		}
 		var recoverResp mrcore.RecoverResponse
 		if err := mrcore.ReadMessage(conn, &recoverResp); err != nil {
+			machineErrCh <- err
+			return
+		}
+		if err := mrcore.WriteMessage(conn, mrcore.RecoverResult{OK: true}); err != nil {
 			machineErrCh <- err
 			return
 		}
@@ -316,6 +328,14 @@ func TestRunUnlockRetriesAfterATransientFailure(t *testing.T) {
 		}
 		gotP, err := mrcore.FinishFullPoint(g, e, rec, resp.Y)
 		if err != nil {
+			machineErrCh <- err
+			return
+		}
+		// The real machine reports the outcome as its last message,
+		// and a key holder now waits for it. A fake that skips it is a
+		// fake that does not behave like the thing under test, which
+		// is how the app's confirm-code bug survived every test.
+		if err := mrcore.WriteMessage(conn, mrcore.RecoverResult{OK: true}); err != nil {
 			machineErrCh <- err
 			return
 		}

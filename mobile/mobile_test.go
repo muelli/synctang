@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"math/big"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -238,6 +239,12 @@ func runSession(t *testing.T, v vectors, withConfirmCode bool) {
 			machineErr <- err
 			return
 		}
+		// The real machine's last message, which the key holder now
+		// waits for before claiming anything happened.
+		if err := mrcore.WriteMessage(conn, mrcore.RecoverResult{OK: true}); err != nil {
+			machineErr <- err
+			return
+		}
 		recovered <- p
 	}()
 
@@ -462,5 +469,73 @@ func TestSessionConnectRetriesUntilTheMachineAnswers(t *testing.T) {
 		}
 	default:
 		t.Fatal("machine never served a full exchange")
+	}
+}
+
+// The machine's verdict is the whole point of the last message: a key
+// holder must not report success when the machine could not use its
+// answer. Reported by a human whose phone said the unlock had worked
+// while the machine sat at its LUKS prompt.
+func TestAnswerXOnlyReportsAMachineThatCouldNotUseTheAnswer(t *testing.T) {
+	v := loadVectors(t)
+
+	const (
+		addr        = "127.0.0.1:34521"
+		phoneSeed   = "verdict test phone seed"
+		machineSeed = "verdict test machine seed"
+	)
+
+	phoneID, err := DeviceIDForSeed(phoneSeed)
+	if err != nil {
+		t.Fatalf("DeviceIDForSeed: %v", err)
+	}
+	machineID, err := DeviceIDForSeed(machineSeed)
+	if err != nil {
+		t.Fatalf("DeviceIDForSeed: %v", err)
+	}
+	machineCert, err := socket.GenerateDeterministicCert(machineSeed)
+	if err != nil {
+		t.Fatalf("machine cert: %v", err)
+	}
+
+	go func() {
+		tr := transport.NewSyncthingRelay(machineCert)
+		conn, err := tr.Listen(context.Background(), transport.ListenOptions{
+			AuthorizedPeers: []string{phoneID},
+			DirectAddr:      addr,
+		})
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		_ = mrcore.WriteMessage(conn, mrcore.Hello{Name: "grumpy machine"})
+		_ = mrcore.WriteMessage(conn, mrcore.ConfirmCodeChallenge{Code: ""})
+		_ = mrcore.WriteMessage(conn, mrcore.RecoverRequest{
+			Kid: mustHex(t, v.Enrol.Kid),
+			X:   mustHex(t, v.Recover.X),
+		})
+		var resp mrcore.RecoverResponse
+		_ = mrcore.ReadMessage(conn, &resp)
+		_ = mrcore.WriteMessage(conn, mrcore.RecoverResult{
+			OK:    false,
+			Error: "recovered secret does not open /dev/vda3",
+		})
+		time.Sleep(time.Second)
+	}()
+
+	s := NewSession(machineID, phoneSeed)
+	s.SetDirectAddr(addr)
+	s.SetTimeoutSeconds(30)
+	if err := s.Connect(); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	defer s.Close()
+
+	err = s.AnswerXOnly(make([]byte, 32))
+	if err == nil {
+		t.Fatal("AnswerXOnly reported success for an answer the machine could not use")
+	}
+	if !strings.Contains(err.Error(), "does not open /dev/vda3") {
+		t.Errorf("the machine's own reason should reach the caller, got %v", err)
 	}
 }

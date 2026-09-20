@@ -114,6 +114,26 @@ func runAgentOnce(ctx context.Context, device string, machineCert tls.Certificat
 		return fmt.Errorf("unlocker: key holder declined: %s", resp.Error)
 	}
 
+	// From here on the key holder has done its part and is waiting to
+	// be told what came of it. Every exit below reports the outcome
+	// before returning, because a key holder that only knows its own
+	// write succeeded cannot distinguish an unlocked machine from an
+	// answer that vanished into a dead relay session: the Android app
+	// told a human their machine had unlocked while it sat at its
+	// prompt, on exactly that basis.
+	//
+	// Best effort, deliberately: if the key holder has gone, the
+	// machine's own outcome is unchanged and the write failing must
+	// not mask it.
+	report := func(outcome error) error {
+		result := mrcore.RecoverResult{OK: outcome == nil}
+		if outcome != nil {
+			result.Error = outcome.Error()
+		}
+		_ = mrcore.WriteMessage(conn, result)
+		return outcome
+	}
+
 	var P []byte
 	switch {
 	case len(resp.Y) > 0:
@@ -121,10 +141,10 @@ func runAgentOnce(ctx context.Context, device string, machineCert tls.Certificat
 	case len(resp.XOnly) > 0:
 		P, err = mrcore.FinishXOnly(mrcore.P256(), e, *matched, resp.XOnly)
 	default:
-		return fmt.Errorf("unlocker: recover response carries neither Y nor XOnly")
+		return report(fmt.Errorf("unlocker: recover response carries neither Y nor XOnly"))
 	}
 	if err != nil {
-		return fmt.Errorf("unlocker: finishing recovery: %w", err)
+		return report(fmt.Errorf("unlocker: finishing recovery: %w", err))
 	}
 	defer wipe(P)
 
@@ -137,14 +157,14 @@ func runAgentOnce(ctx context.Context, device string, machineCert tls.Certificat
 	defer wipe(keyMaterial)
 
 	if err := verifyPassphrase(device, keyMaterial); err != nil {
-		return fmt.Errorf("unlocker: recovered secret does not open %s: %w", device, err)
+		return report(fmt.Errorf("unlocker: recovered secret does not open %s: %w", device, err))
 	}
 
 	if err := answerAskPassword(askPasswordDir, keyMaterial); err != nil {
-		return fmt.Errorf("unlocker: answering ask-password request: %w", err)
+		return report(fmt.Errorf("unlocker: answering ask-password request: %w", err))
 	}
 
-	return nil
+	return report(nil)
 }
 
 // verifyPassphrase checks that p actually opens device before it is ever

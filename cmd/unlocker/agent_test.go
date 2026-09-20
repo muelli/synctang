@@ -140,6 +140,19 @@ func TestAgentRecoversAndAnswersAskPassword(t *testing.T) {
 		t.Fatalf("sending RecoverResponse: %v", err)
 	}
 
+	// The machine's final word. A key holder that only knows its own
+	// write succeeded cannot tell an unlock from an answer that went
+	// into a dead relay session, which is exactly what the phone did
+	// when it told a human their machine had unlocked while it sat at
+	// its prompt.
+	var result mrcore.RecoverResult
+	if err := mrcore.ReadMessage(conn, &result); err != nil {
+		t.Fatalf("reading RecoverResult: %v", err)
+	}
+	if !result.OK {
+		t.Fatalf("machine reported failure: %s", result.Error)
+	}
+
 	if err := <-agentErrCh; err != nil {
 		t.Fatalf("runAgentOnce: %v", err)
 	}

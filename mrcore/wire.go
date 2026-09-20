@@ -37,6 +37,26 @@ type RecoverResponse struct {
 	Error string `json:"error,omitempty"`
 }
 
+// RecoverResult is the last message of the exchange: the machine
+// telling the key holder what actually happened with the answer it
+// was given.
+//
+// Without it a key holder knows only that its write succeeded, which
+// is not the same thing at all. A relay session that has quietly died
+// accepts a write and delivers it nowhere, so "answer sent" and
+// "volume unlocked" look identical from the key holder's side. The
+// Android app reported success on exactly that basis and told a human
+// their machine had unlocked while it sat at its LUKS prompt.
+//
+// Sent on failure as well as success, with Error describing what went
+// wrong (a secret that did not open the volume, no pending password
+// request to answer), because "it did not work and here is why" is
+// worth far more to whoever is holding the phone than silence.
+type RecoverResult struct {
+	OK    bool   `json:"ok"`
+	Error string `json:"error,omitempty"`
+}
+
 // Hello is the very first message the machine sends after a key
 // holder dials in, before anything else (confirm-code or the recover
 // exchange itself): the name a human should see before approving

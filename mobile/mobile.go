@@ -513,6 +513,21 @@ func (s *Session) AnswerXOnly(xOnly []byte) error {
 		return fmt.Errorf("mobile: sending answer: %w", err)
 	}
 	s.answered = true
+
+	// Wait to be told what came of it, rather than reporting success
+	// on the strength of the write. They are not the same claim: a
+	// relay session that has quietly died accepts a write and delivers
+	// it nowhere, and on exactly that basis this told someone their
+	// machine had unlocked while it sat at its LUKS prompt. A key
+	// holder saying "done" when the disk is still locked is worse than
+	// one saying nothing, because it stops the person trying.
+	var result mrcore.RecoverResult
+	if err := mrcore.ReadMessage(s.conn, &result); err != nil {
+		return fmt.Errorf("mobile: answer sent, but the machine did not report the outcome: %w", err)
+	}
+	if !result.OK {
+		return fmt.Errorf("mobile: the machine could not use the answer: %s", result.Error)
+	}
 	return nil
 }
 

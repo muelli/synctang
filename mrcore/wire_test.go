@@ -84,3 +84,25 @@ func TestReadMessageRejectsTruncatedStream(t *testing.T) {
 		t.Logf("truncated read failed with: %v (not EOF/ErrUnexpectedEOF, but still an error, fine)", err)
 	}
 }
+
+// The machine's final word has to survive the round trip, including
+// the failure case: a key holder that cannot tell "unlocked" from
+// "did not unlock" is the bug this message exists to fix.
+func TestRecoverResultRoundTrip(t *testing.T) {
+	for _, want := range []RecoverResult{
+		{OK: true},
+		{OK: false, Error: "recovered secret does not open /dev/vda3"},
+	} {
+		var buf bytes.Buffer
+		if err := WriteMessage(&buf, want); err != nil {
+			t.Fatalf("WriteMessage: %v", err)
+		}
+		var got RecoverResult
+		if err := ReadMessage(&buf, &got); err != nil {
+			t.Fatalf("ReadMessage: %v", err)
+		}
+		if got.OK != want.OK || got.Error != want.Error {
+			t.Errorf("round trip = %+v, want %+v", got, want)
+		}
+	}
+}

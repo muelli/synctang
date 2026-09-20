@@ -98,6 +98,18 @@ func runUnlockOnce(ctx context.Context, s []byte, cert tls.Certificate, machineI
 		return fmt.Errorf("sending recover response: %w", err)
 	}
 
+	// Wait to be told what came of it. "unlocked" used to be printed
+	// on the strength of that write succeeding, which is not the same
+	// claim: a relay session that has quietly died accepts a write and
+	// delivers it nowhere.
+	var result mrcore.RecoverResult
+	if err := mrcore.ReadMessage(conn, &result); err != nil {
+		return fmt.Errorf("answer sent, but the machine did not report the outcome: %w", err)
+	}
+	if !result.OK {
+		return fmt.Errorf("the machine could not use the answer: %s", result.Error)
+	}
+
 	fmt.Fprintln(stdout, "unlocked")
 	return nil
 }

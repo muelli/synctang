@@ -101,11 +101,6 @@ reproducibility are untested and not claimed.
   `slices.Contains` instead of a hand-rolled equivalent, caching the
   discovery HTTP client); not applied, undecided whether before or
   after the rest of WP7 closes out.
-- `[U]` The Android app reports a successful unlock once it has sent
-  its answer, not once the machine has opened the volume, so a lost
-  answer and a real unlock look identical to the person holding the
-  phone. Seen for real: the app said success while the machine stayed
-  at its LUKS prompt. Needs the machine to report the outcome back.
 - `[U]` `LocalDiscovery` is IPv4 multicast only. A LAN that is IPv6
   only would fall back to `SyncthingRelay`, which defeats the point
   on a LAN with no Internet. Not hit in testing (every network this
