@@ -502,6 +502,12 @@ func (s *Session) AnswerXOnly(xOnly []byte) error {
 	if len(s.x) == 0 {
 		return errors.New("mobile: no recovery request to answer")
 	}
+	// The machine chose this point. Checked here as well as when the
+	// request arrived, because this is the call that is about to reach
+	// the Keystore key.
+	if err := mrcore.ValidateChallengePoint(mrcore.P256(), s.x); err != nil {
+		return fmt.Errorf("mobile: refusing the machine's challenge: %w", err)
+	}
 	if s.answered {
 		return errors.New("mobile: this request has already been answered")
 	}

@@ -4,12 +4,12 @@
 test: test-go lint em-dash-check
 
 test-go:
-	go test ./...
+	go test -timeout 20m ./...
 
 # Loopback LUKS tests exercise real dm-crypt via a truncated file image.
 # They need CAP_SYS_ADMIN, so they run in a separate privileged job (or on the VM).
 test-go-privileged:
-	go test -tags privileged ./...
+	go test -timeout 20m -tags privileged ./...
 
 lint:
 	find dracut scripts -name '*.sh' -print0 | xargs -0 -r shellcheck

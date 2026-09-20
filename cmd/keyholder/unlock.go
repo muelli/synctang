@@ -89,6 +89,12 @@ func runUnlockOnce(ctx context.Context, s []byte, cert tls.Certificate, machineI
 		return fmt.Errorf("reading recover request: %w", err)
 	}
 
+	// The machine chose this point, so check it before multiplying the
+	// long-term secret by it.
+	if err := mrcore.ValidateChallengePoint(mrcore.P256(), req.X); err != nil {
+		return fmt.Errorf("refusing the machine's challenge: %w", err)
+	}
+
 	Y, err := mrcore.P256().ScalarMult(req.X, s)
 	if err != nil {
 		return fmt.Errorf("computing response: %w", err)

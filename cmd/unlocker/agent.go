@@ -69,6 +69,35 @@ func runAgentOnce(ctx context.Context, device string, machineCert tls.Certificat
 	}
 	defer conn.Close()
 
+	// Bound the exchange itself, not just the wait for a connection.
+	//
+	// Every read below is a blocking read with no deadline of its own,
+	// so a key holder that connects and then stops talking holds the
+	// machine for the rest of the boot: the agent handles one
+	// connection at a time, so nobody else can unlock it either, and
+	// the person who could fix it is by definition not standing next
+	// to it. No malice is needed. A phone that loses signal between
+	// dialling and answering, or an app killed while the biometric
+	// prompt is up, leaves exactly this.
+	//
+	// Closing the connection is what unblocks a read, there being no
+	// deadline on the Conn interface; the agent's outer loop then
+	// starts a fresh attempt. The budget is generous because the
+	// exchange legitimately waits for a human to approve on a phone,
+	// and in confirm-code mode to read a code off this console and
+	// type it in.
+	exchangeCtx, cancelExchange := context.WithTimeout(ctx, exchangeTimeout)
+	defer cancelExchange()
+	exchangeDone := make(chan struct{})
+	defer close(exchangeDone)
+	go func() {
+		select {
+		case <-exchangeCtx.Done():
+			conn.Close()
+		case <-exchangeDone:
+		}
+	}()
+
 	var matched *mrcore.Recipient
 	for i := range tok.Recipients {
 		if id, ok := tok.Recipients[i].TransportDeviceID(); ok && id == conn.PeerID() {
@@ -180,6 +209,17 @@ func runAgentOnce(ctx context.Context, device string, machineCert tls.Certificat
 
 	return report(nil)
 }
+
+// exchangeTimeout bounds one recovery exchange once a key holder has
+// connected. Long enough for somebody to pick up a phone, approve, and
+// authenticate, and in confirm-code mode to read six digits off a
+// console and type them; short enough that a key holder which has
+// silently gone away costs one attempt rather than the whole boot.
+// A var rather than a const so tests can shorten it: the behaviour
+// worth testing is that the agent gives up at all, and waiting three
+// real minutes to watch it happen would make the suite slower than it
+// is useful.
+var exchangeTimeout = 3 * time.Minute
 
 // resultLingerTimeout bounds how long the agent waits for the key
 // holder to finish reading its verdict before closing regardless.

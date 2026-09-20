@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 )
 
@@ -87,6 +88,36 @@ func Enrol(g Group, s []byte) (p []byte, rec Recipient, err error) {
 		Ciphertext: ct,
 		Nonce:      nonce,
 	}, nil
+}
+
+// ValidateChallengePoint checks a challenge point received from a
+// machine before a key holder multiplies its long-term secret by it.
+//
+// The point is chosen by the peer, so this is the one place a key
+// holder is asked to perform a private-key operation on input it did
+// not produce. Being on the curve is enforced by the group itself,
+// which is what stops the classical invalid-curve attack; what this
+// adds is a refusal to operate on the degenerate cases at all.
+//
+// The point at infinity is the one that matters. Multiplying it is
+// well defined and leaks nothing, since s.O = O whatever s is, so
+// accepting it would not disclose the secret; but a machine has no
+// legitimate reason to send it, the answer is useless to an honest
+// one, and a key holder quietly performing the operation anyway hides
+// the fact that something is probing it.
+func ValidateChallengePoint(g Group, x []byte) error {
+	if len(x) == 0 {
+		return errors.New("mrcore: challenge point is empty")
+	}
+	if len(x) == 1 && x[0] == 0 {
+		return errors.New("mrcore: challenge point is the point at infinity")
+	}
+	// Round-tripping through the group rejects anything off the curve,
+	// wrongly encoded, or with a coordinate that is not canonical.
+	if _, err := g.PointToX(x); err != nil {
+		return fmt.Errorf("mrcore: challenge point is not a valid curve point: %w", err)
+	}
+	return nil
 }
 
 // ChallengeStart begins a recovery attempt. It returns the ephemeral
