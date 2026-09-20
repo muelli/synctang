@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -79,10 +80,75 @@ func levelName(level slog.Level) logLevelName {
 // stderr, so this still works under "go test" or a bare shell with no
 // systemd at all.
 func newLogger(level slog.Level) *slog.Logger {
-	if journal.Enabled() {
-		return slog.New(newJournalHandler(level))
+	return newLoggerTo(level, journal.Enabled(), os.Stderr)
+}
+
+// consoleLevel is the level at or above which records also go to the
+// console when the journal is in use.
+//
+// A machine sitting at its LUKS prompt is precisely the machine whose
+// journal nobody can read: reading it needs the disk that is not
+// unlocking. Sending everything to the journal alone therefore hides
+// the failures that matter most, at the only moment they matter. The
+// agent once failed to announce itself every ten seconds for hours
+// while printing nothing whatsoever, and from the console it looked
+// identical to a machine waiting patiently.
+//
+// Warning and above only: the console is a person staring at a boot
+// prompt, not a log sink, and routine progress there would bury the
+// one line worth reading.
+const consoleLevel = slog.LevelWarn
+
+// newLoggerTo builds the logger, with the journal and the console as
+// separate, explicit decisions so both can be tested without a
+// systemd.
+func newLoggerTo(level slog.Level, journalEnabled bool, console io.Writer) *slog.Logger {
+	if !journalEnabled {
+		return slog.New(slog.NewTextHandler(console, &slog.HandlerOptions{Level: level}))
 	}
-	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
+	consoleFloor := level
+	if consoleFloor < consoleLevel {
+		consoleFloor = consoleLevel
+	}
+	return slog.New(teeHandler{
+		journal: newJournalHandler(level),
+		console: slog.NewTextHandler(console, &slog.HandlerOptions{Level: consoleFloor}),
+	})
+}
+
+// teeHandler writes each record to both the journal, which keeps
+// everything for afterwards, and the console, which is all a human has
+// while the machine is still locked.
+type teeHandler struct {
+	journal slog.Handler
+	console slog.Handler
+}
+
+func (h teeHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return h.journal.Enabled(ctx, level) || h.console.Enabled(ctx, level)
+}
+
+func (h teeHandler) Handle(ctx context.Context, r slog.Record) error {
+	var err error
+	if h.journal.Enabled(ctx, r.Level) {
+		err = h.journal.Handle(ctx, r)
+	}
+	if h.console.Enabled(ctx, r.Level) {
+		// Deliberately not short-circuited by a journal failure: the
+		// console is the more important of the two here.
+		if cerr := h.console.Handle(ctx, r.Clone()); cerr != nil && err == nil {
+			err = cerr
+		}
+	}
+	return err
+}
+
+func (h teeHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return teeHandler{journal: h.journal.WithAttrs(attrs), console: h.console.WithAttrs(attrs)}
+}
+
+func (h teeHandler) WithGroup(name string) slog.Handler {
+	return teeHandler{journal: h.journal.WithGroup(name), console: h.console.WithGroup(name)}
 }
 
 // journalHandler sends every record to the systemd journal via its
