@@ -29,6 +29,17 @@ NET="${NET:-user}"
 # serial console to type poweroff works, but it is fiddly to drive from a script
 # and pointless when the hypervisor can just press the button.
 MONITOR_SOCK="${MONITOR_SOCK:-$OUTDIR/monitor.sock}"
+# A second serial port, carrying nothing but the journal.
+#
+# The console is where a human watches a boot, and it stays readable
+# only if it is not also carrying every debug record systemd emits. But
+# the journal is exactly what is wanted when something goes wrong
+# before the disk is unlocked, and at that point it cannot be read the
+# usual way: journalctl needs the root filesystem that is not mounting.
+# journald forwards to /dev/ttyS1 (see make-test-vm.sh's kernel command
+# line) and this puts ttyS1 on its own socket, so the two streams can
+# be captured separately.
+JOURNAL_PORT="${JOURNAL_PORT:-7101}"
 TAP="${TAP:-sytap0}"
 SMP="${SMP:-2}"
 
@@ -47,7 +58,7 @@ if [ "$CONSOLE_WAIT" = "1" ]; then
 	echo "waiting for a console client on 127.0.0.1:$CONSOLE_PORT before starting the guest" >&2
 fi
 
-echo "booting with accel=$ACCEL, console on 127.0.0.1:$CONSOLE_PORT, ssh on 127.0.0.1:$SSH_PORT" >&2
+echo "booting with accel=$ACCEL, console on 127.0.0.1:$CONSOLE_PORT, journal on 127.0.0.1:$JOURNAL_PORT, ssh on 127.0.0.1:$SSH_PORT" >&2
 
 # NET=user is QEMU's user-mode networking: enough for the machine to reach the
 # Internet (and so the relay pool), and it forwards a port for ssh once the VM
@@ -78,6 +89,7 @@ exec qemu-system-x86_64 \
 	"${NETDEV[@]}" \
 	-device virtio-net-pci,netdev=net0 \
 	-serial "telnet:127.0.0.1:$CONSOLE_PORT,server$CONSOLE_WAIT_OPT" \
+	-serial "telnet:127.0.0.1:$JOURNAL_PORT,server,nowait" \
 	-monitor "unix:$MONITOR_SOCK,server,nowait" \
 	-display none \
 	"$@"

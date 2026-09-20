@@ -153,7 +153,14 @@ GRUB_DEFAULT=0
 GRUB_TIMEOUT=2
 GRUB_DISTRIBUTOR="synctang-local"
 GRUB_CMDLINE_LINUX_DEFAULT=""
-GRUB_CMDLINE_LINUX="console=tty1 console=ttyS0,115200 rd.luks.uuid=$LUKS_UUID"
+# systemd.journald.forward_to_console with tty_path=/dev/ttyS1 sends the
+# journal out the second serial port instead of the first, so the
+# journal can be captured without drowning the console a human reads.
+# It is the only way to see journal records from a machine that has not
+# unlocked its root filesystem yet, which is exactly when they matter:
+# an agent that has silently stopped announcing itself looks, from the
+# console alone, identical to one waiting patiently.
+GRUB_CMDLINE_LINUX="console=tty1 console=ttyS0,115200 rd.luks.uuid=$LUKS_UUID systemd.journald.forward_to_console=1 systemd.journald.tty_path=/dev/ttyS1"
 GRUB_TERMINAL="console serial"
 GRUB_SERIAL_COMMAND="serial --speed=115200"
 GRUB

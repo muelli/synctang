@@ -91,6 +91,31 @@
   exists solely to notice this and fail the attempt so the agent's
   outer loop can build a fresh client; do not remove it on the
   assumption that the channel close will do the job.
+- **Never cancel the context a winning transport was built on.**
+  `SyncthingRelay` builds its relay client, its control connection and
+  its announce loop on the context it is handed, and the relay server
+  drops every session belonging to a device the instant that device's
+  control connection disconnects. So cancelling the winner does not
+  tidy up a finished attempt, it destroys the session that attempt
+  just produced, and both ends read EOF on a connection that finished
+  its handshake a moment earlier. `Multi.race` did exactly this and
+  made relay unlocks fail nearly every time. Each attempt now gets its
+  own context; the winner's is released by its `Conn.Close()`. Note
+  how invisible this was: `LocalDiscovery` has no control connection
+  to lose and a `DirectAddr` listener has no relay at all, so all 105
+  Go tests and every offline acceptance test passed throughout. Only
+  the public relay pool shows it.
+- **Forward the journal to a second serial port when debugging a
+  machine that has not unlocked yet.** `journalctl` is useless there:
+  reading it needs the root filesystem that is not mounting, so an
+  agent can fail every ten seconds for hours and say nothing a human
+  can see. `systemd.journald.forward_to_console=1
+  systemd.journald.tty_path=/dev/ttyS1` on the kernel command line,
+  plus a second `-serial` in QEMU, gives the full journal on its own
+  socket while leaving the console readable. `scripts/run-test-vm.sh`
+  does this on port 7101. The agent also tees warnings to the console
+  for real deployments, where nobody has attached a second serial
+  port.
 - **`transport.Multi` (races `LocalDiscovery` against
   `SyncthingRelay`) can pick a different winning transport on each
   side independently**, since each side races on its own with no

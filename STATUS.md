@@ -20,8 +20,19 @@ not here. See `TESTREPORT.md` for the acceptance table (A1-A11).
 - **WP4** (`keyholder`): `init`/`unlock`/`export-pubkey` (file backend)
   done. `pair` and the TPM2 backend not started.
 - **WP5** (Android app): built (`gomobile bind` + Kotlin UI), passes
-  its own instrumented tests on an emulator, CI builds and tests it.
-  Real-device retest is WP0's blocker above, shared.
+  its own instrumented tests on an emulator, CI builds and tests it,
+  and is keyboard-navigable for Android's desktop mode. Run on real
+  hardware for the first time on 2026-09-20, which immediately found
+  three bugs no test had: it could not unlock a machine that was not
+  in confirm-code mode (it guessed message types by field presence
+  rather than reading them positionally), it gave up after a single
+  attempt where the laptop client retries, and it reports success on
+  sending its answer rather than on the volume actually opening. The
+  first two are fixed; the third is not.
+  `-Psynctang.noBiometric=true` builds a debug-only variant whose key
+  is not gated behind a biometric prompt, so the unlock flow can be
+  driven end to end without a human; release builds cannot have it and
+  the ungated key uses its own Keystore alias.
 - **WP6** (dracut module `90unlocker`): done. `enrol` auto-rebuilding
   the initrd is not wired in; currently a manual `dracut --force` step.
 - **WP7** (VM acceptance): see `TESTREPORT.md`. A1, A2, A3, A5, A6,
@@ -90,6 +101,11 @@ reproducibility are untested and not claimed.
   `slices.Contains` instead of a hand-rolled equivalent, caching the
   discovery HTTP client); not applied, undecided whether before or
   after the rest of WP7 closes out.
+- `[U]` The Android app reports a successful unlock once it has sent
+  its answer, not once the machine has opened the volume, so a lost
+  answer and a real unlock look identical to the person holding the
+  phone. Seen for real: the app said success while the machine stayed
+  at its LUKS prompt. Needs the machine to report the outcome back.
 - `[U]` `LocalDiscovery` is IPv4 multicast only. A LAN that is IPv6
   only would fall back to `SyncthingRelay`, which defeats the point
   on a LAN with no Internet. Not hit in testing (every network this
