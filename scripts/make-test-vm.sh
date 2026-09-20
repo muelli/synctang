@@ -153,19 +153,40 @@ GRUB_DEFAULT=0
 GRUB_TIMEOUT=2
 GRUB_DISTRIBUTOR="synctang-local"
 GRUB_CMDLINE_LINUX_DEFAULT=""
-# systemd.journald.forward_to_console with tty_path=/dev/ttyS1 sends the
-# journal out the second serial port instead of the first, so the
-# journal can be captured without drowning the console a human reads.
-# It is the only way to see journal records from a machine that has not
-# unlocked its root filesystem yet, which is exactly when they matter:
-# an agent that has silently stopped announcing itself looks, from the
-# console alone, identical to one waiting patiently.
-GRUB_CMDLINE_LINUX="console=tty1 console=ttyS0,115200 rd.luks.uuid=$LUKS_UUID systemd.journald.forward_to_console=1 systemd.journald.tty_path=/dev/ttyS1"
+# forward_to_console makes journald emit every record to a serial port,
+# which is the only way to see the journal of a machine that has not
+# unlocked its root filesystem yet: journalctl needs the filesystem
+# that is not mounting, so an agent can fail every ten seconds for
+# hours and say nothing a human can see.
+#
+# Which port is decided by TTYPath in the journald drop-in below, not
+# here: systemd.journald.tty_path is not one of the settings journald
+# reads off the kernel command line (only forward_to_* and max_level_*
+# are), so passing it there is silently ignored and everything lands on
+# the console a human is trying to read.
+GRUB_CMDLINE_LINUX="console=tty1 console=ttyS0,115200 rd.luks.uuid=$LUKS_UUID systemd.journald.forward_to_console=1"
 GRUB_TERMINAL="console serial"
 GRUB_SERIAL_COMMAND="serial --speed=115200"
 GRUB
 grub-install --target=i386-pc "$LOOP"
 update-grub
+
+# The journal goes to the second serial port, so the first stays
+# readable for watching a boot. The drop-in has to be pulled into the
+# initrd explicitly: dracut installs journald.conf itself but not
+# arbitrary drop-ins beside it.
+mkdir -p /etc/systemd/journald.conf.d
+cat > /etc/systemd/journald.conf.d/99-synctang-test.conf <<'JOURNALD'
+[Journal]
+ForwardToConsole=yes
+TTYPath=/dev/ttyS1
+MaxLevelConsole=debug
+JOURNALD
+
+mkdir -p /etc/dracut.conf.d
+cat > /etc/dracut.conf.d/99-synctang-journal.conf <<'DRACUT'
+install_items+=" /etc/systemd/journald.conf.d/99-synctang-test.conf "
+DRACUT
 
 systemctl enable ssh
 systemctl enable serial-getty@ttyS0.service
