@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -675,29 +676,95 @@ func (t *SyncthingRelay) dialRelayOnce(ctx context.Context, peerID string) (net.
 		return conn, nil
 	}
 
-	for _, relayURI := range relayAddrs {
-		u, err := url.Parse(relayURI)
-		if err != nil {
-			lastErr = err
-			continue
+	if len(relayAddrs) > 0 {
+		conn, err := raceRelayAddresses(ctx, relayAddrs, func(ctx context.Context, u *url.URL) (net.Conn, error) {
+			inv, err := client.GetInvitationFromRelay(ctx, u, targetID, []tls.Certificate{t.Cert}, defaultRelayTimeout)
+			if err != nil {
+				return nil, fmt.Errorf("relay %s: %w", u.Host, err)
+			}
+			raw, err := client.JoinSession(ctx, inv)
+			if err != nil {
+				return nil, fmt.Errorf("joining session on relay %s: %w", u.Host, err)
+			}
+			return raw, nil
+		})
+		if err == nil {
+			return conn, nil
 		}
-		inv, err := client.GetInvitationFromRelay(ctx, u, targetID, []tls.Certificate{t.Cert}, defaultRelayTimeout)
-		if err != nil {
-			lastErr = fmt.Errorf("relay %s: %w", u.Host, err)
-			continue
-		}
-		conn, err := client.JoinSession(ctx, inv)
-		if err != nil {
-			lastErr = fmt.Errorf("joining session on relay %s: %w", u.Host, err)
-			continue
-		}
-		return conn, nil
+		lastErr = err
 	}
 
 	if lastErr == nil {
 		lastErr = fmt.Errorf("no usable direct or relay addresses for %s", targetID)
 	}
 	return nil, fmt.Errorf("transport: connecting to %s: %w", targetID, lastErr)
+}
+
+// raceRelayAddresses tries every announced relay address at once and
+// returns the first that produces a session, closing any that arrive
+// late.
+//
+// They have to be raced rather than walked, because the discovery
+// server merges announcements instead of replacing them: a machine's
+// record accumulates every relay it has ever used, so after a few
+// boots most of the list is stale and only one entry is live. Tried
+// one at a time, each dead address costs a full relay timeout before
+// the live one is reached, and the list only grows. Measured on a real
+// machine at 36s, 141s and 31s for three identical unlocks, the slow
+// one being the cycle with the most stale entries ahead of the good
+// one.
+//
+// There is no way to tell which is current from the record itself: it
+// carries one timestamp for the whole record, not one per address.
+func raceRelayAddresses(ctx context.Context, addrs []string, join func(context.Context, *url.URL) (net.Conn, error)) (net.Conn, error) {
+	raceCtx, cancel := context.WithCancel(ctx)
+
+	type result struct {
+		conn net.Conn
+		err  error
+	}
+	results := make(chan result, len(addrs))
+
+	var attempts int
+	for _, addrStr := range addrs {
+		u, err := url.Parse(addrStr)
+		if err != nil {
+			results <- result{err: fmt.Errorf("relay address %q: %w", addrStr, err)}
+			attempts++
+			continue
+		}
+		attempts++
+		go func(u *url.URL) {
+			conn, err := join(raceCtx, u)
+			results <- result{conn: conn, err: err}
+		}(u)
+	}
+
+	var errs []error
+	for i := 0; i < attempts; i++ {
+		r := <-results
+		if r.err == nil {
+			cancel()
+			if remaining := attempts - i - 1; remaining > 0 {
+				// A relay that answers just after the race is decided
+				// is a real, joined session nobody will use; leaving
+				// it open holds a session on the relay as well as a
+				// socket here.
+				go func(n int) {
+					for j := 0; j < n; j++ {
+						late := <-results
+						if late.err == nil && late.conn != nil {
+							late.conn.Close()
+						}
+					}
+				}(remaining)
+			}
+			return r.conn, nil
+		}
+		errs = append(errs, r.err)
+	}
+	cancel()
+	return nil, errors.Join(errs...)
 }
 
 // watchRelayLoss blocks until the relay client described by uri and

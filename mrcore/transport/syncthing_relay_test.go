@@ -7,7 +7,9 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -231,3 +233,89 @@ func TestListenContextCancellation(t *testing.T) {
 		t.Errorf("Listen took %v to notice context cancellation, want well under 5s", elapsed)
 	}
 }
+
+// Discovery merges announcements rather than replacing them, so a
+// machine's record accumulates every relay it has ever used: four
+// addresses after four boots, of which one is current. Trying them one
+// at a time means paying a timeout for each stale entry before
+// reaching the live one, and the record only grows.
+//
+// Measured on a real machine: unlock times of 36s, 141s and 31s for
+// three identical cycles, the slow one being the cycle with the most
+// stale addresses ahead of the good one in the list.
+func TestRelayAddressesAreTriedInParallel(t *testing.T) {
+	var mu sync.Mutex
+	var started []string
+
+	join := func(ctx context.Context, u *url.URL) (net.Conn, error) {
+		mu.Lock()
+		started = append(started, u.Host)
+		mu.Unlock()
+		if u.Host == "live.example:22067" {
+			return &fakeNetConn{}, nil
+		}
+		// A stale relay does not refuse quickly; it hangs until
+		// something gives up on it.
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+
+	addrs := []string{
+		"relay://stale1.example:22067",
+		"relay://stale2.example:22067",
+		"relay://stale3.example:22067",
+		"relay://live.example:22067",
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	conn, err := raceRelayAddresses(ctx, addrs, join)
+	if err != nil {
+		t.Fatalf("raceRelayAddresses: %v", err)
+	}
+	defer conn.Close()
+
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Errorf("took %s, which means the stale addresses were tried one after another", elapsed)
+	}
+	// The losing attempts are goroutines; the winner can return before
+	// they are scheduled, so give them a moment rather than asserting
+	// on a race of the test's own making.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		n := len(started)
+		mu.Unlock()
+		if n == len(addrs) {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	t.Errorf("started %d attempts, want all %d tried at once", len(started), len(addrs))
+}
+
+// Every address failing must still report why, rather than losing the
+// reason in the race.
+func TestRaceRelayAddressesReportsFailure(t *testing.T) {
+	join := func(ctx context.Context, u *url.URL) (net.Conn, error) {
+		return nil, errors.New("not found")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	_, err := raceRelayAddresses(ctx, []string{"relay://a.example:1", "relay://b.example:2"}, join)
+	if err == nil {
+		t.Fatal("expected an error when every relay address fails")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("the underlying reason should survive, got %v", err)
+	}
+}
+
+type fakeNetConn struct{ net.Conn }
+
+func (f *fakeNetConn) Close() error { return nil }
