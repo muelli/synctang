@@ -30,6 +30,12 @@ not here. See `TESTREPORT.md` for the acceptance table (A1-A11).
   attempt where the laptop client retries, and it reports success on
   sending its answer rather than on the volume actually opening. The
   first two are fixed; the third is not.
+  Since 2026-09-21 the app races `LocalDiscovery` against the relay
+  like the laptop client does, holding a Wi-Fi `MulticastLock` for the
+  duration of a dial, so a phone can unlock a machine on the same
+  network with no Internet. Covered by a Go test that connects a
+  `Session` to a machine reachable only by multicast, and by Kotlin
+  tests for the lock's lifetime; not yet exercised on real hardware.
   `-Psynctang.noBiometric=true` builds a debug-only variant whose key
   is not gated behind a biometric prompt, so the unlock flow can be
   driven end to end without a human; release builds cannot have it and

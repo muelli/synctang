@@ -89,6 +89,10 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
         requireUserAuthentication = !TestMode.noBiometric,
     )
 
+    // Null on a device that will not give one out, which costs local
+    // discovery and nothing else; see MulticastLease.
+    private val multicastLock = MulticastLease.lockFor(application)
+
     private val _state = MutableStateFlow<UnlockUiState>(UnlockUiState.Working(Machine("", "")))
     val state: StateFlow<UnlockUiState> = _state.asStateFlow()
 
@@ -161,7 +165,12 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
                     closeSession()
                     val fresh = Session(machine.deviceId, store.identitySeed())
                     fresh.setTimeoutSeconds(CONNECT_TIMEOUT_SECONDS)
-                    fresh.connect()
+                    // The lock covers the whole dial, including its
+                    // retries: the local-discovery leg races the relay
+                    // for as long as connect() runs, and hears nothing
+                    // without it. Released either way, so a machine
+                    // that never answers does not leave it held.
+                    MulticastLease.holding(multicastLock) { fresh.connect() }
                     session = fresh
                 }
                 _state.value = describe(machine)

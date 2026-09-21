@@ -314,11 +314,44 @@ func (s *Session) Connect() error {
 // relay pool.
 const connectRetryInterval = 2 * time.Second
 
+// newDialTransport builds the Transport one attempt dials through,
+// mirroring cmd/keyholder's function of the same name so the phone and
+// the laptop reach a machine the same way.
+//
+// LocalDiscovery is raced against the relay because the two answer
+// different situations and the app cannot tell in advance which it is
+// in: the relay needs Internet access, while local discovery needs
+// only a link to the same network and works with no DNS, no route and
+// no third party. Dialling over the relay alone, as this used to,
+// meant a phone could not unlock a machine standing next to it on the
+// same Wi-Fi whenever the line was down, which is one of the
+// situations where being able to unlock it matters most.
+//
+// An explicit direct address stays on its own rather than being raced:
+// it is an instruction about where to dial, used by the offline tests
+// and by manual same-network pairing, and racing a multicast search
+// against it would quietly try somewhere else too.
+//
+// Android needs a MulticastLock held while this runs for the local leg
+// to receive anything; the app takes one around the whole connect (see
+// MulticastLease in the Kotlin sources). Without it this simply falls
+// back to behaving as it did before, which is why the lock's absence
+// degrades rather than breaks.
+func newDialTransport(cert tls.Certificate, directAddr string) transport.Transport {
+	if directAddr != "" {
+		return transport.NewSyncthingRelay(cert)
+	}
+	return &transport.Multi{Transports: []transport.Transport{
+		&transport.LocalDiscovery{Cert: cert},
+		transport.NewSyncthingRelay(cert),
+	}}
+}
+
 // connectOnceLocked is one attempt: dial, read Hello, read whatever
 // follows it. Any failure leaves the session with no connection, so
 // the next attempt starts clean.
 func (s *Session) connectOnceLocked(ctx context.Context, cert tls.Certificate) error {
-	tr := transport.NewSyncthingRelay(cert)
+	tr := newDialTransport(cert, s.directAddr)
 	conn, err := tr.Dial(ctx, transport.DialOptions{
 		PeerID:     s.machineID,
 		DirectAddr: s.directAddr,

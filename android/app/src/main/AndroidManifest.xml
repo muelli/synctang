@@ -7,6 +7,15 @@
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!-- Local discovery: the machine announces itself on a multicast
+         group, and Android filters multicast out before it reaches an
+         app unless a MulticastLock is held. Granted at install time
+         (a normal permission, no runtime prompt), and only taken for
+         the duration of a dial. Without it the app still unlocks over
+         the relay; it just cannot find a machine on the same network
+         when there is no Internet. -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+
     <!-- Pairing by QR code is the only camera use, and a phone without
          one can still be paired by typing the machine's device ID. -->
     <uses-feature

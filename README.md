@@ -188,13 +188,17 @@ finds the other first:
   global discovery, for when the two sides are not on the same
   network.
 
-The Android app is the exception: it dials over `SyncthingRelay` only
-(`mobile/mobile.go`'s `connectOnceLocked`), so a phone key holder
-needs Internet access even when it is sitting on the same Wi-Fi as the
-machine. Local discovery on Android additionally needs a
-`MulticastLock` and the `CHANGE_WIFI_MULTICAST_STATE` permission,
-neither of which the app requests today. The offline path is therefore
-machine-to-laptop only. `[V]` by reading both call sites.
+The Android app races the same two transports (`mobile/mobile.go`'s
+`newDialTransport`), so a phone can unlock a machine on the same
+network with no Internet at all. Android filters multicast out before
+it reaches an application unless a `MulticastLock` is held, so the app
+declares `CHANGE_WIFI_MULTICAST_STATE` (a normal permission, granted at
+install time with no runtime prompt) and holds a lock for the duration
+of a dial and no longer, since holding one keeps the Wi-Fi chip out of
+its power-saving filter. A device that will not give out a lock loses
+local discovery and keeps the relay: `MulticastLease` degrades rather
+than breaks. Both sides must share a multicast domain, and local
+discovery is IPv4 only.
 
 `transport.Multi` races the two: on a LAN with no Internet route, the
 relay path simply keeps failing in the background while local
