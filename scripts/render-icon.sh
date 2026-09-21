@@ -14,4 +14,4 @@ command -v rsvg-convert >/dev/null || { echo "rsvg-convert not found (install li
 rsvg-convert -w 512 -h 512 "$SRC" -o "$OUT"
 echo "wrote $OUT ($(stat -c%s "$OUT") bytes)"
 echo "Reminder: android/app/src/main/res/drawable/ic_launcher_foreground.xml carries the"
-echo "same shapes for the adaptive launcher icon — update it too if you changed them."
+echo "same shapes for the adaptive launcher icon; update it too if you changed them."

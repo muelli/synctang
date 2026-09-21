@@ -210,7 +210,7 @@ jobs:
 
           # Repository icon source: fdroid update reads config's repo_icon relative
           # to the fdroid dir and installs it into repo/icons/ itself. (Copying
-          # into repo/icons/ directly does NOT work — update overwrites it with a
+          # into repo/icons/ directly does NOT work: update overwrites it with a
           # QR-code placeholder when the configured source file is missing.)
           cp "$FASTLANE/images/icon.png" site/fdroid/icon.png
 
@@ -297,12 +297,12 @@ jobs:
           while read -r APPID APK VC APPNAME; do
             fdroid scanner --exit-code "$APK" 2>&1 | tee scan.out
             {
-              echo "${APPNAME//_/ } ($APPID) — software-freedom report (versionCode $VC)"
+              echo "${APPNAME//_/ } ($APPID) software-freedom report (versionCode $VC)"
               echo "Generated $(date -u '+%Y-%m-%d %H:%M:%SZ') by GitHub Actions."
               echo
               echo "== F-Droid scanner (fdroidserver $FDROID_VER) =="
               echo "Command: fdroid scanner --exit-code $(basename "$APK")"
-              echo "Result: PASS — no known non-free classes, trackers, or extra signing blocks."
+              echo "Result: PASS. No known non-free classes, trackers, or extra signing blocks."
               echo
               sed 's/^/    /' scan.out
               echo
@@ -342,7 +342,7 @@ jobs:
               -e "s|{{APP_CERT_SHA256}}|${APP_CERT_SHA256}|g" \
               fdroid/landing.html > site/index.html
 
-          # Commit only the public, signed artifacts — never the config/keystore.
+          # Commit only the public, signed artifacts, never the config or keystore.
           cat > site/.gitignore <<'EOF'
           config.yml
           *.p12

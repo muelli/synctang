@@ -6,10 +6,11 @@ not here. See `TESTREPORT.md` for the acceptance table (A1-A11).
 
 ## Work packages
 
-- **WP0** (curve/feasibility spike): done at emulator level. Real
-  StrongBox + biometric retest still needs a human with a suitable
-  Android phone (see `docs/wp0-keystore-ecdh.md`, "For the human"):
-  the one genuine external blocker left in this project.
+- **WP0** (curve/feasibility spike): **done, including on real
+  hardware**. A StrongBox-held, biometric-gated key performed ECDH
+  against a hand-built peer point and returned the correct value, as
+  proved by the machine opening its volume with it (A4). The emulator
+  run could only show that a software Keystore accepted such a point.
 - **WP1** (`mrcore` math): done.
 - **WP2** (transport): done. `SyncthingRelay` (public relay + global
   discovery), `LocalDiscovery` (LAN multicast, no Internet needed),
@@ -35,9 +36,10 @@ not here. See `TESTREPORT.md` for the acceptance table (A1-A11).
   the ungated key uses its own Keystore alias.
 - **WP6** (dracut module `90unlocker`): done. `enrol` auto-rebuilding
   the initrd is not wired in; currently a manual `dracut --force` step.
-- **WP7** (VM acceptance): see `TESTREPORT.md`. A1, A2, A3, A5, A6,
-  A7, A8, A9, A10 and A11 all verified. A4 is the only one left, and
-  the only one blocked: it needs real StrongBox hardware (WP0).
+- **WP7** (VM acceptance): **all eleven acceptance items pass**; see
+  `TESTREPORT.md`. A4 was the last, verified 2026-09-21 on a real
+  StrongBox phone against a machine that had been waiting at its LUKS
+  prompt for over eleven hours.
 
 ## Test VMs
 

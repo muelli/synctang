@@ -22,13 +22,13 @@ identities can never collide even if (mis)configured with the same seed.
 The derived keystore passphrase is printed on stdout (nothing else is).
 
 Why the certificate lives in git: Android identifies a signer by the exact
-certificate bytes, and ECDSA self-signatures are randomized — regenerating
+certificate bytes, and ECDSA self-signatures are randomized, so regenerating
 the certificate each run would look like a different signer. The certificate
 is public material (it is embedded in every APK), so pinning it in the
 repository is both safe and transparent. The script refuses to build a
 keystore whose derived key does not match the pinned certificate.
 
-DERIVATION IS A CONTRACT (v1) — the seed *is* the private key, and this
+DERIVATION IS A CONTRACT (v1): the seed *is* the private key, and this
 algorithm is the map between them. It must never change for existing seeds;
 any future change must introduce a new version label and keep v1 intact:
 
@@ -85,7 +85,7 @@ def main() -> int:
     pem = cert_path(role)
     if bootstrap:
         if os.path.exists(pem):
-            sys.exit(f"{pem} already exists — refusing to overwrite an established identity")
+            sys.exit(f"{pem} already exists; refusing to overwrite an established identity")
         name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, COMMON_NAME[role])])
         cert = (
             x509.CertificateBuilder()
@@ -105,11 +105,11 @@ def main() -> int:
             with open(pem, "rb") as f:
                 cert = x509.load_pem_x509_certificate(f.read())
         except FileNotFoundError:
-            sys.exit(f"{pem} not found — run once with --bootstrap and commit the .pem")
+            sys.exit(f"{pem} not found; run once with --bootstrap and commit the .pem")
 
     if cert.public_key().public_numbers() != key.public_key().public_numbers():
         sys.exit(
-            f"SEED does not match the committed certificate {pem} — wrong seed, "
+            f"SEED does not match the committed certificate {pem}: wrong seed, "
             "or the certificate belongs to a different identity"
         )
 

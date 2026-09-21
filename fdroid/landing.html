@@ -123,15 +123,15 @@ self-contained: no external scripts, styles, fonts, or trackers.
   <span id="count" role="status" aria-live="polite"></span>
   <div id="apps" aria-labelledby="apps-heading">
     <noscript><p>Enable JavaScript to browse the app list here, or add the
-      repository in F-Droid — it works without JavaScript.</p></noscript>
+      repository in F-Droid; it works without JavaScript.</p></noscript>
   </div>
 </main>
 
 <footer>
   <p>Every APK is built from public source code and passes F-Droid's scanner for
-     non-free components — each app links its freedom report above.</p>
+     non-free components. Each app links its freedom report above.</p>
   <p><strong>Don't trust, verify:</strong> every release is recorded in the
-     public Sigstore transparency log —
+     public Sigstore transparency log:
      <a href="https://github.com/muelli/synctang/blob/main/README.md#verifying-a-release">how
      to verify</a>. APK signing certificate (SHA-256):
      <code>{{APP_CERT_SHA256}}</code></p>
@@ -231,7 +231,7 @@ self-contained: no external scripts, styles, fonts, or trackers.
                 ? "<details><summary>Older versions (" + older.length + ")</summary>"
                   + '<ul class="versions">' + older.map(function (v) {
                       return "<li>version " + esc(v.manifest.versionName)
-                        + " (" + fmtSize(v.file.size) + ") — "
+                        + " (" + fmtSize(v.file.size) + "), "
                         + '<a href="' + esc(REPO + v.file.name) + '">APK</a> · '
                         + '<a href="freedom-report-' + esc(a.id) + '-' + esc(v.manifest.versionCode) + '.txt">freedom report</a></li>';
                     }).join("") + "</ul></details>" : "")
