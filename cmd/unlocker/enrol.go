@@ -65,15 +65,20 @@ func enrolRecipient(device string, existingPassphrase, recipientPublicKey []byte
 	keyMaterial := luksKeyMaterial(P)
 	defer mrcore.Wipe(keyMaterial)
 
-	stdin := make([]byte, 0, len(existingPassphrase)+len(keyMaterial))
-	stdin = append(stdin, existingPassphrase...)
-	stdin = append(stdin, keyMaterial...)
-	defer mrcore.Wipe(stdin)
-
-	_, err = runCommand(stdin, "cryptsetup", "luksAddKey", "--batch-mode", device,
-		"--key-file=-", fmt.Sprintf("--keyfile-size=%d", len(existingPassphrase)),
-		"--new-keyfile=-", fmt.Sprintf("--new-keyfile-size=%d", len(keyMaterial)),
-		fmt.Sprintf("--new-key-slot=%d", slot),
+	// One descriptor each, so neither secret's length has to be named
+	// on the command line: cryptsetup reads each to EOF. See
+	// runCommandWithSecrets.
+	_, err = runCommandWithSecrets(
+		[][]byte{existingPassphrase, keyMaterial},
+		"cryptsetup",
+		func(paths []string) []string {
+			return []string{
+				"luksAddKey", "--batch-mode", device,
+				"--key-file=" + paths[0],
+				"--new-keyfile=" + paths[1],
+				fmt.Sprintf("--new-key-slot=%d", slot),
+			}
+		},
 	)
 	if err != nil {
 		return fmt.Errorf("adding keyslot: %w", err)
@@ -145,8 +150,10 @@ func removeRecipient(device string, existingPassphrase []byte, recipientTranspor
 	}
 	keyslot := tok.Keyslots[idx]
 
-	if _, err := runCommand(existingPassphrase, "cryptsetup", "luksKillSlot", "--batch-mode",
-		device, keyslot, "--key-file=-", fmt.Sprintf("--keyfile-size=%d", len(existingPassphrase))); err != nil {
+	if _, err := runCommandWithSecrets([][]byte{existingPassphrase}, "cryptsetup",
+		func(paths []string) []string {
+			return []string{"luksKillSlot", "--batch-mode", device, keyslot, "--key-file=" + paths[0]}
+		}); err != nil {
 		return fmt.Errorf("destroying keyslot %s: %w", keyslot, err)
 	}
 

@@ -292,8 +292,14 @@ func waitForPeerClose(conn io.Reader, timeout time.Duration) {
 // verifyPassphrase for the same reasoning against a plain string
 // passphrase rather than a raw LUKS key.
 func verifyPassphrase(device string, p []byte) error {
-	_, err := runCommand(p, "cryptsetup", "open", "--test-passphrase",
-		"--key-file=-", fmt.Sprintf("--keyfile-size=%d", len(p)), device)
+	// On its own descriptor, like the other secrets. This one's length
+	// is a constant (hex of a fixed-size secret) so it disclosed
+	// nothing, but there is no reason for the recovered key material
+	// to be handled differently from the operator's passphrase.
+	_, err := runCommandWithSecrets([][]byte{p}, "cryptsetup",
+		func(paths []string) []string {
+			return []string{"open", "--test-passphrase", "--key-file=" + paths[0], device}
+		})
 	return err
 }
 

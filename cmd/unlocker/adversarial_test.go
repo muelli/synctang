@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -272,6 +273,48 @@ func TestConfirmCodeComparison(t *testing.T) {
 	for _, wrong := range []string{"", "4", "47190", "471903", "471902 ", "000000", "4719020"} {
 		if confirmCodeMatches(wrong, "471902") {
 			t.Errorf("%q accepted as the code", wrong)
+		}
+	}
+}
+
+// Secrets travel on descriptors, and their lengths must not appear on
+// the command line.
+//
+// cryptsetup can take two secrets on one stdin stream, but then it has
+// to be told where the first ends, and --keyfile-size=N put the length
+// of the operator's LUKS passphrase into argv, readable from
+// /proc/<pid>/cmdline by any local process while the command ran. The
+// value was never exposed; the length still narrows a search, and
+// nothing required disclosing it.
+func TestSecretsGoOnDescriptorsNotTheCommandLine(t *testing.T) {
+	cryptsetupOrSkip(t)
+
+	secrets := [][]byte{[]byte("first-secret"), []byte("a-much-longer-second-secret")}
+	var gotArgs []string
+	out, err := runCommandWithSecrets(secrets, "sh", func(paths []string) []string {
+		gotArgs = []string{"-c", "cat " + paths[0] + "; echo ' | '; cat " + paths[1]}
+		return gotArgs
+	})
+	if err != nil {
+		t.Fatalf("runCommandWithSecrets: %v", err)
+	}
+
+	// The child really did read both secrets, each in full.
+	if got, want := string(out), "first-secret | \na-much-longer-second-secret"; got != want {
+		t.Errorf("child read %q, want %q", got, want)
+	}
+
+	// And nothing in the arguments mentions how long either was.
+	for _, arg := range gotArgs {
+		for _, n := range []string{"12", "27", "keyfile-size"} {
+			if strings.Contains(arg, n) {
+				t.Errorf("argument %q leaks a secret's length or names a size flag", arg)
+			}
+		}
+	}
+	for i := range secrets {
+		if !strings.Contains(gotArgs[1], secretFDPath(i)) {
+			t.Errorf("secret %d was not passed as a descriptor path", i)
 		}
 	}
 }

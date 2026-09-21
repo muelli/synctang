@@ -49,10 +49,19 @@
 - **LUKS2 requires a top-level `"keyslots"` array on every token**,
   even empty; `cryptsetup token import` rejects one without it with a
   bare "Failed to import token from file.", no further detail.
-- **`cryptsetup luksAddKey` can read the existing passphrase and the
-  new key from one stdin stream**: `--key-file=- --keyfile-size=N
-  --new-keyfile=- --new-keyfile-size=M`, concatenated, read in that
-  order. Keeps the generated secret off disk entirely. Also:
+- **Give cryptsetup each secret on its own file descriptor**, via
+  `exec.Cmd.ExtraFiles` and `--key-file=/proc/self/fd/3`: it then
+  reads each to EOF and no length has to be named. Reading two
+  secrets from one stdin stream works, but needs `--keyfile-size=N`,
+  which puts the length of the operator's LUKS passphrase into argv
+  where any local process can read it from `/proc/<pid>/cmdline`.
+  Two things to know if you test this by hand: `sudo` closes
+  inherited descriptors above 2, so a `sudo cryptsetup` in the middle
+  makes `/proc/self/fd/3` point at something else entirely and it
+  fails with "Maximum keyfile size exceeded"; and the pipes must be
+  written from goroutines after `Start`, or a secret larger than the
+  pipe buffer deadlocks against a child that has not started reading.
+  Also:
   `token import` rejects a token naming a keyslot ID that does not yet
   exist, so add the keyslot before writing a token referencing it.
 - **A raw random secret cannot go through systemd's ask-password

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 )
 
 // luksKeyMaterial converts p, mrcore's raw recovered (or freshly
@@ -63,6 +64,94 @@ func resolveCommand(name string) string {
 // returns stdout. cryptsetup and truncate both write anything useful
 // for a human to stderr on failure, so that is folded into the error
 // rather than left for the caller to go digging for.
+// secretFDPath is where the child finds the nth secret handed to it.
+// exec.Cmd.ExtraFiles places the first entry at descriptor 3.
+func secretFDPath(n int) string {
+	return fmt.Sprintf("/proc/self/fd/%d", 3+n)
+}
+
+// runCommandWithSecrets runs name with each secret on a file
+// descriptor of its own, and asks buildArgs for the arguments given
+// the paths the child should read them from.
+//
+// The point is what it avoids. cryptsetup can read two secrets from
+// one stdin stream, but then it has to be told where the first ends,
+// and --keyfile-size=N puts the length of the operator's LUKS
+// passphrase into argv, where any local process can read it out of
+// /proc/<pid>/cmdline for as long as the command runs. The value was
+// never exposed, but the length narrows a search, and there is no
+// reason to disclose it. One descriptor per secret means cryptsetup
+// reads each to EOF and no size has to be named at all.
+//
+// Nothing touches the filesystem: these are pipes, and the paths are
+// /proc/self/fd entries pointing at them.
+func runCommandWithSecrets(secrets [][]byte, name string, buildArgs func(paths []string) []string) ([]byte, error) {
+	if _, err := os.Stat("/proc/self/fd"); err != nil {
+		return nil, fmt.Errorf("%s: passing secrets needs /proc mounted: %w", name, err)
+	}
+
+	paths := make([]string, len(secrets))
+	readEnds := make([]*os.File, len(secrets))
+	writeEnds := make([]*os.File, len(secrets))
+	defer func() {
+		for _, f := range readEnds {
+			if f != nil {
+				f.Close()
+			}
+		}
+	}()
+
+	for i := range secrets {
+		r, w, err := os.Pipe()
+		if err != nil {
+			for _, f := range writeEnds {
+				if f != nil {
+					f.Close()
+				}
+			}
+			return nil, fmt.Errorf("%s: creating a pipe for a secret: %w", name, err)
+		}
+		readEnds[i], writeEnds[i] = r, w
+		paths[i] = secretFDPath(i)
+	}
+
+	cmd := exec.Command(resolveCommand(name), buildArgs(paths)...)
+	cmd.ExtraFiles = readEnds
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Start(); err != nil {
+		for _, f := range writeEnds {
+			f.Close()
+		}
+		return nil, fmt.Errorf("%s: %w", name, err)
+	}
+
+	// Written after Start, from goroutines, so that a secret larger
+	// than the pipe buffer cannot deadlock against a child that has
+	// not started reading yet.
+	var wg sync.WaitGroup
+	for i, w := range writeEnds {
+		wg.Add(1)
+		go func(w *os.File, secret []byte) {
+			defer wg.Done()
+			defer w.Close()
+			_, _ = w.Write(secret)
+		}(w, secrets[i])
+	}
+	wg.Wait()
+
+	if err := cmd.Wait(); err != nil {
+		detail := strings.TrimSpace(stderr.String())
+		if detail != "" {
+			return nil, fmt.Errorf("%s: %w: %s", name, err, detail)
+		}
+		return nil, fmt.Errorf("%s: %w", name, err)
+	}
+	return stdout.Bytes(), nil
+}
+
 func runCommand(stdin []byte, name string, args ...string) ([]byte, error) {
 	cmd := exec.Command(resolveCommand(name), args...)
 	if stdin != nil {
