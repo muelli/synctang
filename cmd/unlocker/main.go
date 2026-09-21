@@ -31,6 +31,7 @@ const usage = `usage: unlocker <command> [flags]
 commands:
   enrol   add a key holder's public key to a LUKS volume
   agent   run the systemd password agent, answering recovery attempts
+  status  show which key holders are enrolled and this machine's identity
 `
 
 // defaultMachineKeyFile is where this machine's own persistent transport
@@ -66,6 +67,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runEnrol(args[1:], stdout, stderr)
 	case "agent":
 		return runAgentCLI(args[1:], stdout, stderr)
+	case "status":
+		return runStatus(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unlocker: unknown command %q\n%s", args[0], usage)
 		return 2

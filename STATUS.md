@@ -17,7 +17,7 @@ not here. See `TESTREPORT.md` for the acceptance table (A1-A11).
   and `Multi` (races the two). Battle-tested against a real
   deployment; see `AGENTS.md` for what that surfaced.
 - **WP3** (`unlocker`): `enrol` (add or `--remove` a recipient) and
-  `agent` done. `status` and `pair` not started.
+  `agent` and `status` done. `pair` not started.
 - **WP4** (`keyholder`): `init`/`unlock`/`export-pubkey` (file backend)
   done. `pair` and the TPM2 backend not started.
 - **WP5** (Android app): built (`gomobile bind` + Kotlin UI), passes

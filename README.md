@@ -15,7 +15,7 @@ Status: work in progress, see `STATUS.md`.
   transport interface, as a Go package shared by everything else.
 - `unlocker`: the machine-side binary. Runs in the dracut initrd and,
   after boot, as a systemd password agent. Subcommands: `enrol` (add a
-  recipient, or `--remove` one) and `agent`. `status` and `pair` are
+  recipient, or `--remove` one), `agent`, and `status`. `pair` is
   planned, not built.
 - `keyholder`: the Ubuntu laptop CLI. Subcommands: `init`, `unlock`,
   `export-pubkey`. `pair` is planned, not built.
@@ -26,7 +26,7 @@ Status: work in progress, see `STATUS.md`.
 ## Quick start
 
 Filled in as each component reaches a runnable state; see `STATUS.md` for
-what is not here yet (`unlocker status` and both `pair` subcommands).
+what is not here yet (both `pair` subcommands).
 
 ### keyholder (laptop), file backend
 
@@ -59,6 +59,22 @@ This adds a new LUKS2 keyslot holding a freshly generated secret, and a
 --device` to see it; `cryptsetup token export --token-id N` to see the
 token JSON itself. `enrol` also prints this machine's own transport ID,
 which a key holder needs to dial it.
+
+### unlocker (machine), checking who can unlock it
+
+```
+go run ./cmd/unlocker status --device /path/to/your/luks-device-or-image
+```
+
+Prints this machine's transport ID, the name key holders see, and one
+line per enrolled key holder: its transport ID, its keyslot, and a short
+form of its key id. Read-only, including of this machine's own transport
+identity: if none has been created yet, `status` says so rather than
+creating one.
+
+Worth running before `enrol --remove`, which takes a transport ID and
+destroys the keyslot belonging to it: naming the wrong one revokes the
+wrong key holder.
 
 ### Recovering (machine listening, laptop answering)
 
