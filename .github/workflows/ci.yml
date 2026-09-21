@@ -249,6 +249,15 @@ jobs:
           rm -rf dist dist-a dist-b
           mv dist-ci dist
           exit "$status"
+      - uses: anchore/sbom-action/download-syft@v0
+      - name: Generate SBOMs
+        # Read out of the built packages rather than from go.mod, so the
+        # SBOM describes what was linked into the binary that ships. The
+        # dracut package deliberately has none: it carries shell scripts
+        # and a systemd unit, no compiled code.
+        run: |
+          ./scripts/generate-sbom.sh dist/synctang-unlocker_*.deb sbom/unlocker.cdx.json
+          ./scripts/generate-sbom.sh dist/synctang-keyholder_*.deb sbom/keyholder.cdx.json
       - uses: actions/attest-build-provenance@v2
         # A pull request, including one from a fork, cannot obtain an
         # id-token, so this step only runs for a push to main; the build
@@ -257,10 +266,28 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         with:
           subject-path: dist/*.deb
+      - uses: actions/attest-sbom@v2
+        # One subject per step: an SBOM describes one artefact, and a
+        # glob matching both packages would attach the unlocker's
+        # dependency list to the keyholder as well.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          subject-path: dist/synctang-unlocker_*.deb
+          sbom-path: sbom/unlocker.cdx.json
+      - uses: actions/attest-sbom@v2
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          subject-path: dist/synctang-keyholder_*.deb
+          sbom-path: sbom/keyholder.cdx.json
       - uses: actions/upload-artifact@v4
         with:
           name: synctang-debs
           path: dist/*.deb
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: synctang-deb-sboms
+          path: sbom/*.cdx.json
           retention-days: 7
 
   build-apk:
@@ -326,12 +353,48 @@ jobs:
           APK=$(find app/build/outputs/apk/debug -name '*.apk' | head -1)
           echo "built $APK"
           unzip -l "$APK" | grep -E 'lib/|\.so$' | awk '{print $4}' | cut -d/ -f2 | sort -u
+      - uses: anchore/sbom-action/download-syft@v0
+      - name: Generate SBOMs
+        # The APK needs two, because its dependencies come from two
+        # ecosystems and no single tool sees both. The Go half is read
+        # out of the libgojni.so that gomobile built; the JVM half comes
+        # from Gradle's resolved dependency graph, because nothing can
+        # recover it from dex bytecode (syft scanning an APK reports
+        # exactly one component: the APK).
+        #
+        # debugRuntimeClasspath, not the default release one, because a
+        # debug APK is what this job builds and attests.
+        run: |
+          APK=$(find app/build/outputs/apk/debug -name '*.apk' | head -1)
+          ../scripts/generate-sbom.sh "$APK" ../sbom/app-go.cdx.json
+          ./gradlew :app:cyclonedxBom -Psynctang.sbomConfig=debugRuntimeClasspath
+          cp app/build/reports/bom.json ../sbom/app-jvm.cdx.json
+          python3 -c "import json;n=len(json.load(open('../sbom/app-jvm.cdx.json')).get('components',[]));print('app-jvm.cdx.json:',n,'components');exit(0 if n>10 else 'implausibly few JVM components')"
       - uses: actions/attest-build-provenance@v2
         # As with build-deb: a fork's pull request cannot obtain an
         # id-token, so this only runs for a push to main.
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         with:
           subject-path: android/app/build/outputs/apk/debug/*.apk
+      - uses: actions/attest-sbom@v2
+        # Two attestations for the same APK, one per ecosystem. A
+        # consumer needs both to have the whole picture, and saying so
+        # in two documents is more honest than merging them into one
+        # that hides which evidence came from where.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          subject-path: android/app/build/outputs/apk/debug/*.apk
+          sbom-path: sbom/app-go.cdx.json
+      - uses: actions/attest-sbom@v2
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          subject-path: android/app/build/outputs/apk/debug/*.apk
+          sbom-path: sbom/app-jvm.cdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: synctang-apk-sboms
+          path: sbom/*.cdx.json
+          retention-days: 30
       - uses: actions/upload-artifact@v4
         # Note for whoever installs these: the debug signing key is
         # generated on the runner if it is not already there, so APKs

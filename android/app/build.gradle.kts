@@ -2,6 +2,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.cyclonedx.bom")
 }
 
 android {
@@ -200,4 +201,14 @@ dependencies {
     androidTestImplementation("androidx.test:rules:1.5.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+}
+
+// SBOM scope: the dependencies that actually ship in the artefact being
+// described. Left to itself the plugin walks every configuration Gradle
+// knows about, which puts Espresso and the Compose test libraries in an
+// SBOM for an APK that does not contain them.
+tasks.named<org.cyclonedx.gradle.CycloneDxTask>("cyclonedxBom") {
+    setIncludeConfigs(
+        listOf(providers.gradleProperty("synctang.sbomConfig").getOrElse("releaseRuntimeClasspath")),
+    )
 }

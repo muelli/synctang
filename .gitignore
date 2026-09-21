@@ -31,3 +31,4 @@
 # override_dh_auto_clean removes them again, but only on the next clean.
 /unlocker
 /keyholder
+/sbom/

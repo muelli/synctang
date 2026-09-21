@@ -452,6 +452,41 @@ across different machines, architectures or Debian/Ubuntu releases;
 toolchain and packaging tool versions, matches", not "reproducible by
 anyone, on anything, forever."
 
+## Software bills of materials
+
+CI generates a CycloneDX 1.6 SBOM for every compiled artefact, uploads
+them as build artifacts, and (on a push to `main`) records them as
+signed attestations against the artefact they describe, alongside the
+build-provenance attestation that was already there. `gh attestation
+verify` will show both.
+
+| Artefact | SBOM | Where the list comes from |
+|---|---|---|
+| `synctang-unlocker_*.deb` | `unlocker.cdx.json` | Go build info in the shipped binary |
+| `synctang-keyholder_*.deb` | `keyholder.cdx.json` | Go build info in the shipped binary |
+| the APK | `app-go.cdx.json` | Go build info in the `libgojni.so` gomobile built |
+| the APK | `app-jvm.cdx.json` | Gradle's resolved runtime classpath |
+
+`scripts/generate-sbom.sh <artefact> <output.cdx.json>` does the Go
+side and runs locally too; it accepts a `.deb`, an `.apk`, or a plain
+executable. The APK needs two documents because its dependencies come
+from two ecosystems and no single tool sees both: syft pointed at an
+APK reports exactly one component, the APK itself, since nothing can
+recover Maven coordinates from dex bytecode. Keeping them as two
+documents rather than merging them is deliberate, so it stays visible
+which evidence came from where.
+
+Everything is read out of the built artefact rather than from `go.mod`
+or `build.gradle.kts`, so an SBOM describes what was actually linked
+rather than what was declared. That distinction is not academic here:
+`THIRD_PARTY.md` records that `pion/ice` and `pion/stun` really are
+linked into every Go binary, arriving with `syncthing-socket`'s root
+package, even though no ICE code path is ever reached. A
+manifest-derived SBOM would disagree with that entry.
+
+The dracut package has no SBOM: it ships shell scripts and a systemd
+unit, with nothing compiled in it.
+
 ## Licence
 
 AGPL-3.0-or-later. See `LICENSE`.
