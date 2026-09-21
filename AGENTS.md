@@ -242,6 +242,29 @@
   `foo\n` into whatever is reading raw keystrokes, e.g. consuming a
   real password attempt at a LUKS prompt. Use `$'...'` or an actual
   `\n`/`\r` byte.
+- **A `dynamic+` relay client walks the pool list once and then gives
+  up for good.** `lib/relay/client/dynamic.go`'s `serve` fetches the
+  pool over HTTP, orders it by latency, and then loops over that list
+  running one static client per relay until it disconnects, moving to
+  the next each time; when the list runs out it returns
+  `errors.New("could not find a connectable relay")` and never
+  re-fetches the pool. Public relays disconnect clients every few
+  minutes, so a long-lived listener burns one list entry per
+  disconnect. This is why `Multi` retrying a failed Listen leg
+  (`TestMultiKeepsRacingAfterALegFails`) is load-bearing rather than
+  belt-and-braces: the retry builds a *new* relay client, which is the
+  only thing that fetches the pool again. A machine waiting at its LUKS
+  prompt without that retry would eventually go off the air
+  permanently, having started out perfectly healthy.
+- **Global discovery merges announcements instead of replacing them**,
+  so a listener's record accumulates every relay it has ever been on
+  while the records live. Measured during the overnight soak of
+  2026-09-21: after roughly 35 minutes across three boots of the same
+  device ID, the record held 6 relay addresses, of which at most 1 was
+  live. Diallers must therefore treat a failed address as normal and
+  race the whole list (`raceRelayAddresses`) rather than trusting any
+  single entry, and a dial failure is not evidence that the listener is
+  down.
 
 ## Decisions already made (do not re-litigate without new information)
 
