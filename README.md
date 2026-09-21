@@ -85,6 +85,59 @@ listening for the next attempt until it receives `SIGTERM` (which
 `dracut/90unlocker/unlocker-stop.sh` sends before pivoting to the real
 root).
 
+## Installing the Android app
+
+The app is published from this repository as a small F-Droid repository, so
+a phone gets installs and updates without anybody copying APKs around.
+
+1. Install an F-Droid client (F-Droid, Neo Store, or similar).
+2. Add this repository:
+
+       https://muelli.github.io/synctang/fdroid/repo
+
+   or open that page in a browser and scan the QR code on it. The page also
+   shows the repository fingerprint; a client pins it when the repository is
+   added.
+3. Install "synctang key holder" from the repository.
+
+Two things worth knowing before you do:
+
+- **A release APK is signed with a different key than a locally built debug
+  APK.** Android refuses to update an app when the signer changes, so a
+  phone that already has a debug build must uninstall it first, and
+  uninstalling destroys the Keystore key and with it that phone's
+  enrolment on every machine. Re-enrol after switching.
+- **The repository fingerprint is pinned at the moment you add it.** If the
+  index signing key ever changes, re-scanning the QR code does not update an
+  existing entry; the repository has to be removed and added again.
+
+Publishing is automatic: a push to `main` publishes a release-candidate
+build, and a `v<versionCode>` tag publishes a release. Both need the two
+signing secrets described below.
+
+### Setting up publishing (once)
+
+1. Generate two seeds and store them as repository secrets
+   `APP_SIGNING_SEED` and `FDROID_SIGNING_SEED`:
+
+       openssl rand -base64 48
+
+   Back them up somewhere durable. The seeds *are* the signing keys: lose
+   them and the app cannot be updated, only reinstalled from scratch.
+2. Run the `bootstrap-signing` workflow once. It derives both identities
+   inside CI, so the seeds never leave the secret store, and opens a pull
+   request adding the two public certificates under `signing/`.
+3. Merge that pull request, then push to `main`. The `publish-fdroid`
+   workflow builds, signs, generates the repository and pushes it to the
+   `fdroid-repo` branch; GitHub Pages serves that branch.
+4. Fill in `AllowedAPKSigningKeys` and the version fields in
+   `fdroid/com.github.muelli.synctang.yml` before submitting to
+   f-droid.org. That file is for the f-droid.org catalogue and is not read
+   by the self-hosted repository.
+
+Until the secrets exist the publish workflow skips itself with a warning
+rather than failing, so it is harmless to merge before step 1.
+
 ## Boot-time options (dracut)
 
 At boot the agent is started by `dracut/90unlocker/unlocker-start.sh`,

@@ -160,3 +160,15 @@ Apache-2.0 as already checked), and `androidx.test.ext:junit` 1.1.5,
 `androidx.test:runner` 1.5.2 and `junit:junit` 4.13.2 (all test-only, packaged
 into the androidTest APK and not distributed, with the EPL-1.0 caveat recorded
 in the JUnit4 row above applying unchanged here).
+
+## Publishing toolchain (CI only, not shipped)
+
+These run in the publish workflow and in `scripts/`; none of them is linked
+into any distributed artefact.
+
+| Dependency | Licence | Compatible? | Evidence |
+|---|---|---|---|
+| fdroidserver (`pip install fdroidserver`, CI only) | AGPL-3.0-or-later `[V]` | Yes, same licence as this project `[V]` | Generates and signs the repository index. Read the project's own `setup.py` classifier and LICENSE on 2026-09-21. |
+| python-cryptography (`scripts/derive-signing-key.py`, CI and local) | Apache-2.0 OR BSD-3-Clause `[V]` | Yes, permissive `[V]` | Derives the signing identities. Dual-licensed; either arm is compatible. |
+| qrencode (CI only) | LGPL-2.1-or-later `[V]` | Yes, invoked as a separate program `[V]` | Renders the add-repository QR code on the landing page. |
+| librsvg2-bin / rsvg-convert (`scripts/render-icon.sh`, local only) | LGPL-2.1-or-later `[V]` | Yes, invoked as a separate program `[V]` | Renders `android/artwork/icon.svg` to the PNG F-Droid displays. |

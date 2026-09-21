@@ -1,0 +1,384 @@
+name: Publish F-Droid repo
+
+on:
+  push:
+    tags: ['v*']
+    branches: ['main', 'master']
+  workflow_dispatch:
+
+# Push the generated repo to the fdroid-repo branch and (best-effort) enable Pages.
+permissions:
+  contents: write
+  pages: write
+  id-token: write      # Sigstore keyless signing (binary transparency)
+  attestations: write  # store the provenance attestations
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      # Surfaced at job level so steps can gate on their presence. Each seed
+      # deterministically drives the entire signing identity (key, keystore,
+      # alias, passphrase) via scripts/derive-signing-key.py; the public
+      # certificates live in signing/.
+      APP_SIGNING_SEED: ${{ secrets.APP_SIGNING_SEED }}        # app (APK) signing
+      FDROID_SIGNING_SEED: ${{ secrets.FDROID_SIGNING_SEED }}  # repo index signing
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # versionCode is the commit count, so a shallow clone would build
+          # every APK as version 1 and break updates for anyone already on one.
+          fetch-depth: 0
+
+      - name: Check required secrets
+        id: gate
+        run: |
+          if [ -z "$APP_SIGNING_SEED" ] || [ -z "$FDROID_SIGNING_SEED" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Skipping F-Droid publish: set the APP_SIGNING_SEED and FDROID_SIGNING_SEED secrets (one high-entropy string each; see README 'Signing')."
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Read version
+        if: steps.gate.outputs.ready == 'true'
+        id: version
+        run: |
+          echo "code=$(git rev-list --count HEAD)" >> "$GITHUB_OUTPUT"
+          LATEST_TAG="$(git describe --tags --abbrev=0 2>/dev/null || echo '')"
+          if [ -n "$LATEST_TAG" ]; then
+            echo "current_code=$(git rev-list --count "$LATEST_TAG")" >> "$GITHUB_OUTPUT"
+          else
+            echo "current_code=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up JDK 17
+        if: steps.gate.outputs.ready == 'true'
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        if: steps.gate.outputs.ready == 'true'
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          # The action's default is "tools platform-tools"; Google removed the
+          # obsolete "tools" package from the SDK repository, so the default makes
+          # sdkmanager exit 1. NDK and CMake are installed in the next step.
+          packages: platform-tools
+
+      - name: Install the NDK
+        if: steps.gate.outputs.ready == 'true'
+        # sdkmanager blocks on an interactive licence prompt for anything it
+        # has not already cached, and this NDK is not one of the runner's
+        # pre-installed versions.
+        run: yes | sdkmanager "ndk;27.2.12479018"
+
+      - name: Set up Go
+        if: steps.gate.outputs.ready == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Install gomobile
+        if: steps.gate.outputs.ready == 'true'
+        # The app links an .aar built by gomobile from mobile/ and mrcore/, so
+        # the Android build cannot start without these on PATH.
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Set up Gradle
+        if: steps.gate.outputs.ready == 'true'
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          dependency-graph: disabled  # avoids classpath artifacts absent from verification-metadata
+          cache-read-only: true  # tag runs reuse main's cache without churning it
+
+      - name: Build and sign release APK
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          pip install --quiet cryptography
+          export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
+          ( cd android && ./gradlew assembleRelease --stacktrace )
+          APP_PASS="$(SEED="$APP_SIGNING_SEED" scripts/derive-signing-key.py app "$RUNNER_TEMP/app.p12")"
+          echo "::add-mask::$APP_PASS"
+          export APP_PASS
+          BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          CODE="${{ steps.version.outputs.code }}"
+          if [ "${{ github.ref_type }}" == "tag" ]; then
+            APK_NAME="synctang-$CODE.apk"
+          else
+            APK_NAME="synctang-$CODE-rc.apk"
+          fi
+          UNSIGNED="android/app/build/outputs/apk/release/app-release-unsigned.apk"
+          ALIGNED="$RUNNER_TEMP/synctang-$CODE-aligned.apk"
+          SIGNED="$RUNNER_TEMP/$APK_NAME"
+          "$BUILD_TOOLS/zipalign" -f 4 "$UNSIGNED" "$ALIGNED"
+          "$BUILD_TOOLS/apksigner" sign \
+            --ks "$RUNNER_TEMP/app.p12" \
+            --ks-pass env:APP_PASS \
+            --ks-key-alias app \
+            --out "$SIGNED" "$ALIGNED"
+          echo "SIGNED_APK=$SIGNED" >> "$GITHUB_ENV"
+          # Ensure fdroid's tools (aapt/apksigner) are on PATH.
+          echo "$BUILD_TOOLS" >> "$GITHUB_PATH"
+
+      - name: Install fdroidserver
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y apksigner libmagic1 qrencode
+          pip install fdroidserver
+
+      - name: Generate and publish repo
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          CODE="${{ steps.version.outputs.code }}"
+          CURRENT_CODE="${{ steps.version.outputs.current_code }}"
+          REMOTE="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+          # Clone the existing fdroid-repo branch to grab recent APKs
+          if git ls-remote --exit-code --heads "$REMOTE" fdroid-repo >/dev/null 2>&1; then
+            git clone --depth 1 --branch fdroid-repo --single-branch "$REMOTE" old_site
+          else
+            mkdir old_site
+          fi
+
+          # Start an orphan branch on every run to avoid repo bloat (Option B).
+          mkdir site && cd site
+          git init
+          git checkout --orphan fdroid-repo
+          cd ..
+
+          # Serve the repo under /fdroid/repo so plain https links auto-open F-Droid.
+          mkdir -p site/fdroid/repo site/fdroid/metadata
+
+          # Runtime-only config with the index signing key, derived from the seed
+          # (never committed).
+          FDROID_PASS="$(SEED="$FDROID_SIGNING_SEED" scripts/derive-signing-key.py fdroid site/fdroid/fdroid.p12)"
+          echo "::add-mask::$FDROID_PASS"
+          cp fdroid/config.yml site/fdroid/config.yml
+          cat >> site/fdroid/config.yml <<EOF
+          sdk_path: "${ANDROID_HOME}"
+          keystore: "$(pwd)/site/fdroid/fdroid.p12"
+          repo_keyalias: "fdroid"
+          keystorepass: "${FDROID_PASS}"
+          keypass: "${FDROID_PASS}"
+          EOF
+
+          # Copy up to 5 most recent stable APKs and 2 recent RC APKs from the previous run
+          if [ -d old_site/fdroid/repo ]; then
+            for f in old_site/fdroid/repo/synctang-*.apk; do
+              [ -e "$f" ] || continue
+              if [[ "$f" == *"-rc.apk" ]]; then
+                echo "$f" >> rc_apks.txt
+              else
+                echo "$f" >> stable_apks.txt
+              fi
+            done
+            if [ -f stable_apks.txt ]; then
+              sort -V stable_apks.txt | tail -n 5 | xargs -I {} cp "{}" site/fdroid/repo/
+            fi
+            if [ -f rc_apks.txt ]; then
+              if [ "${{ github.ref_type }}" == "tag" ]; then KEEP_RC=2; else KEEP_RC=1; fi
+              sort -V rc_apks.txt | tail -n $KEEP_RC | xargs -I {} cp "{}" site/fdroid/repo/
+            fi
+            rm -f stable_apks.txt rc_apks.txt
+          fi
+
+          cp "$SIGNED_APK" "site/fdroid/repo/$(basename "$SIGNED_APK")"
+
+          # Feed the app's fastlane metadata (name, descriptions, icon) into the
+          # repo so the F-Droid client shows a proper listing instead of stubs.
+          APPID="com.github.muelli.synctang"
+          FASTLANE="android/fastlane/metadata/android/en-US"
+          mkdir -p "site/fdroid/metadata/$APPID/en-US/images"
+          cp "$FASTLANE/title.txt"             "site/fdroid/metadata/$APPID/en-US/title.txt"
+          cp "$FASTLANE/short_description.txt" "site/fdroid/metadata/$APPID/en-US/short_description.txt"
+          cp "$FASTLANE/full_description.txt"  "site/fdroid/metadata/$APPID/en-US/full_description.txt"
+          cp "$FASTLANE/images/icon.png"       "site/fdroid/metadata/$APPID/en-US/images/icon.png"
+          cp -r "$FASTLANE/images/phoneScreenshots" "site/fdroid/metadata/$APPID/en-US/images/" 2>/dev/null || true
+          cp -r "$FASTLANE/changelogs"         "site/fdroid/metadata/$APPID/en-US/" 2>/dev/null || true
+
+          # Repository icon source: fdroid update reads config's repo_icon relative
+          # to the fdroid dir and installs it into repo/icons/ itself. (Copying
+          # into repo/icons/ directly does NOT work — update overwrites it with a
+          # QR-code placeholder when the configured source file is missing.)
+          cp "$FASTLANE/images/icon.png" site/fdroid/icon.png
+
+          # Write F-Droid metadata to enforce CurrentVersionCode (prevent auto-update to RC).
+          mkdir -p site/fdroid/metadata
+          # The fdroiddata file describes how f-droid.org should build and
+          # verify this app; the self-hosted repo only needs the listing and
+          # CurrentVersionCode. Binaries and AllowedAPKSigningKeys are
+          # f-droid.org concepts, and fdroid update refuses the file outright
+          # if AllowedAPKSigningKeys is not a real 64-hex digest, which it is
+          # not until the signing identity has been bootstrapped.
+          python3 - <<'PYMETA'
+          import re
+          src = "fdroid/com.github.muelli.synctang.yml"
+          dst = "site/fdroid/metadata/com.github.muelli.synctang.yml"
+          drop = ("Binaries:", "AllowedAPKSigningKeys:", "Builds:", "MaintainerNotes:")
+          out, skipping = [], False
+          for line in open(src):
+              if line.startswith("#"):
+                  continue
+              if line[:1] not in (" ", "\t", "\n") and skipping:
+                  skipping = False
+              if line.startswith(drop):
+                  skipping = True
+                  continue
+              if not skipping:
+                  out.append(line)
+          open(dst, "w").writelines(out)
+          PYMETA
+          if [ -n "$CURRENT_CODE" ]; then
+            sed -i "s/^CurrentVersionCode:.*$/CurrentVersionCode: $CURRENT_CODE/" "site/fdroid/metadata/com.github.muelli.synctang.yml"
+          fi
+
+          ( cd site/fdroid && fdroid update --create-metadata --verbose )
+
+          # fdroidserver sometimes indexes localized graphics under hashed names
+          # (icon_<hash>.png) without writing the file under that name, 404ing them
+          # for clients and the landing page. Make every indexed graphic (icon and
+          # screenshots) actually exist: match a missing reference to a sibling file
+          # with the same sha256 and copy it to the referenced name.
+          python3 - <<'PY'
+          import hashlib, json, os, shutil
+          repo = "site/fdroid/repo"
+          idx = json.load(open(f"{repo}/index-v2.json"))
+
+          def ensure(entry):
+              ref = repo + entry["name"]
+              if os.path.exists(ref):
+                  return
+              d = os.path.dirname(ref)
+              for cand in os.listdir(d) if os.path.isdir(d) else []:
+                  path = os.path.join(d, cand)
+                  if os.path.isfile(path) and hashlib.sha256(
+                      open(path, "rb").read()
+                  ).hexdigest() == entry.get("sha256"):
+                      shutil.copy(path, ref)
+                      print(f"restored indexed graphic: {entry['name']}")
+                      return
+              print(f"::warning::indexed graphic missing: {entry['name']}")
+
+          for appid, pkg in idx.get("packages", {}).items():
+              md = pkg.get("metadata", {})
+              for entry in (md.get("icon") or {}).values():
+                  ensure(entry)
+              for kind in (md.get("screenshots") or {}).values():
+                  for entries in kind.values():
+                      for entry in entries:
+                          ensure(entry)
+          PY
+
+          # --- Software-freedom proof: F-Droid's own scanner, per app (fails the
+          # publish on any finding). Each app gets freedom-report-<appid>.txt,
+          # linked from its card on the landing page. ---
+          FDROID_VER="$(fdroid --version 2>&1 | head -1)"
+          python3 - <<'PY' > apps.list
+          import json
+          idx = json.load(open("site/fdroid/repo/index-v2.json"))
+          for appid, pkg in idx.get("packages", {}).items():
+              name = (pkg["metadata"].get("name") or {}).get("en-US", appid)
+              for version_id, v in pkg["versions"].items():
+                  print(appid, "site/fdroid/repo" + v["file"]["name"],
+                        v["manifest"]["versionCode"], name.replace(" ", "_"))
+          PY
+          while read -r APPID APK VC APPNAME; do
+            fdroid scanner --exit-code "$APK" 2>&1 | tee scan.out
+            {
+              echo "${APPNAME//_/ } ($APPID) — software-freedom report (versionCode $VC)"
+              echo "Generated $(date -u '+%Y-%m-%d %H:%M:%SZ') by GitHub Actions."
+              echo
+              echo "== F-Droid scanner (fdroidserver $FDROID_VER) =="
+              echo "Command: fdroid scanner --exit-code $(basename "$APK")"
+              echo "Result: PASS — no known non-free classes, trackers, or extra signing blocks."
+              echo
+              sed 's/^/    /' scan.out
+              echo
+              echo "== Bundled native libraries =="
+              unzip -l "$APK" | awk '/\.so$/{print "    "$4"  ("$1" bytes)"}'
+              echo
+              echo "All code is built from public source; licensing is documented in the"
+              echo "project repository (LICENSE, NOTICE): https://github.com/${GITHUB_REPOSITORY}"
+            } > "site/freedom-report-$APPID-$VC.txt"
+          done < apps.list
+          # Keep the historical URL working (single-app era). We grab the highest versionCode to point the generic text file to.
+          LATEST_VC=$(awk '{print $3}' apps.list | sort -nr | head -n1)
+          if [ -n "$LATEST_VC" ]; then
+            cp "site/freedom-report-com.github.muelli.synctang-$LATEST_VC.txt" site/freedom-report.txt 2>/dev/null || true
+            cp "site/freedom-report-com.github.muelli.synctang-$LATEST_VC.txt" site/freedom-report-com.github.muelli.synctang.txt 2>/dev/null || true
+          fi
+
+          # Compute the repo fingerprint for the landing page / add-repo link.
+          FP="$(keytool -list -v -keystore site/fdroid/fdroid.p12 -storepass "$FDROID_PASS" -alias fdroid \
+                | awk -F': ' '/SHA256:/{gsub(/:/,"",$2); print tolower($2); exit}')"
+          REPO_URL="https://${GITHUB_REPOSITORY%/*}.github.io/${GITHUB_REPOSITORY#*/}/fdroid/repo"
+          ADD_URL="${REPO_URL}?fingerprint=${FP}"
+          touch site/.nojekyll
+
+          # QR code that F-Droid's "Add repository" scanner understands.
+          qrencode -o site/qr.png -s 8 -m 2 "$ADD_URL"
+
+          # Landing page: rendered from the committed template (fdroid/landing.html).
+          # It lists the repo's apps (icon, description, versions, downloads, search)
+          # client-side from index-v2.json, so it stays current automatically.
+          # The APK signing certificate digest is what a user compares an
+          # installed app against, so it is filled in from the certificate
+          # actually used rather than hardcoded in the template.
+          APP_CERT_SHA256="$(keytool -printcert -file signing/app-cert.pem \
+            | awk -F': ' '/SHA256:/{gsub(/:/,"",$2); print tolower($2); exit}')"
+          sed -e "s|{{REPO_URL}}|${REPO_URL}|g" -e "s|{{FINGERPRINT}}|${FP}|g" \
+              -e "s|{{APP_CERT_SHA256}}|${APP_CERT_SHA256}|g" \
+              fdroid/landing.html > site/index.html
+
+          # Commit only the public, signed artifacts — never the config/keystore.
+          cat > site/.gitignore <<'EOF'
+          config.yml
+          *.p12
+          *.jks
+          tmp/
+          EOF
+
+          cd site
+          git add -A
+          git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m "Publish synctang versionCode $CODE" || { echo "nothing to commit"; exit 0; }
+          git push --force "$REMOTE" HEAD:fdroid-repo
+
+      # Binary transparency: log the published APK and the signed repo index
+      # (entry.jar) in the public Sigstore transparency log. Attesting the index
+      # is what makes a split-view repo (different index for different users)
+      # detectable. Verify with:
+      #   gh attestation verify <file> --repo ${{ github.repository }}
+      - name: Attest published artifacts
+        if: steps.gate.outputs.ready == 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
+        with:
+          subject-path: |
+            site/fdroid/repo/synctang-${{ steps.version.outputs.code }}*.apk
+            site/fdroid/repo/entry.jar
+
+      - name: Enable GitHub Pages (best-effort, first run only)
+        if: steps.gate.outputs.ready == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -sf -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/pages" \
+            -d '{"source":{"branch":"fdroid-repo","path":"/"}}' \
+            && echo "Pages enabled." || echo "Pages already enabled or must be enabled manually."

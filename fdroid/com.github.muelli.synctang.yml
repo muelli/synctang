@@ -1,0 +1,67 @@
+# Ready-to-submit metadata for the official F-Droid catalogue.
+#
+# Copy this file to metadata/com.github.muelli.synctang.yml in a fork of
+# https://gitlab.com/fdroid/fdroiddata and open a merge request (see
+# docs/FDROIDDATA.md for the exact steps). It is NOT read from this repo by
+# F-Droid. Strip these leading comments when submitting.
+#
+# Reproducible-publishing setup: Binaries + AllowedAPKSigningKeys make
+# F-Droid build from source, verify the result matches the developer-signed
+# APK from the GitHub release, and publish the developer-signed APK.
+
+Categories:
+  - Security
+  - System
+License: AGPL-3.0-or-later
+AuthorName: Tobias Mueller
+SourceCode: https://github.com/muelli/synctang
+IssueTracker: https://github.com/muelli/synctang/issues
+Changelog: https://github.com/muelli/synctang/releases
+
+AutoName: synctang
+
+RepoType: git
+Repo: https://github.com/muelli/synctang.git
+Binaries: https://github.com/muelli/synctang/releases/download/v%c/synctang-%c.apk
+# PLACEHOLDER. Replace with the SHA-256 of signing/app-cert.pem once the
+# bootstrap workflow has produced it:
+#   keytool -printcert -file signing/app-cert.pem | awk -F': ' '/SHA256:/{gsub(/:/,"",$2);print tolower($2)}'
+# Submitting with the wrong digest tells F-Droid to reject every APK we sign.
+AllowedAPKSigningKeys: REPLACE_WITH_APP_CERT_SHA256
+
+Builds:
+  - versionName: '0'
+    versionCode: 0
+    commit: v0
+    subdir: android/app
+    gradle:
+      - yes
+    ndk: 27.2.12479018
+    sudo:
+      - apt-get update
+      - apt-get install -y golang-go
+    prebuild: |
+      go install golang.org/x/mobile/cmd/gomobile@latest && \
+      go install golang.org/x/mobile/cmd/gobind@latest
+
+MaintainerNotes: |-
+  The Android app links a gomobile .aar built from this repository's own Go
+  packages (mobile/ and mrcore/), so the build needs a Go toolchain and
+  gomobile as well as the NDK; scripts/gomobile-bind.sh holds the exact
+  flags, and the same script is used by local builds and by CI so they
+  cannot drift.
+
+  The Gradle project lives in android/, not at the repository root.
+
+  versionName and versionCode are the same single integer, the commit count;
+  release tags are v<versionCode>. A shallow clone therefore builds the
+  wrong version, which is why the workflows fetch full history.
+
+  The versionCode and commit in Builds above are placeholders: fill them in
+  from the first tagged release before submitting.
+
+AutoUpdateMode: Version v%c
+UpdateCheckMode: Tags
+# PLACEHOLDER: set from the first tagged release.
+CurrentVersion: '0'
+CurrentVersionCode: 0

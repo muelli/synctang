@@ -1,0 +1,25 @@
+# Non-secret configuration for the self-hosted F-Droid repository.
+#
+# The publish-fdroid workflow copies this file into the repo working
+# directory and appends the signing settings (keystore path and passwords)
+# derived from the FDROID_SIGNING_SEED secret at build time. Those lines are
+# never committed.
+#
+# Update repo_url if you fork or rename the repository.
+
+repo_url: "https://muelli.github.io/synctang/fdroid/repo"
+repo_name: "synctang"
+repo_description: >-
+  Personal F-Droid repository publishing signed synctang releases, built
+  automatically in CI from commits and tags. synctang unlocks a LUKS volume
+  at boot by asking a human's phone, which holds its key in the Android
+  Keystore and never discloses it.
+
+# Repository icon shown by clients for the repo itself. The publish workflow
+# places the padlock here, next to this config; without it fdroid update
+# generates a QR-code placeholder instead.
+repo_icon: icon.png
+
+# Keep every published version in the main repo rather than splitting off an
+# archive: this repo is small and an archive would be one more thing to serve.
+archive_older: 0

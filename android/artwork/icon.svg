@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!--
+    Editable source for the raster icon F-Droid shows. The same shapes
+    are carried by the adaptive launcher icon in
+    app/src/main/res/drawable/ic_launcher_{background,foreground}.xml;
+    change them together or the launcher and the store listing drift.
+
+    An open padlock: this app is what opens the machine's disk, and it
+    only ever does so with a person present.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 108 108">
+  <rect x="0" y="0" width="108" height="108" fill="#1C1B1F"/>
+  <path fill="#D0BCFF" d="M42,48h30a6,6 0 0 1 6,6v18a6,6 0 0 1 -6,6h-30a6,6 0 0 1 -6,-6v-18a6,6 0 0 1 6,-6z"/>
+  <path fill="none" stroke="#D0BCFF" stroke-width="6" d="M45,48v-9a12,12 0 0 1 24,0"/>
+</svg>
