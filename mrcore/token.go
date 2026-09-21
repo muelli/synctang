@@ -57,45 +57,64 @@ var tokenWireFields = map[string]bool{
 	"machine":    true,
 }
 
+// putTokenField encodes one field into the wire map, naming the field
+// in any error: five copies of marshal-check-assign said nothing that
+// the field name does not, and the copies did not name it.
+func putTokenField(out map[string]json.RawMessage, key string, v any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Errorf("mrcore: marshal token: %s: %w", key, err)
+	}
+	out[key] = b
+	return nil
+}
+
+// getTokenField decodes one field if the document carries it, leaving
+// dst alone if it does not. Absent is not an error here: which fields
+// are required is decided by MarshalJSON's caller and by the explicit
+// type and version checks, not by every field in turn.
+func getTokenField[T any](raw map[string]json.RawMessage, key string, dst *T) error {
+	v, ok := raw[key]
+	if !ok {
+		return nil
+	}
+	if err := json.Unmarshal(v, dst); err != nil {
+		return fmt.Errorf("mrcore: unmarshal token: %s: %w", key, err)
+	}
+	return nil
+}
+
 func (t Token) MarshalJSON() ([]byte, error) {
-	out := make(map[string]json.RawMessage, len(t.extra)+3)
+	out := make(map[string]json.RawMessage, len(t.extra)+len(tokenWireFields))
+
+	// Unknown fields first, so a newer build's data cannot displace a
+	// field this build is responsible for.
 	for k, v := range t.extra {
 		out[k] = v
 	}
 
-	typeJSON, err := json.Marshal(tokenType)
-	if err != nil {
-		return nil, fmt.Errorf("mrcore: marshal token: %w", err)
-	}
-	out["type"] = typeJSON
-
-	versionJSON, err := json.Marshal(t.Version)
-	if err != nil {
-		return nil, fmt.Errorf("mrcore: marshal token: %w", err)
-	}
-	out["version"] = versionJSON
-
+	// LUKS2 requires a keyslots array on every token, even an empty
+	// one: cryptsetup's own "token import" rejects a document without
+	// it and says only "Failed to import token from file."
 	keyslots := t.Keyslots
 	if keyslots == nil {
 		keyslots = []string{}
 	}
-	keyslotsJSON, err := json.Marshal(keyslots)
-	if err != nil {
-		return nil, fmt.Errorf("mrcore: marshal token: %w", err)
-	}
-	out["keyslots"] = keyslotsJSON
 
-	recipientsJSON, err := json.Marshal(t.Recipients)
-	if err != nil {
-		return nil, fmt.Errorf("mrcore: marshal token: %w", err)
+	for _, f := range []struct {
+		key   string
+		value any
+	}{
+		{"type", tokenType},
+		{"version", t.Version},
+		{"keyslots", keyslots},
+		{"recipients", t.Recipients},
+		{"machine", t.Machine},
+	} {
+		if err := putTokenField(out, f.key, f.value); err != nil {
+			return nil, err
+		}
 	}
-	out["recipients"] = recipientsJSON
-
-	machineJSON, err := json.Marshal(t.Machine)
-	if err != nil {
-		return nil, fmt.Errorf("mrcore: marshal token: %w", err)
-	}
-	out["machine"] = machineJSON
 
 	return json.Marshal(out)
 }
@@ -106,44 +125,41 @@ func (t *Token) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("mrcore: unmarshal token: %w", err)
 	}
 
-	var typ string
-	if v, ok := raw["type"]; ok {
-		if err := json.Unmarshal(v, &typ); err != nil {
-			return fmt.Errorf("mrcore: unmarshal token: type: %w", err)
-		}
+	// Type and version first, and refused before anything else is
+	// read. A LUKS2 header can carry tokens belonging to other tools
+	// entirely, so the body of a document this build has no business
+	// interpreting should never be parsed at all: a clevis token that
+	// failed on its "recipients" field would be a confusing way to say
+	// "this is not one of mine".
+	var (
+		typ     string
+		version int
+	)
+	if err := getTokenField(raw, "type", &typ); err != nil {
+		return err
 	}
 	if typ != tokenType {
 		return fmt.Errorf("mrcore: unmarshal token: unsupported type %q, want %q", typ, tokenType)
 	}
-
-	var version int
-	if v, ok := raw["version"]; ok {
-		if err := json.Unmarshal(v, &version); err != nil {
-			return fmt.Errorf("mrcore: unmarshal token: version: %w", err)
-		}
+	if err := getTokenField(raw, "version", &version); err != nil {
+		return err
 	}
 	if version != currentVersion {
 		return fmt.Errorf("mrcore: unmarshal token: unsupported version %d, want %d", version, currentVersion)
 	}
 
-	var keyslots []string
-	if v, ok := raw["keyslots"]; ok {
-		if err := json.Unmarshal(v, &keyslots); err != nil {
-			return fmt.Errorf("mrcore: unmarshal token: keyslots: %w", err)
-		}
-	}
-
-	var recipients []Recipient
-	if v, ok := raw["recipients"]; ok {
-		if err := json.Unmarshal(v, &recipients); err != nil {
-			return fmt.Errorf("mrcore: unmarshal token: recipients: %w", err)
-		}
-	}
-
-	var machine MachineInfo
-	if v, ok := raw["machine"]; ok {
-		if err := json.Unmarshal(v, &machine); err != nil {
-			return fmt.Errorf("mrcore: unmarshal token: machine: %w", err)
+	var (
+		keyslots   []string
+		recipients []Recipient
+		machine    MachineInfo
+	)
+	for _, decode := range []func() error{
+		func() error { return getTokenField(raw, "keyslots", &keyslots) },
+		func() error { return getTokenField(raw, "recipients", &recipients) },
+		func() error { return getTokenField(raw, "machine", &machine) },
+	} {
+		if err := decode(); err != nil {
+			return err
 		}
 	}
 
