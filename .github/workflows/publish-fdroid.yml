@@ -128,6 +128,24 @@ jobs:
           # Ensure fdroid's tools (aapt/apksigner) are on PATH.
           echo "$BUILD_TOOLS" >> "$GITHUB_PATH"
 
+      - name: Install syft
+        if: steps.gate.outputs.ready == 'true'
+        uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+
+      - name: Generate SBOMs for the release APK
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          # The signed APK, not the unsigned one Gradle left behind: the
+          # SBOM should describe the file people actually install.
+          scripts/generate-sbom.sh "$SIGNED_APK" "$RUNNER_TEMP/sbom-go.cdx.json"
+          # The JVM half has to come from Gradle, which can only describe
+          # the build that just ran; releaseRuntimeClasspath is the
+          # default, and is what assembleRelease shipped.
+          ( cd android && ./gradlew :app:cyclonedxBom )
+          cp android/app/build/reports/bom.json "$RUNNER_TEMP/sbom-jvm.cdx.json"
+          python3 -c "import json;n=len(json.load(open('$RUNNER_TEMP/sbom-jvm.cdx.json')).get('components',[]));print('jvm components:',n);exit(0 if n>10 else 'implausibly few JVM components')"
+
       - name: Install fdroidserver
         if: steps.gate.outputs.ready == 'true'
         run: |
@@ -313,6 +331,18 @@ jobs:
               echo "project repository (LICENSE, NOTICE): https://github.com/${GITHUB_REPOSITORY}"
             } > "site/freedom-report-$APPID-$VC.txt"
           done < apps.list
+          # --- SBOMs for the release being published. Both halves of the
+          # APK: the Go modules read out of its own libgojni.so, and the
+          # JVM dependencies from Gradle's resolved release classpath.
+          # Only for this build, because no tool can recover a Maven
+          # dependency graph from an APK that was built months ago, and a
+          # per-version file that silently covered only half the app
+          # would be worse than an honest single pair. ---
+          cp "$RUNNER_TEMP/sbom-go.cdx.json" "site/sbom-com.github.muelli.synctang-$CODE-go.cdx.json"
+          cp "$RUNNER_TEMP/sbom-jvm.cdx.json" "site/sbom-com.github.muelli.synctang-$CODE-jvm.cdx.json"
+          cp "$RUNNER_TEMP/sbom-go.cdx.json" site/sbom-go.cdx.json
+          cp "$RUNNER_TEMP/sbom-jvm.cdx.json" site/sbom-jvm.cdx.json
+
           # Keep the historical URL working (single-app era). We grab the highest versionCode to point the generic text file to.
           LATEST_VC=$(awk '{print $3}' apps.list | sort -nr | head -n1)
           if [ -n "$LATEST_VC" ]; then

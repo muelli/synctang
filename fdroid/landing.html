@@ -135,6 +135,12 @@ self-contained: no external scripts, styles, fonts, or trackers.
      <a href="https://github.com/muelli/synctang/blob/main/README.md#verifying-a-release">how
      to verify</a>. APK signing certificate (SHA-256):
      <code>{{APP_CERT_SHA256}}</code></p>
+  <p><strong>What is inside:</strong> a CycloneDX software bill of materials
+     for the current release, in two parts because the app's dependencies come
+     from two ecosystems and no single tool sees both:
+     <a href="sbom-go.cdx.json">Go modules</a> (read out of the APK's own
+     native library) and <a href="sbom-jvm.cdx.json">JVM dependencies</a>
+     (from the build's resolved release classpath).</p>
   <p><a href="https://github.com/muelli/synctang">Source code, issues and
      documentation on GitHub</a>.</p>
 </footer>

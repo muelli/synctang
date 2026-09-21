@@ -487,6 +487,14 @@ manifest-derived SBOM would disagree with that entry.
 The dracut package has no SBOM: it ships shell scripts and a systemd
 unit, with nothing compiled in it.
 
+Released APKs get theirs published next to the app itself, linked from
+the F-Droid repository's landing page and reachable at
+`sbom-go.cdx.json` and `sbom-jvm.cdx.json` (with per-version copies
+named after the versionCode). Only the release being published gets
+them, because no tool can recover a Maven dependency graph from an APK
+that was built months ago, and a per-version file covering only half
+the app would be worse than an honest single pair.
+
 ## Licence
 
 AGPL-3.0-or-later. See `LICENSE`.
