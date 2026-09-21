@@ -15,18 +15,20 @@ Status: work in progress, see `STATUS.md`.
   transport interface, as a Go package shared by everything else.
 - `unlocker`: the machine-side binary. Runs in the dracut initrd and,
   after boot, as a systemd password agent. Subcommands: `enrol` (add a
-  recipient, or `--remove`/`--replace` one), `agent`, and `status`.
-  `pair` is planned, not built.
+  recipient, or `--remove`/`--replace` one), `agent`, `status`, and
+  `pair` (show a QR code and enrol the key holder that scans it).
 - `keyholder`: the Ubuntu laptop CLI. Subcommands: `init`, `unlock`,
   `export-pubkey`. `pair` is planned, not built.
-- Android app (`android/`): the phone key holder. Pairs by QR code, unlocks
+- Android app (`android/`): the phone key holder. Pairs by scanning a QR
+  code, which enrols it over the network without copying a key by hand; unlocks
   behind `BiometricPrompt`, keeps its key in the Android Keystore.
 - `dracut/90unlocker`: the dracut module.
 
 ## Quick start
 
 Filled in as each component reaches a runnable state; see `STATUS.md` for
-what is not here yet (both `pair` subcommands).
+what is not here yet (`keyholder pair`; the machine side of pairing is
+built, so a laptop can be paired the manual way for now).
 
 ### keyholder (laptop), file backend
 
@@ -40,6 +42,46 @@ transport identity, both under your config directory (`init` refuses to
 overwrite an existing key without `--force`). `export-pubkey` prints the
 resulting public key and transport ID, for pasting into `unlocker enrol`
 below.
+
+### unlocker (machine), enrolling a phone
+
+```
+echo -n 'your-existing-luks-passphrase' > /tmp/passphrase
+go run ./cmd/unlocker pair \
+  --device /path/to/your/luks-device-or-image \
+  --existing-passphrase-file /tmp/passphrase \
+  --name my-machine-name
+rm /tmp/passphrase
+```
+
+This prints a QR code and a one-time pairing code, then waits. Scan it
+with the app: the phone dials this machine, proves it holds the code,
+and sends its public key, and the machine shows you which key holder
+answered before writing anything. One scan and one confirmation, with
+no public key copied from a phone screen by hand.
+
+The QR code is deliberately not the whole story, and it is worth being
+clear about why, because the comparable design in `syncthing-socket`
+does fit in a single scan. Its QR code carries the volume's passphrase,
+which is what lets the phone finish enrolment on its own, and its setup
+script warns you not to photograph the code for exactly that reason.
+MR-1 never puts the passphrase on the phone in any form, so what has to
+travel is this key holder's *public key*, and it has to travel towards
+the machine, which has a screen but no camera. Hence a short
+conversation over the network rather than a one-way transfer.
+
+Everything the code is good for is bounded: it lasts five minutes by
+default (`--timeout`), it enrols one key holder, it is proved over a
+TLS channel whose far end the phone has already pinned to the Device ID
+from the same QR code, and the proof is bound to both identities and to
+a fresh nonce, so it is worth nothing replayed or on a second phone.
+Anybody who photographs the code can still *ask*, which is why you are
+shown who is asking and have to agree (`--yes` skips the question, for
+automation).
+
+If the QR code cannot be scanned, on a serial console or a terminal
+that renders it too small, the same two values are printed as text for
+typing into the app. `NO_COLOR` switches the QR code to plain ASCII.
 
 ### unlocker (machine), enrolling a laptop key holder
 

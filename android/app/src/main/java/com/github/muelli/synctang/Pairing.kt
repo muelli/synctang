@@ -94,18 +94,34 @@ object PairingPayload {
         if (text.isEmpty()) return null
 
         if (text.startsWith(SCHEME, ignoreCase = true)) {
-            val query = text.substringAfter('?', "")
-            val fields = query.split('&').mapNotNull { field ->
-                val name = field.substringBefore('=', "")
-                val value = field.substringAfter('=', "")
-                if (name.isEmpty()) null else name to urlDecode(value)
-            }.toMap()
+            val fields = fields(text)
             val id = normaliseDeviceId(fields["machine"].orEmpty()) ?: return null
             return Machine(id, fields["name"].orEmpty())
         }
 
         val id = normaliseDeviceId(text) ?: return null
         return Machine(id, "")
+    }
+
+    /**
+     * The one-time pairing code from a scanned payload, or null if it
+     * carries none.
+     *
+     * Its absence is the difference between the two ways of enrolling
+     * a phone. With a code, the phone can finish enrolment itself by
+     * proving it holds the code and sending its public key over the
+     * network. Without one, all that was scanned is a machine to
+     * remember, and its public key still has to reach the machine some
+     * other way. Both forms stay valid, so a code shown by an older
+     * machine keeps working.
+     *
+     * An empty psk counts as absent rather than as a code that cannot
+     * work, since that is what a machine that did not set one produces.
+     */
+    fun pairingCode(scanned: String): String? {
+        val text = scanned.trim()
+        if (!text.startsWith(SCHEME, ignoreCase = true)) return null
+        return fields(text)["psk"]?.takeIf { it.isNotEmpty() }
     }
 
     /**
@@ -118,6 +134,13 @@ object PairingPayload {
         if (compact.length != COMPACT_LENGTH) return null
         return compact.chunked(GROUP).joinToString("-")
     }
+
+    private fun fields(text: String): Map<String, String> =
+        text.substringAfter('?', "").split('&').mapNotNull { field ->
+            val name = field.substringBefore('=', "")
+            val value = field.substringAfter('=', "")
+            if (name.isEmpty()) null else name to urlDecode(value)
+        }.toMap()
 
     private fun urlDecode(value: String): String =
         try {

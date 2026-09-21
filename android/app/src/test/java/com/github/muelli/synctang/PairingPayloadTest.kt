@@ -3,6 +3,7 @@ package com.github.muelli.synctang
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -90,5 +91,45 @@ class EnrolCommandTest {
     @Test
     fun carriesThePublicKey() {
         assertTrue(command.contains("--pubkey 04aabb"))
+    }
+}
+
+/**
+ * The one-time pairing code the machine shows alongside its Device ID.
+ *
+ * It is what lets the phone finish enrolment over the network instead
+ * of a person copying a public key between two devices by hand, so a
+ * payload that carries one has to be told apart from one that does not:
+ * the older form, with no code in it, still has to work and still means
+ * "remember this machine, enrol separately".
+ */
+class PairingCodeTest {
+
+    @Test
+    fun aPayloadWithACodeYieldsBothTheMachineAndTheCode() {
+        val scanned = "synctang://pair?machine=ABCDEFG-HIJKLMN-OPQRSTU-VWXYZ23-456ABCD-EFGHIJK-LMNOPQR-STUVWXY" +
+            "&name=study&psk=ORSXG5BRGIZQABCDEFGHIJKLMN"
+
+        val machine = PairingPayload.parse(scanned)
+        assertNotNull("the machine must still parse", machine)
+        assertEquals("study", machine!!.name)
+        assertEquals("ORSXG5BRGIZQABCDEFGHIJKLMN", PairingPayload.pairingCode(scanned))
+    }
+
+    @Test
+    fun aPayloadWithoutACodeHasNone() {
+        val scanned = "synctang://pair?machine=ABCDEFG-HIJKLMN-OPQRSTU-VWXYZ23-456ABCD-EFGHIJK-LMNOPQR-STUVWXY"
+        assertNull(PairingPayload.pairingCode(scanned))
+    }
+
+    @Test
+    fun abareDeviceIdHasNoCode() {
+        assertNull(PairingPayload.pairingCode("ABCDEFG-HIJKLMN-OPQRSTU-VWXYZ23-456ABCD-EFGHIJK-LMNOPQR-STUVWXY"))
+    }
+
+    @Test
+    fun anEmptyCodeCountsAsAbsentRatherThanAsACodeThatCannotWork() {
+        val scanned = "synctang://pair?machine=ABCDEFG-HIJKLMN-OPQRSTU-VWXYZ23-456ABCD-EFGHIJK-LMNOPQR-STUVWXY&psk="
+        assertNull(PairingPayload.pairingCode(scanned))
     }
 }

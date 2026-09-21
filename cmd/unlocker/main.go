@@ -34,6 +34,7 @@ commands:
           or --replace one that is already enrolled)
   agent   run the systemd password agent, answering recovery attempts
   status  show which key holders are enrolled and this machine's identity
+  pair    show a QR code and enrol the key holder that scans it
 `
 
 // defaultMachineKeyFile is where this machine's own persistent transport
@@ -69,6 +70,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runEnrol(args[1:], stdout, stderr)
 	case "agent":
 		return runAgentCLI(args[1:], stdout, stderr)
+	case "pair":
+		return runPair(args[1:], stdout, stderr)
 	case "status":
 		return runStatus(args[1:], stdout, stderr)
 	default:

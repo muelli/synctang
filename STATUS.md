@@ -17,9 +17,17 @@ not here. See `TESTREPORT.md` for the acceptance table (A1-A11).
   and `Multi` (races the two). Battle-tested against a real
   deployment; see `AGENTS.md` for what that surfaced.
 - **WP3** (`unlocker`): `enrol` (add, `--remove`, or `--replace` a
-  recipient), `agent` and `status` done. `pair` not started.
+  recipient), `agent`, `status` and `pair` all done. `pair` shows a QR
+  code carrying this machine's Device ID and a one-time code, then
+  enrols the key holder that answers it, so a phone no longer needs its
+  public key copied across by hand.
 - **WP4** (`keyholder`): `init`/`unlock`/`export-pubkey` (file backend)
-  done. `pair` and the TPM2 backend not started.
+  done. The TPM2 backend is not started, and neither is `keyholder
+  pair`: the laptop can still only be enrolled the manual way
+  (`export-pubkey` into `unlocker enrol`), since the QR-code path was
+  built for the phone, where copying a public key across is worst. The
+  machine side is transport-agnostic, so a laptop `pair` is a client
+  for the protocol that already exists rather than new protocol work.
 - **WP5** (Android app): built (`gomobile bind` + Kotlin UI), passes
   its own instrumented tests on an emulator, CI builds and tests it,
   and is keyboard-navigable for Android's desktop mode. Run on real

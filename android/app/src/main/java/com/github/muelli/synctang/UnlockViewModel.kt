@@ -142,10 +142,55 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
         )
     }
 
+    /**
+     * Takes a scanned (or typed) pairing payload.
+     *
+     * A payload carrying a one-time code finishes enrolment by itself:
+     * the phone dials the machine, proves it holds the code and sends
+     * its public key, so nobody has to copy a public key from a phone
+     * screen onto a machine. Without a code all that has been scanned
+     * is a machine to remember, which is what enrolment looked like
+     * before, and the enrol command is shown instead.
+     *
+     * The machine is saved either way and before the dial, so a
+     * pairing that fails halfway leaves something to retry against
+     * rather than sending the user back to the camera.
+     */
     fun pair(scanned: String): Boolean {
         val machine = PairingPayload.parse(scanned) ?: return false
         store.saveMachine(machine)
-        refresh()
+
+        val code = PairingPayload.pairingCode(scanned)
+        if (code == null) {
+            refresh()
+            return true
+        }
+
+        _state.value = UnlockUiState.Working(machine)
+        viewModelScope.launch {
+            try {
+                val identity = withContext(Dispatchers.IO) { identity() }
+                withContext(Dispatchers.IO) {
+                    // Local discovery needs the lock just as an unlock
+                    // does: pairing dials over the same two transports.
+                    MulticastLease.holding(multicastLock) {
+                        Mobile.pair(
+                            machine.deviceId,
+                            code,
+                            store.identitySeed(),
+                            identity.publicKeyHex,
+                            android.os.Build.MODEL ?: "phone",
+                            "",
+                            PAIR_TIMEOUT_SECONDS,
+                        )
+                    }
+                }
+                refresh()
+            } catch (e: Exception) {
+                android.util.Log.w(LOG_TAG, "pairing failed", e)
+                _state.value = UnlockUiState.Failed(machine, e.friendlyMessage())
+            }
+        }
         return true
     }
 
@@ -315,6 +360,12 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
 
     private companion object {
         const val CONNECT_TIMEOUT_SECONDS = 90L
+
+        // Shorter than a connect: the machine is showing a code that
+        // expires in minutes and somebody is standing in front of it,
+        // so a pairing that has not happened by now has gone wrong and
+        // saying so beats a longer wait.
+        const val PAIR_TIMEOUT_SECONDS = 60L
     }
 }
 
