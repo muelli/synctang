@@ -188,6 +188,14 @@ finds the other first:
   global discovery, for when the two sides are not on the same
   network.
 
+The Android app is the exception: it dials over `SyncthingRelay` only
+(`mobile/mobile.go`'s `connectOnceLocked`), so a phone key holder
+needs Internet access even when it is sitting on the same Wi-Fi as the
+machine. Local discovery on Android additionally needs a
+`MulticastLock` and the `CHANGE_WIFI_MULTICAST_STATE` permission,
+neither of which the app requests today. The offline path is therefore
+machine-to-laptop only. `[V]` by reading both call sites.
+
 `transport.Multi` races the two: on a LAN with no Internet route, the
 relay path simply keeps failing in the background while local
 discovery succeeds, so unlock keeps working; with the Internet
