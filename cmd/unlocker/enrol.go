@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 
 	"github.com/muelli/synctang/mrcore"
@@ -121,33 +122,59 @@ func enrolRecipient(device string, existingPassphrase, recipientPublicKey []byte
 // key holder or the token at all. existingPassphrase authenticates the
 // keyslot removal, exactly as it does for enrolRecipient's luksAddKey.
 func removeRecipient(device string, existingPassphrase []byte, recipientTransportID string) error {
+	tok, existingTokenID, err := loadEnrolledToken(device)
+	if err != nil {
+		return err
+	}
+	idx, err := recipientIndexByTransportID(tok, recipientTransportID)
+	if err != nil {
+		return err
+	}
+	return removeRecipientAt(device, existingPassphrase, tok, existingTokenID, idx)
+}
+
+// loadEnrolledToken reads device's mr-1 token and insists it actually
+// has recipients, so callers that are about to destroy a keyslot never
+// work from a token that was invented on the spot by loadToken. The
+// keyslot/recipient integrity check belongs here for the same reason:
+// the two lists are positional, and every operation below indexes one
+// by the other's index.
+func loadEnrolledToken(device string) (mrcore.Token, int, error) {
 	dump, err := runCommand(nil, "cryptsetup", "luksDump", device)
 	if err != nil {
-		return fmt.Errorf("reading LUKS header: %w", err)
+		return mrcore.Token{}, -1, fmt.Errorf("reading LUKS header: %w", err)
 	}
 
 	tok, existingTokenID, err := loadToken(string(dump), device, "", "")
 	if err != nil {
-		return err
+		return mrcore.Token{}, -1, err
 	}
 	if existingTokenID < 0 {
-		return fmt.Errorf("%s has no enrolled mr-1 recipients", device)
+		return mrcore.Token{}, -1, fmt.Errorf("%s has no enrolled mr-1 recipients", device)
 	}
 	if len(tok.Keyslots) != len(tok.Recipients) {
-		return fmt.Errorf("token integrity check failed: %d keyslots for %d recipients, refusing to guess which is which",
+		return mrcore.Token{}, -1, fmt.Errorf("token integrity check failed: %d keyslots for %d recipients, refusing to guess which is which",
 			len(tok.Keyslots), len(tok.Recipients))
 	}
+	return tok, existingTokenID, nil
+}
 
-	idx := -1
+func recipientIndexByTransportID(tok mrcore.Token, recipientTransportID string) (int, error) {
 	for i, rec := range tok.Recipients {
 		if id, ok := rec.TransportDeviceID(); ok && id == recipientTransportID {
-			idx = i
-			break
+			return i, nil
 		}
 	}
-	if idx < 0 {
-		return fmt.Errorf("no enrolled recipient with transport id %s", recipientTransportID)
-	}
+	return -1, fmt.Errorf("no enrolled recipient with transport id %s", recipientTransportID)
+}
+
+// removeRecipientAt destroys the keyslot of tok's idx'th recipient and
+// drops it from the token. Split out from removeRecipient because
+// replaceRecipient must revoke a specific entry rather than whichever
+// one matches a transport id: after a rotation the old and new entries
+// usually share one, since a key holder that rotates its MR-1 key keeps
+// its transport identity.
+func removeRecipientAt(device string, existingPassphrase []byte, tok mrcore.Token, tokenID, idx int) error {
 	keyslot := tok.Keyslots[idx]
 
 	if _, err := runCommandWithSecrets([][]byte{existingPassphrase}, "cryptsetup",
@@ -166,12 +193,64 @@ func removeRecipient(device string, existingPassphrase []byte, recipientTranspor
 	}
 
 	if _, err := runCommand(nil, "cryptsetup", "token", "remove",
-		"--token-id", strconv.Itoa(existingTokenID), device); err != nil {
+		"--token-id", strconv.Itoa(tokenID), device); err != nil {
 		return fmt.Errorf("removing the previous token version: %w", err)
 	}
 	if _, err := runCommand(tokenJSON, "cryptsetup", "token", "import",
-		"--token-id", strconv.Itoa(existingTokenID), device); err != nil {
+		"--token-id", strconv.Itoa(tokenID), device); err != nil {
 		return fmt.Errorf("writing token: %w", err)
+	}
+
+	return nil
+}
+
+// replaceRecipient rotates one key holder's key: the new public key is
+// enrolled and the old entry is revoked, in that order, so there is
+// never a moment at which the key holder cannot unlock device. The
+// reverse order would open a window in which a mistake, a crash, or a
+// typo in the new public key leaves that key holder locked out of a
+// volume only it was supposed to be able to open.
+//
+// The old entry is identified by transport id but revoked by keyslot.
+// Those differ in the normal case: a key holder that rotates its MR-1
+// key keeps its transport identity, so immediately after the enrolment
+// two entries carry oldRecipientTransportID and "the one matching this
+// id" no longer names one of them.
+//
+// Both entries exist between the two steps, which is the safe way round
+// but does mean a failure there leaves the volume openable by either
+// key. The error says so, and names the keyslot, since at that point no
+// transport id distinguishes them.
+func replaceRecipient(device string, existingPassphrase, newPublicKey []byte, oldRecipientTransportID, newRecipientTransportID string) error {
+	tok, _, err := loadEnrolledToken(device)
+	if err != nil {
+		return err
+	}
+	idx, err := recipientIndexByTransportID(tok, oldRecipientTransportID)
+	if err != nil {
+		return err
+	}
+	oldKeyslot := tok.Keyslots[idx]
+
+	// Machine name and transport id are left empty deliberately: this
+	// device already has a token, and loadToken keeps the machine
+	// identity the first enrolment recorded rather than taking a new
+	// one from a later caller.
+	if err := enrolRecipient(device, existingPassphrase, newPublicKey, "", "", newRecipientTransportID); err != nil {
+		return fmt.Errorf("enrolling the replacement key (nothing was revoked, the old key still works): %w", err)
+	}
+
+	tok, tokenID, err := loadEnrolledToken(device)
+	if err != nil {
+		return fmt.Errorf("re-reading the token after enrolling the replacement key: %w", err)
+	}
+	idx = slices.Index(tok.Keyslots, oldKeyslot)
+	if idx < 0 {
+		return fmt.Errorf("the replacement key is enrolled, but keyslot %s (the old key) is no longer in the token, so it was not revoked", oldKeyslot)
+	}
+	if err := removeRecipientAt(device, existingPassphrase, tok, tokenID, idx); err != nil {
+		return fmt.Errorf("the replacement key is enrolled and works, but revoking the old key in keyslot %s failed, so %s can currently be opened by either key: %w",
+			oldKeyslot, device, err)
 	}
 
 	return nil

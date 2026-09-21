@@ -7,6 +7,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/tls"
@@ -29,7 +30,8 @@ import (
 const usage = `usage: unlocker <command> [flags]
 
 commands:
-  enrol   add a key holder's public key to a LUKS volume
+  enrol   add a key holder's public key to a LUKS volume (or --remove
+          or --replace one that is already enrolled)
   agent   run the systemd password agent, answering recovery attempts
   status  show which key holders are enrolled and this machine's identity
 `
@@ -86,8 +88,45 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 	recipientTransportID := fs.String("recipient-transport-id", "", "the recipient's own transport identity (from keyholder export-pubkey), if known")
 	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, "path to this machine's persistent transport identity")
 	remove := fs.String("remove", "", "revoke the enrolled recipient with this transport id instead of adding one")
+	replace := fs.String("replace", "", "rotate the enrolled recipient with this transport id to --pubkey, revoking the old key")
 	if err := fs.Parse(args); err != nil {
 		return 2
+	}
+
+	if *remove != "" && *replace != "" {
+		fmt.Fprintln(stderr, "unlocker: --remove and --replace are alternatives; use one or the other")
+		return 2
+	}
+
+	if *replace != "" {
+		if *device == "" || *pubkeyHex == "" || *passphraseFile == "" {
+			fmt.Fprintln(stderr, "unlocker: --device, --pubkey and --existing-passphrase-file are all required with --replace")
+			return 2
+		}
+		pubkey, err := hex.DecodeString(*pubkeyHex)
+		if err != nil {
+			fmt.Fprintf(stderr, "unlocker: --pubkey: %v\n", err)
+			return 2
+		}
+		passphrase, err := readPassphrase(*passphraseFile)
+		if err != nil {
+			fmt.Fprintf(stderr, "unlocker: %v\n", err)
+			return 1
+		}
+		defer mrcore.Wipe(passphrase)
+
+		// A key holder that rotates its key normally keeps its transport
+		// identity, so --recipient-transport-id defaults to the one being
+		// replaced rather than to nothing: dropping it would quietly turn
+		// a rotation into an enrolment the agent cannot restrict.
+		newTransportID := cmp.Or(*recipientTransportID, *replace)
+
+		if err := replaceRecipient(*device, passphrase, pubkey, *replace, newTransportID); err != nil {
+			fmt.Fprintf(stderr, "unlocker: %v\n", err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "rotated recipient %s on %s; its previous key no longer opens the device\n", *replace, *device)
+		return 0
 	}
 
 	if *remove != "" {

@@ -163,6 +163,96 @@ func TestRunEnrolRemoveEndToEnd(t *testing.T) {
 	}
 }
 
+// "enrol --replace" must rotate the named key holder in one command,
+// keeping its transport id without being told it again: a rotation
+// whose --recipient-transport-id defaulted to empty would leave an
+// entry the agent cannot restrict to any peer.
+func TestRunEnrolReplaceEndToEnd(t *testing.T) {
+	existingPassphrase := []byte("existing-test-passphrase")
+	device := formatLoopbackImage(t, existingPassphrase)
+
+	passphraseFile := filepath.Join(t.TempDir(), "passphrase")
+	if err := os.WriteFile(passphraseFile, existingPassphrase, 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	g := mrcore.P256()
+	sOld := mustScalar(t)
+	SOld, err := g.ScalarBaseMult(sOld)
+	if err != nil {
+		t.Fatalf("ScalarBaseMult: %v", err)
+	}
+	sNew := mustScalar(t)
+	SNew, err := g.ScalarBaseMult(sNew)
+	if err != nil {
+		t.Fatalf("ScalarBaseMult: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{
+		"enrol",
+		"--device", device,
+		"--pubkey", hex.EncodeToString(SOld),
+		"--existing-passphrase-file", passphraseFile,
+		"--recipient-transport-id", "KH-1",
+		"--machine-key-file", filepath.Join(t.TempDir(), "machine.pem"),
+	}, &stdout, &stderr); code != 0 {
+		t.Fatalf("run enrol: exit %d, stderr %q", code, stderr.String())
+	}
+
+	pOld := recoverPForTest(t, g, exportTokenForTest(t, device).Recipients[0], sOld)
+
+	stdout.Reset()
+	stderr.Reset()
+	code := run([]string{
+		"enrol",
+		"--device", device,
+		"--pubkey", hex.EncodeToString(SNew),
+		"--existing-passphrase-file", passphraseFile,
+		"--replace", "KH-1",
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run enrol --replace: exit %d, stderr %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "rotated recipient KH-1") {
+		t.Errorf("expected confirmation of the rotation, got stdout %q", stdout.String())
+	}
+
+	tok := exportTokenForTest(t, device)
+	if len(tok.Recipients) != 1 {
+		t.Fatalf("expected 1 recipient after --replace, got %d", len(tok.Recipients))
+	}
+	if id, ok := tok.Recipients[0].TransportDeviceID(); !ok || id != "KH-1" {
+		t.Fatalf("rotated recipient = (%q, %v), want (%q, true)", id, ok, "KH-1")
+	}
+	if opensDeviceForTest(t, device, pOld) {
+		t.Error("the rotated-away key still opens the device")
+	}
+	if !opensDeviceForTest(t, device, recoverPForTest(t, g, tok.Recipients[0], sNew)) {
+		t.Error("the new key does not open the device")
+	}
+}
+
+// --remove and --replace disagree about what should happen to the named
+// recipient, so asking for both must be refused rather than silently
+// resolved in whichever order the code happens to check them.
+func TestRunEnrolRejectsRemoveAndReplaceTogether(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"enrol",
+		"--device", "/nonexistent",
+		"--existing-passphrase-file", "/nonexistent",
+		"--remove", "KH-1",
+		"--replace", "KH-1",
+	}, &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("exit = %d, want 2; stderr %q", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "alternatives") {
+		t.Errorf("expected an explanation of the conflict, got stderr %q", stderr.String())
+	}
+}
+
 func mustScalar(t *testing.T) []byte {
 	t.Helper()
 	s, err := mrcore.P256().RandomScalar()

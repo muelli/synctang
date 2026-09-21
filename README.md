@@ -15,8 +15,8 @@ Status: work in progress, see `STATUS.md`.
   transport interface, as a Go package shared by everything else.
 - `unlocker`: the machine-side binary. Runs in the dracut initrd and,
   after boot, as a systemd password agent. Subcommands: `enrol` (add a
-  recipient, or `--remove` one), `agent`, and `status`. `pair` is
-  planned, not built.
+  recipient, or `--remove`/`--replace` one), `agent`, and `status`.
+  `pair` is planned, not built.
 - `keyholder`: the Ubuntu laptop CLI. Subcommands: `init`, `unlock`,
   `export-pubkey`. `pair` is planned, not built.
 - Android app (`android/`): the phone key holder. Pairs by QR code, unlocks
@@ -376,10 +376,42 @@ rm /tmp/passphrase
 recipient's own recovered secret genuinely stops opening the device,
 not merely dropped from the token.
 
-**Rotation** (`keyholder init --rotate`, `unlocker enrol --replace`) and
-`keyholder pair`/`unlocker pair` are not built yet; rotating a key today
-means enrolling a freshly generated one under a new transport identity
-and removing the old one as above.
+**Rotation** replaces one key holder's key in a single command:
+
+```
+echo -n 'your-existing-luks-passphrase' > /tmp/passphrase
+go run ./cmd/unlocker enrol \
+  --device /path/to/your/luks-device-or-image \
+  --replace <the key holder's transport-id> \
+  --pubkey <its new S, from keyholder export-pubkey after rotating> \
+  --existing-passphrase-file /tmp/passphrase
+rm /tmp/passphrase
+```
+
+The new key is enrolled before the old one is revoked, so the key
+holder can open the volume throughout; the old key stops working when
+the command returns. The rotated entry keeps its transport identity
+unless `--recipient-transport-id` says otherwise, since a key holder
+that rotates its MR-1 key normally keeps the identity it dials with.
+
+`[V]` `cmd/unlocker/enrol.go`'s `replaceRecipient`, pinned by tests that
+check the old key genuinely stops opening the device and the new one
+starts, that other key holders are untouched, and that a typo in the
+transport id changes nothing at all.
+
+The laptop side of a rotation is `keyholder init --force`, which
+generates a fresh MR-1 key but deliberately keeps the existing
+transport identity, precisely so a rotation does not change the Device
+ID every `AuthorizedPeers` list already carries. So a full rotation is:
+
+```
+go run ./cmd/keyholder init --force
+go run ./cmd/keyholder export-pubkey    # new S, same transport id
+# then unlocker enrol --replace on each machine, as above
+```
+
+`keyholder pair`/`unlocker pair` (live network pairing, as opposed to
+copying a public key across by hand) are still not built.
 
 ## Unattended boot
 
