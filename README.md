@@ -484,6 +484,43 @@ linked into every Go binary, arriving with `syncthing-socket`'s root
 package, even though no ICE code path is ever reached. A
 manifest-derived SBOM would disagree with that entry.
 
+### Why the binary, and not the source
+
+Reading a binary trusts one tool's parse of one file, so `build-deb`
+also asks the compiler the same question independently
+(`scripts/verify-sbom-against-source.py`) and requires the two answers
+to agree exactly. A misparse, a binary stripped of its build info, or
+an SBOM generated against the wrong artefact would otherwise be a
+confidently wrong document rather than a visible failure. Measured on
+`cmd/unlocker`: 65 third-party modules from the binary, the same 65
+from `go list -deps`.
+
+Where the two disagree, the binary has so far been the more accurate,
+which is why it is the one published:
+
+- **It resolves replaced modules.** `syncthing-socket` declares a bare
+  `module syncthing-socket`, so source analysis names a component no
+  purl can resolve to a real project; the binary records
+  `github.com/muelli/syncthing-socket` at a real pseudo-version.
+- **It includes the standard library and toolchain**, as
+  `stdlib@go1.26.0`, so a Go release CVE is in scope. `go list -deps`
+  does not report the standard library as a module.
+- **It sees generated code.** The APK's Go half contains `gobind` and
+  `golang.org/x/mobile`, which `go list -deps ./mobile` does not report,
+  because gomobile synthesises the binding layer at build time and it
+  exists in no source tree here. A source-derived SBOM of the app would
+  silently omit both. This is also why the cross-check covers the two
+  Go binaries and not the APK: there, source and binary are *supposed*
+  to differ.
+
+The one thing a binary genuinely cannot supply is licence text, since it
+carries no `LICENSE` files. Syft is therefore pointed at the local
+module cache, reading each module's licence from the source it was built
+from, which takes the Go SBOMs from 1 component in 67 carrying a licence
+to 65. The two without are this repo's own module and, again,
+`syncthing-socket`, whose declared path the cache lookup cannot resolve;
+both are recorded in `THIRD_PARTY.md`.
+
 The dracut package has no SBOM: it ships shell scripts and a systemd
 unit, with nothing compiled in it.
 

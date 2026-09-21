@@ -70,6 +70,14 @@ case "$artefact" in
 	;;
 esac
 
+# The component list comes from the artefact, but licences cannot: a
+# compiled binary carries no LICENSE files. Pointing syft at the local
+# module cache lets it read each module's licence from the source it was
+# built from, which takes this project's Go SBOMs from 1 component in 67
+# carrying a licence to 65. The module cache is populated by the build
+# that produced the artefact, so this needs nothing fetched.
+export SYFT_GOLANG_SEARCH_LOCAL_MOD_CACHE_LICENSES=true
+
 syft scan "$target" -o "cyclonedx-json@1.6=$output" -q
 
 # A syft run that reads the wrong file, or a binary stripped of its
@@ -78,12 +86,12 @@ syft scan "$target" -o "cyclonedx-json@1.6=$output" -q
 # binary linking dozens of dependencies has none, so check for the
 # thing actually being looked for rather than for a non-empty file.
 # Counting components alone is not enough: /bin/true produces two.
-read -r components modules <<<"$(python3 -c "
+read -r components modules licensed <<<"$(python3 -c "
 import json, sys
 with open(sys.argv[1]) as f:
     components = json.load(f).get('components', [])
 go = [c for c in components if str(c.get('purl', '')).startswith('pkg:golang/')]
-print(len(components), len(go))
+print(len(components), len(go), len([c for c in go if c.get('licenses')]))
 " "$output")"
 
 if [ "$modules" -lt 2 ]; then
@@ -91,4 +99,15 @@ if [ "$modules" -lt 2 ]; then
 	exit 1
 fi
 
-echo "$output: $modules Go modules in $components components, from $artefact"
+# Zero licences means the module cache lookup above found nothing at all,
+# usually because the SBOM is being generated somewhere the build did not
+# happen. Worth failing on, where merely incomplete coverage is not: two
+# modules here legitimately have none (this repo's own, and
+# syncthing-socket, whose bare declared module path the cache lookup
+# cannot resolve).
+if [ "$licensed" -eq 0 ]; then
+	echo "$0: $output has no licence data at all; was this run without the module cache the build used?" >&2
+	exit 1
+fi
+
+echo "$output: $modules Go modules in $components components ($licensed with licences), from $artefact"

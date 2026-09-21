@@ -258,6 +258,15 @@ jobs:
         run: |
           ./scripts/generate-sbom.sh dist/synctang-unlocker_*.deb sbom/unlocker.cdx.json
           ./scripts/generate-sbom.sh dist/synctang-keyholder_*.deb sbom/keyholder.cdx.json
+      - name: Check the SBOMs against the source
+        # Reading a binary trusts one tool's parse of one file: a
+        # misparse, a stripped binary, or the wrong artefact would
+        # produce a confidently wrong SBOM rather than a failure. So ask
+        # the compiler the same question from source and require the two
+        # to agree exactly.
+        run: |
+          ./scripts/verify-sbom-against-source.py sbom/unlocker.cdx.json ./cmd/unlocker
+          ./scripts/verify-sbom-against-source.py sbom/keyholder.cdx.json ./cmd/keyholder
       - uses: actions/attest-build-provenance@v2
         # A pull request, including one from a fork, cannot obtain an
         # id-token, so this step only runs for a push to main; the build
