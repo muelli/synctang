@@ -35,6 +35,46 @@ overall state, and `git log` for the history this report is drawn from.
 | A10 | Timings, network-up to unlock, 3 runs per key holder type | `[V]` for the laptop (file-backed) key holder, three consecutive real reboots of `synctang-test-2604`, 2026-09-19, measured from the machine's own journal (`journalctl -b -o short-monotonic`) so no clock skew between hosts enters it. The key holder was started **before** each reboot and left retrying, so the interval is the protocol's and not a human's reaction time. Markers: DHCPv4 lease acquired, `unlocker: password agent started`, `recovery attempt succeeded`, `Finished systemd-cryptsetup@vda4_crypt.service`.<br><br>| run | network-up | agent up | recovery done | unlocked | **network-up to unlock** |<br>| 1 | 3.15s | 4.49s | 12.03s | 19.06s | **15.91s** |<br>| 2 | 5.37s | 7.27s | 14.99s | 22.06s | **16.70s** |<br>| 3 | 3.84s | 5.43s | 14.08s | 22.20s | **18.36s** |<br><br>Mean 16.99s, spread 15.9s to 18.4s. Most of it is not this project: 7.0s to 8.1s of every run sits between the agent having the verified secret and `systemd-cryptsetup` finishing, which is LUKS2 argon2id derivation on a header whose keyslots are configured at time cost 4 and 0.6 to 1.0 GiB, tried in order from slot 0. Measured directly on the same VM: a deliberately wrong passphrase, which forces all three keyslots to be tried, takes 6.86s. A human typing the passphrase at the console pays the same cost. The part this project actually governs, agent start to recovered and verified secret, is 7.5s, 7.7s and 8.7s, and the network-up to agent-up gap is 1.3s to 1.9s. `[U]` phone key holder not measured, blocked by A4 | `journalctl -b -o short-monotonic` on the VM for each of the three boots, `keyholder unlock` output, `cryptsetup open --test-passphrase` timing, this session |
 | A11 | Unlock with no Internet route, same LAN only (beyond the plan's original A1-A10, added this session) | `[V]` **passes**, end to end against the real VM, 2026-09-19. Running it for real rather than at the transport layer is what exposed the bug that made it fail: `LocalDiscovery` announced from an unbound UDP socket, which needs a route to `239.0.0.0/8` and so in practice needs the default route, meaning a machine with no Internet could not announce at all. Local discovery was therefore working only on machines that did not need it. Confirmed to the socket level on the VM at that moment (unbound socket: `[Errno 101] Network is unreachable`; socket bound to the interface address: sends fine), then fixed by binding each announcing socket per interface. After the fix, with **both** the IPv4 and the IPv6 default route deleted and every reachability probe failing (`curl -4 https://1.1.1.1/`, `curl -6 https://discovery.syncthing.net/`, and the relay pool's own `https://relays.syncthing.net/endpoint`, all `000`), a full recovery completed in **1.2 seconds**: the agent recovered the secret, verified it against the real LUKS2 header, and the machine's journal contains zero mentions of a relay. Also `[V]` offline in the dev environment: `TestAgentRecoversOverLocalDiscovery` runs the full enrol-listen-dial-recover-answer sequence over multicast alone | agent journal and `/tmp/agent-a11c.log` on the VM, `keyholder unlock` output, this session |
 
+## Overnight soak, 2026-09-21
+
+Does a machine left waiting at its LUKS prompt stay reachable, and
+still unlock, after hours of idling and after being probed by a
+stranger? Six boots of the disposable VM, each left waiting for a
+growing dwell, interrupted once mid-dwell by an unenrolled peer, then
+unlocked by the mobile client.
+
+| Dwell | Stranger probe | Unlock | Machine agreed | Relay changes |
+|---|---|---|---|---|
+| 10 min | reached, refused | yes, 51s | yes | 2 |
+| 20 min | not reached (2m9s) | yes, 58s | yes | 3 |
+| 40 min | reached, refused | yes, 19s | yes | 3 |
+| 60 min | reached, refused | yes, 59s | yes | 2 |
+| 90 min | not reached (1m49s) | yes, 61s | yes | 2 |
+| 120 min | reached, refused | yes, 92s | yes | 2 |
+
+Six unlocks out of six, each confirmed from both ends: the key holder
+reported success *and* the machine's own console showed `unlocker:
+unlocked`. Those two verdicts travel different paths, and an earlier
+bug had them disagree, so neither alone is the result. Unlock times are
+whole cycles including the LUKS open, not dial latency.
+
+Two of the six stranger probes could not reach a machine that was
+demonstrably healthy a minute later, both failing the same way: a relay
+resetting the connection. A passive observer polling global discovery
+once a minute for 21 hours alongside the run explains it. The machine
+changes relay every few minutes (public relays disconnect clients, and
+a `dynamic+` client walks its pool list), discovery merges
+announcements rather than replacing them, and the record therefore
+accumulated up to 8 relay addresses of which at most one was live at a
+time. A dial that lands only on stale entries fails against a listener
+that is perfectly reachable through another address in the same list.
+This is why `raceRelayAddresses` tries them in parallel and why
+`dialRelay` retries, and it means **a failed dial is not evidence that
+a machine is down**. It also means the stranger-probe column measures
+the probe's luck as much as the machine's behaviour; the machine
+refused every stranger that did reach it, which is the property under
+test.
+
 ## Deviations from the plan
 
 - Loopback LUKS2 tests (`cmd/unlocker`) do not need root or a privileged
