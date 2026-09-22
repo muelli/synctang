@@ -35,7 +35,7 @@ func TestRenderQRCodeIsScannable(t *testing.T) {
 	// line must therefore be light, which shows up as the absence of
 	// the dark colour rather than in the stripped text (every cell
 	// renders as the same half-block character whatever its colour).
-	for _, darkCode := range []string{"\x1b[30;40m", "\x1b[37;40m", "\x1b[30;47m"} {
+	for _, darkCode := range []string{"\x1b[40m", "\x1b[37;40m", "\x1b[30;47m"} {
 		if strings.Contains(lines[0], darkCode) {
 			t.Error("the first line has dark modules in it, so there is no quiet zone above the symbol")
 			break
@@ -146,4 +146,63 @@ func TestPairingURLSurvivesTheAppsDecoding(t *testing.T) {
 	if !strings.Contains(raw, "psk="+code) {
 		t.Errorf("the pairing code was escaped in %q; it must travel literally", raw)
 	}
+}
+
+// The half-block cells carry two module rows each, so mixing up which
+// cell means "dark above light" and which means "light above dark"
+// flips every pair of rows. The result still looks like a QR code and
+// still passes every shape check above, and no scanner will read it.
+//
+// Pinned against the top-left finder pattern, which every QR code has
+// and whose first two rows are fixed by the specification: a solid row
+// of seven dark modules, then dark, five light, dark. In half blocks
+// that is one dark-over-dark cell, five dark-over-light, then another
+// dark-over-dark.
+func TestHalfBlockCellsAreNotVerticallyFlipped(t *testing.T) {
+	out, err := renderQRCode("synctang://pair?machine=ABCDEFG&psk=ORSXG5BRGIZQ")
+	if err != nil {
+		t.Fatalf("renderQRCode: %v", err)
+	}
+
+	var firstData string
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, cellDarkOverDark) || strings.Contains(line, cellDarkOverLight) {
+			firstData = line
+			break
+		}
+	}
+	if firstData == "" {
+		t.Fatal("no line of the rendering contains a dark module at all")
+	}
+
+	cells := splitCells(firstData)
+	if len(cells) < quietZone+7 {
+		t.Fatalf("the first data line has only %d cells, too few to hold a finder pattern", len(cells))
+	}
+	finder := cells[quietZone : quietZone+7]
+
+	want := []string{
+		cellDarkOverDark,
+		cellDarkOverLight, cellDarkOverLight, cellDarkOverLight,
+		cellDarkOverLight, cellDarkOverLight,
+		cellDarkOverDark,
+	}
+	for i, expected := range want {
+		if finder[i] != expected {
+			t.Fatalf("finder pattern cell %d is %q, want %q: the two half-block cells are swapped, "+
+				"so every pair of module rows is upside down", i, finder[i], expected)
+		}
+	}
+}
+
+// splitCells breaks a rendered line into one string per module, each
+// still carrying its escape sequences.
+func splitCells(line string) []string {
+	var cells []string
+	for _, part := range strings.SplitAfter(line, "\x1b[0m") {
+		if strings.TrimSpace(part) != "" || strings.Contains(part, "\x1b") {
+			cells = append(cells, part)
+		}
+	}
+	return cells
 }

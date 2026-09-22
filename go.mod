@@ -10,6 +10,7 @@ go 1.26.0
 require (
 	filippo.io/nistec v0.0.4
 	github.com/coreos/go-systemd/v22 v22.7.0
+	github.com/mdp/qrterminal/v3 v3.2.1
 	github.com/syncthing/syncthing v1.30.0
 	syncthing-socket v0.1.1-alpha.0.20260909182828-518875db93fe
 )
@@ -18,7 +19,7 @@ require (
 	github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blacktop/go-termimg v0.1.20 // indirect
-	github.com/boombuler/barcode v1.1.0 // indirect
+	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
 	github.com/calmh/xdr v1.2.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/charmbracelet/x/ansi v0.9.3 // indirect
@@ -35,7 +36,6 @@ require (
 	github.com/makeworld-the-better-one/dither/v2 v2.4.0 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/mattn/go-sixel v0.0.5 // indirect
-	github.com/mdp/qrterminal/v3 v3.2.1 // indirect
 	github.com/miscreant/miscreant.go v0.0.0-20200214223636-26d376326b75 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect

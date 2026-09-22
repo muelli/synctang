@@ -8,8 +8,6 @@ github.com/blacktop/go-termimg v0.1.20 h1:+EAUc3c9hwE/fUYaqRV1BSLvAlOuLySgLTEBzx
 github.com/blacktop/go-termimg v0.1.20/go.mod h1:nwxrOjfFcBjtS358oIGBLfscSLnCpNdRlMVRxsnZwMU=
 github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc h1:biVzkmvwrH8WK8raXaxBx6fRVTlJILwEwQGL1I/ByEI=
 github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc/go.mod h1:paBWMcWSl3LHKBqUq+rly7CNSldXjb2rDl3JlRe0mD8=
-github.com/boombuler/barcode v1.1.0 h1:ChaYjBR63fr4LFyGn8E8nt7dBSt3MiU3zMOZqFvVkHo=
-github.com/boombuler/barcode v1.1.0/go.mod h1:paBWMcWSl3LHKBqUq+rly7CNSldXjb2rDl3JlRe0mD8=
 github.com/calmh/xdr v1.2.0 h1:GaGSNH4ZDw9kNdYqle6+RcAENiaQ8/611Ok+jQbBEeU=
 github.com/calmh/xdr v1.2.0/go.mod h1:vO5+lCx/8xz7Ekd/ZLf+xuy7c1x6FMO1pBJyjDebwyg=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
