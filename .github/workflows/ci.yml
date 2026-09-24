@@ -252,21 +252,37 @@ jobs:
       - uses: anchore/sbom-action/download-syft@v0
       - name: Generate SBOMs
         # Read out of the built packages rather than from go.mod, so the
-        # SBOM describes what was linked into the binary that ships. The
-        # dracut package deliberately has none: it carries shell scripts
-        # and a systemd unit, no compiled code.
+        # SBOM describes what was linked into the binary that ships.
+        #
+        # One per package *and* architecture. This job builds amd64 and
+        # arm64, so a glob like synctang-unlocker_*.deb matches two
+        # files, which is what broke the first version of this step: it
+        # passed both to a script taking one. They are different
+        # binaries and an SBOM describes exactly one of them.
+        #
+        # The dracut package deliberately has none: it carries shell
+        # scripts and a systemd unit, no compiled code.
         run: |
-          ./scripts/generate-sbom.sh dist/synctang-unlocker_*.deb sbom/unlocker.cdx.json
-          ./scripts/generate-sbom.sh dist/synctang-keyholder_*.deb sbom/keyholder.cdx.json
+          for deb in dist/synctang-unlocker_*.deb dist/synctang-keyholder_*.deb; do
+            base=$(basename "$deb" .deb)
+            pkg=${base%%_*}
+            arch=${base##*_}
+            ./scripts/generate-sbom.sh "$deb" "sbom/${pkg#synctang-}-${arch}.cdx.json"
+          done
       - name: Check the SBOMs against the source
         # Reading a binary trusts one tool's parse of one file: a
         # misparse, a stripped binary, or the wrong artefact would
         # produce a confidently wrong SBOM rather than a failure. So ask
         # the compiler the same question from source and require the two
-        # to agree exactly.
+        # to agree exactly, per architecture, since the import graph can
+        # differ between them.
         run: |
-          ./scripts/verify-sbom-against-source.py sbom/unlocker.cdx.json ./cmd/unlocker
-          ./scripts/verify-sbom-against-source.py sbom/keyholder.cdx.json ./cmd/keyholder
+          for cmd in unlocker keyholder; do
+            for arch in amd64 arm64; do
+              ./scripts/verify-sbom-against-source.py \
+                "sbom/${cmd}-${arch}.cdx.json" "./cmd/${cmd}" linux "$arch"
+            done
+          done
       - uses: actions/attest-build-provenance@v2
         # A pull request, including one from a fork, cannot obtain an
         # id-token, so this step only runs for a push to main; the build
@@ -276,18 +292,30 @@ jobs:
         with:
           subject-path: dist/*.deb
       - uses: actions/attest-sbom@v2
-        # One subject per step: an SBOM describes one artefact, and a
-        # glob matching both packages would attach the unlocker's
-        # dependency list to the keyholder as well.
+        # One subject per step, and the glob has to pin the architecture
+        # as well as the package. Matching only on the package name
+        # catches both builds and would attest the amd64 dependency list
+        # against the arm64 package, which is worse than not attesting
+        # at all: it is a signed statement that happens to be false.
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         with:
-          subject-path: dist/synctang-unlocker_*.deb
-          sbom-path: sbom/unlocker.cdx.json
+          subject-path: dist/synctang-unlocker_*_amd64.deb
+          sbom-path: sbom/unlocker-amd64.cdx.json
       - uses: actions/attest-sbom@v2
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         with:
-          subject-path: dist/synctang-keyholder_*.deb
-          sbom-path: sbom/keyholder.cdx.json
+          subject-path: dist/synctang-unlocker_*_arm64.deb
+          sbom-path: sbom/unlocker-arm64.cdx.json
+      - uses: actions/attest-sbom@v2
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          subject-path: dist/synctang-keyholder_*_amd64.deb
+          sbom-path: sbom/keyholder-amd64.cdx.json
+      - uses: actions/attest-sbom@v2
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          subject-path: dist/synctang-keyholder_*_arm64.deb
+          sbom-path: sbom/keyholder-arm64.cdx.json
       - uses: actions/upload-artifact@v4
         with:
           name: synctang-debs
