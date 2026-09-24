@@ -35,9 +35,10 @@ not here. See `TESTREPORT.md` for the acceptance table (A1-A11).
   three bugs no test had: it could not unlock a machine that was not
   in confirm-code mode (it guessed message types by field presence
   rather than reading them positionally), it gave up after a single
-  attempt where the laptop client retries, and it reports success on
-  sending its answer rather than on the volume actually opening. The
-  first two are fixed; the third is not.
+  attempt where the laptop client retries, and it reported success on
+  sending its answer rather than on the volume actually opening. All
+  three are fixed: the last by `mrcore.RecoverResult`, the machine's
+  own verdict, which the app now waits for before claiming anything.
   Since 2026-09-21 the app races `LocalDiscovery` against the relay
   like the laptop client does, holding a Wi-Fi `MulticastLock` for the
   duration of a dial, so a phone can unlock a machine on the same
