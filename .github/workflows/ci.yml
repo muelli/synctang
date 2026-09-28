@@ -1,5 +1,11 @@
 name: ci
 
+# Runner images are pinned rather than tracking ubuntu-latest, which
+# migrates to Ubuntu 26 from 2026-10-19 and would otherwise change the
+# build environment under us without a commit saying so. Moved early and
+# on purpose: a toolchain change that breaks the Debian packaging or the
+# Android build is much cheaper to find now than on the day it is forced.
+
 on:
   push:
     branches: [main]
@@ -7,7 +13,7 @@ on:
 
 jobs:
   go-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -40,7 +46,7 @@ jobs:
           done
 
   go-test-privileged:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -50,20 +56,20 @@ jobs:
       - run: sudo go test -timeout 20m -tags privileged ./...
 
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
       - run: find dracut scripts -name '*.sh' -print0 | xargs -0 -r shellcheck
 
   em-dash-check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v4
       - run: ./scripts/check-em-dash.sh
 
   android:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     defaults:
       run:
         working-directory: android
@@ -141,7 +147,7 @@ jobs:
           ./gradlew assembleDebug testDebugUnitTest -Psynctang.goMobileTarget=android/amd64
 
   build-deb:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     # Job-wide, so it covers the go build inside dpkg-buildpackage and not
     # just one step: see the setup-go pin below for why the default
     # GOTOOLCHAIN=auto would otherwise quietly replace the pinned compiler.
@@ -328,7 +334,7 @@ jobs:
           retention-days: 7
 
   build-apk:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       id-token: write

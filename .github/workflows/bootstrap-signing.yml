@@ -18,7 +18,12 @@ permissions:
 
 jobs:
   bootstrap:
-    runs-on: ubuntu-latest
+    # Pinned to the image the current signing identities were generated
+    # on. Re-running this derives the same keys from the same seeds
+    # regardless, but the certificates are committed rather than
+    # regenerated, so there is nothing to gain from a newer image and a
+    # reproducibility argument for staying put.
+    runs-on: ubuntu-24.04
     env:
       APP_SIGNING_SEED: ${{ secrets.APP_SIGNING_SEED }}
       FDROID_SIGNING_SEED: ${{ secrets.FDROID_SIGNING_SEED }}

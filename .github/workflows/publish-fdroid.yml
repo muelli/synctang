@@ -15,7 +15,12 @@ permissions:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    # Pinned to the image this has been developed against, not moved to
+    # ubuntu-26.04 with ci.yml: the real publishing path has never run to
+    # completion, so it changes one variable at a time. Move it once a
+    # publish has succeeded. ubuntu-latest migrates on 2026-10-19, so
+    # this pin is also what stops that happening by itself.
+    runs-on: ubuntu-24.04
     env:
       # Surfaced at job level so steps can gate on their presence. Each seed
       # deterministically drives the entire signing identity (key, keystore,
