@@ -17,17 +17,18 @@ AuthorName: Tobias Mueller
 SourceCode: https://github.com/muelli/synctang
 IssueTracker: https://github.com/muelli/synctang/issues
 Changelog: https://github.com/muelli/synctang/releases
+WebSite: https://muelli.github.io/synctang/
 
 AutoName: synctang
 
 RepoType: git
 Repo: https://github.com/muelli/synctang.git
 Binaries: https://github.com/muelli/synctang/releases/download/v%c/synctang-%c.apk
-# PLACEHOLDER. Replace with the SHA-256 of signing/app-cert.pem once the
-# bootstrap workflow has produced it:
+# SHA-256 of signing/app-cert.pem, the certificate every release is signed
+# with. Recompute with:
 #   keytool -printcert -file signing/app-cert.pem | awk -F': ' '/SHA256:/{gsub(/:/,"",$2);print tolower($2)}'
-# Submitting with the wrong digest tells F-Droid to reject every APK we sign.
-AllowedAPKSigningKeys: REPLACE_WITH_APP_CERT_SHA256
+# A wrong digest here tells F-Droid to reject every APK we sign.
+AllowedAPKSigningKeys: 7e3886447f38511be5bbd7f890f4a1cafec8f63cb40baafd20c0e8cd7cccaeb5
 
 Builds:
   - versionName: '0'

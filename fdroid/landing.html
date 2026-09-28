@@ -33,6 +33,13 @@ self-contained: no external scripts, styles, fonts, or trackers.
   header, main, footer { max-width: 46rem; margin: 0 auto; padding: 0 1rem; }
   header { padding-top: 2rem; }
   h1 { font-size: 1.6rem; margin: 0 0 .25rem; }
+  /* The repository's own icon, which fdroidserver publishes under
+     fdroid/repo/icons/ for F-Droid clients. Reusing it here rather than
+     shipping a second copy keeps the page and the client showing the
+     same thing. Decorative, hence the empty alt: the heading beside it
+     already says what this is. */
+  .brand { display: flex; align-items: center; gap: .9rem; margin-bottom: .25rem; }
+  .brand img { border-radius: .8rem; flex: none; }
   h2 { font-size: 1.2rem; margin-top: 2rem; }
   a { color: var(--accent); }
   a:focus-visible, input:focus-visible, summary:focus-visible, button:focus-visible {
@@ -95,7 +102,10 @@ self-contained: no external scripts, styles, fonts, or trackers.
 </head>
 <body>
 <header>
-  <h1>synctang F-Droid repository</h1>
+  <div class="brand">
+    <img src="fdroid/repo/icons/icon.png" alt="" width="72" height="72">
+    <h1>synctang F-Droid repository</h1>
+  </div>
   <p class="lede">Free-software Android apps, built from source and signed by this
      repository. Add it to the <a href="https://f-droid.org/">F-Droid</a> app to
      install and receive updates.</p>
