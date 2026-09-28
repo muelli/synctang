@@ -1,0 +1,21 @@
+Pairing is now a single scan, and unlocking works without the Internet.
+
+- Pair by scanning the QR code that "unlocker pair" shows on the
+  machine. The phone proves it holds the one-time code and sends its
+  public key, so there is no longer a long command to copy across by
+  hand. The machine shows you which key holder answered before it
+  enrols anything.
+- Unlock a machine on the same network with no Internet at all. This
+  needs the new "control Wi-Fi multicast" permission, which is what
+  lets the app hear a machine announcing itself on the local network.
+  Android otherwise filters those announcements out before they reach
+  an app. Without the permission the app still works over the Internet.
+- Unlocking now works against machines that are not using a confirm
+  code, which previously failed.
+- A failed connection is retried rather than given up on after one
+  attempt.
+- Success is reported only once the machine confirms the volume
+  actually opened, instead of when the answer was sent.
+- The whole flow is keyboard-navigable, for Android's desktop mode.
+
+The disk passphrase is still never on the phone, in any form.
