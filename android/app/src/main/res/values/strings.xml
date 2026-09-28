@@ -38,7 +38,6 @@
     <string name="unlock_decline">Refuse</string>
     <string name="unlock_done">Answered. The machine can now unlock its disk.</string>
     <string name="unlock_again">Unlock something again</string>
-    <string name="unlock_forget">Forget this machine</string>
 
     <!-- Confirm code -->
     <string name="confirm_title">Check the code on the machine</string>

@@ -66,10 +66,6 @@ class PairingStore(context: Context) {
             .apply()
     }
 
-    fun forgetMachine() {
-        prefs.edit().remove(KEY_MACHINE_ID).remove(KEY_MACHINE_NAME).apply()
-    }
-
     private companion object {
         const val KEY_SEED = "identity-seed"
         const val KEY_MACHINE_ID = "machine-device-id"

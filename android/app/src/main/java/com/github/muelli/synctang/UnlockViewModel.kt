@@ -194,11 +194,6 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
         return true
     }
 
-    fun forgetMachine() {
-        store.forgetMachine()
-        refresh()
-    }
-
     /** Dials the machine and waits for it to say what it wants. */
     fun connect() {
         val machine = store.machine() ?: return

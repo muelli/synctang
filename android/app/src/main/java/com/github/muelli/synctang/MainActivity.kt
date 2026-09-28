@@ -226,9 +226,6 @@ private fun ReadyScreen(state: UnlockUiState.Ready, model: UnlockViewModel) {
             hint = stringResource(R.string.enrol_manual_hint),
         )
     }
-    TextButton(onClick = { model.forgetMachine() }, modifier = Modifier.focusRing()) {
-        Text(stringResource(R.string.unlock_forget))
-    }
 }
 
 @Composable
