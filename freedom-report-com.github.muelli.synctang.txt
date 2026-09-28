@@ -1,0 +1,22 @@
+synctang key holder (com.github.muelli.synctang) software-freedom report (versionCode 120)
+Generated 2026-09-28 17:23:20Z by GitHub Actions.
+
+== F-Droid scanner (fdroidserver 2.4.5) ==
+Command: fdroid scanner --exit-code synctang-120-rc.apk
+Result: PASS. No known non-free classes, trackers, or extra signing blocks.
+
+    2026-09-28 17:23:13,729 INFO: Scanning APK with dexdump for known non-free classes.
+    2026-09-28 17:23:20,184 INFO: Scanning APK for extra signing blocks.
+
+== Bundled native libraries ==
+    lib/arm64-v8a/libgojni.so  (12452464 bytes)
+    lib/arm64-v8a/libimage_processing_util_jni.so  (28944 bytes)
+    lib/armeabi-v7a/libgojni.so  (12257444 bytes)
+    lib/armeabi-v7a/libimage_processing_util_jni.so  (21692 bytes)
+    lib/x86/libgojni.so  (12444932 bytes)
+    lib/x86/libimage_processing_util_jni.so  (35372 bytes)
+    lib/x86_64/libgojni.so  (13310128 bytes)
+    lib/x86_64/libimage_processing_util_jni.so  (46200 bytes)
+
+All code is built from public source; licensing is documented in the
+project repository (LICENSE, NOTICE): https://github.com/muelli/synctang

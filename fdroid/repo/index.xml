@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?><fdroid><repo icon="icon.png" name="synctang" pubkey="308201413081e8a00302010202146d6ec430f5933c4d293fb01f4751e802d08b5064300a06082a8648ce3d0403023020311e301c06035504030c1573796e6374616e6720462d44726f6964205265706f3020170d3236303130313030303030305a180f32313236303130313030303030305a3020311e301c06035504030c1573796e6374616e6720462d44726f6964205265706f3059301306072a8648ce3d020106082a8648ce3d03010703420004a918fed1422ae9d8a5ec251298308e9cb12b4c4a3306d97d8bced9ce24322e334d3ad78932fbdea10ae44fa60da9d8110f63c876064c47d5c606be1f9a153da4300a06082a8648ce3d04030203480030450221009d8373a78325115950f67c86a01670135e783b789420025ac89aa8d82a466c26022028eca54450676df79a8fbe849cd88533b260b8e4dcddc78a73fd1520f5706c41" timestamp="1790616190" url="https://muelli.github.io/synctang/fdroid/repo" version="20002"><description>Personal F-Droid repository publishing signed synctang releases, built automatically in CI from commits and tags. synctang unlocks a LUKS volume at boot by asking a human's phone, which holds its key in the Android Keystore and never discloses it.</description></repo><application id="com.github.muelli.synctang"><id>com.github.muelli.synctang</id><added>2026-09-28</added><lastupdated>2026-09-28</lastupdated><name>synctang key holder</name><summary>Approve a Linux machine's disk unlock without ever holding its passphrase.</summary><desc>synctang unlocks a LUKS-encrypted Linux machine while it is still sitting at
+its boot prompt, with a person in the loop for every single unlock.
+
+This app is the key holder. What makes it different from a remote-passphrase
+app is what it does not have: it never holds the machine's disk passphrase, or
+anything from which the passphrase could be worked out. It holds one long-term
+key, generated inside the phone's secure hardware and unable to leave it. The
+machine sends a blinded challenge point; the phone does one elliptic curve
+agreement against that point and sends back the result; the machine, and only
+the machine, turns that into the key that opens the disk.
+
+The protocol is McCallum-Relyea key agreement, the same idea behind Tang and
+Clevis, with the key holder's half moved into a phone's Keystore and put
+behind a biometric. A recording of the whole exchange tells an eavesdropper
+nothing, and answering a challenge tells the phone nothing about the disk.
+
+How it works:
+
+- Pair once by scanning the QR code the machine shows, and enrol this phone's
+  public key on the machine.
+- When the machine boots, it waits at its prompt and asks. The phone shows the
+  machine's cryptographically verified identity, and the name it gave itself.
+- One Unlock button, behind a strong biometric. The key is created so that the
+  phone's secure hardware, not this app, refuses to use it without a recent
+  biometric match.
+- Optionally, the machine can print a code on its own console that has to be
+  checked on the phone first, so that somebody who has only stolen the disk
+  cannot get an unlock approved over the network.
+
+Machine and phone find each other over the public Syncthing relay network, so
+no port forwarding and no server of your own are needed. The relay sees two
+identities and some traffic; the tunnel inside it is TLS 1.3 pinned to those
+identities, so the relay operator cannot read or alter the exchange.
+
+Deliberately not supported: unattended reboots. If a machine has to come back
+up on its own, use Tang directly. This project trades that away for a human
+approval and a key that lives in hardware.
+
+No tracking, no analytics, no proprietary libraries. Free software under the
+GNU Affero General Public Licence, version 3 or later.
+</desc><license>AGPL-3.0-or-later</license><categories>Security,System</categories><category>Security</category><web></web><source>https://github.com/muelli/synctang</source><tracker>https://github.com/muelli/synctang/issues</tracker><changelog>https://github.com/muelli/synctang/releases</changelog><author>Tobias Mueller</author><marketversion>0</marketversion><marketvercode>0</marketvercode><package><version>120</version><versioncode>120</versioncode><apkname>synctang-120-rc.apk</apkname><hash type="sha256">9308a5be1285261500f2fffbfafaf5177f698c6476450d5b7acba926a0560a50</hash><size>72821832</size><sdkver>31</sdkver><targetSdkVersion>34</targetSdkVersion><added>2026-09-28</added><sig>4bd2aa3835e37fb76d9577795db8601d</sig><permissions>ACCESS_NETWORK_STATE,CAMERA,CHANGE_WIFI_MULTICAST_STATE,INTERNET,USE_BIOMETRIC,USE_FINGERPRINT,com.github.muelli.synctang.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION</permissions><nativecode>arm64-v8a,armeabi-v7a,x86,x86_64</nativecode></package></application></fdroid>

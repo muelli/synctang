@@ -1,0 +1,15 @@
+First build of the synctang key holder.
+
+- Pair with a machine by scanning its QR code, or by typing its device
+  ID, and get the exact enrol command to run on the machine.
+- One Unlock action: the machine's verified identity is shown, a strong
+  biometric is required, and the phone answers the challenge with a
+  single elliptic curve agreement performed inside the Keystore.
+- The long-term key is generated in StrongBox where the phone has a
+  secure element, and in the trusted execution environment otherwise.
+  It cannot be exported either way.
+- The machine's disk passphrase is never on the phone, in any form.
+- Confirm-code mode is supported: when the machine prints a code on its
+  own console, it has to be checked on the phone before anything is
+  answered.
+- No tracking, no analytics, no proprietary libraries.

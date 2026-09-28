@@ -1,0 +1,40 @@
+synctang unlocks a LUKS-encrypted Linux machine while it is still sitting at
+its boot prompt, with a person in the loop for every single unlock.
+
+This app is the key holder. What makes it different from a remote-passphrase
+app is what it does not have: it never holds the machine's disk passphrase, or
+anything from which the passphrase could be worked out. It holds one long-term
+key, generated inside the phone's secure hardware and unable to leave it. The
+machine sends a blinded challenge point; the phone does one elliptic curve
+agreement against that point and sends back the result; the machine, and only
+the machine, turns that into the key that opens the disk.
+
+The protocol is McCallum-Relyea key agreement, the same idea behind Tang and
+Clevis, with the key holder's half moved into a phone's Keystore and put
+behind a biometric. A recording of the whole exchange tells an eavesdropper
+nothing, and answering a challenge tells the phone nothing about the disk.
+
+How it works:
+
+- Pair once by scanning the QR code the machine shows, and enrol this phone's
+  public key on the machine.
+- When the machine boots, it waits at its prompt and asks. The phone shows the
+  machine's cryptographically verified identity, and the name it gave itself.
+- One Unlock button, behind a strong biometric. The key is created so that the
+  phone's secure hardware, not this app, refuses to use it without a recent
+  biometric match.
+- Optionally, the machine can print a code on its own console that has to be
+  checked on the phone first, so that somebody who has only stolen the disk
+  cannot get an unlock approved over the network.
+
+Machine and phone find each other over the public Syncthing relay network, so
+no port forwarding and no server of your own are needed. The relay sees two
+identities and some traffic; the tunnel inside it is TLS 1.3 pinned to those
+identities, so the relay operator cannot read or alter the exchange.
+
+Deliberately not supported: unattended reboots. If a machine has to come back
+up on its own, use Tang directly. This project trades that away for a human
+approval and a key that lives in hardware.
+
+No tracking, no analytics, no proprietary libraries. Free software under the
+GNU Affero General Public Licence, version 3 or later.

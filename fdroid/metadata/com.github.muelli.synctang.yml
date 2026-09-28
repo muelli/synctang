@@ -1,0 +1,18 @@
+
+Categories:
+  - Security
+  - System
+License: AGPL-3.0-or-later
+AuthorName: Tobias Mueller
+SourceCode: https://github.com/muelli/synctang
+IssueTracker: https://github.com/muelli/synctang/issues
+Changelog: https://github.com/muelli/synctang/releases
+
+AutoName: synctang
+
+RepoType: git
+Repo: https://github.com/muelli/synctang.git
+AutoUpdateMode: Version v%c
+UpdateCheckMode: Tags
+CurrentVersion: '0'
+CurrentVersionCode: 0

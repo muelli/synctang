@@ -1,0 +1,4 @@
+config.yml
+*.p12
+*.jks
+tmp/
