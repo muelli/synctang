@@ -6,7 +6,8 @@ on:
     branches: ['main', 'master']
   workflow_dispatch:
 
-# Push the generated repo to the fdroid-repo branch and (best-effort) enable Pages.
+# Deploy the generated repo straight to Pages as an artifact, so no
+# APK is ever committed to this repository.
 permissions:
   contents: write
   pages: write
@@ -15,6 +16,11 @@ permissions:
 
 jobs:
   publish:
+    # Required by actions/deploy-pages, which deploys into this
+    # environment rather than pushing a branch.
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     # Pinned to the image this has been developed against, not moved to
     # ubuntu-26.04 with ci.yml: the real publishing path has never run to
     # completion, so it changes one variable at a time. Move it once a
@@ -166,20 +172,31 @@ jobs:
           set -euo pipefail
           CODE="${{ steps.version.outputs.code }}"
           CURRENT_CODE="${{ steps.version.outputs.current_code }}"
-          REMOTE="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          PAGES_BASE="https://${GITHUB_REPOSITORY%/*}.github.io/${GITHUB_REPOSITORY#*/}"
 
-          # Clone the existing fdroid-repo branch to grab recent APKs
-          if git ls-remote --exit-code --heads "$REMOTE" fdroid-repo >/dev/null 2>&1; then
-            git clone --depth 1 --branch fdroid-repo --single-branch "$REMOTE" old_site
+          # Previous APKs come from the site that is currently published,
+          # not from a branch in this repository. Nothing about the
+          # published repo is stored in git: the whole site is handed to
+          # Pages as an artifact, so the only copy of an older APK is the
+          # one being served, and it is read back from there.
+          #
+          # A missing or unreachable index is not an error. It is what the
+          # very first deployment looks like, and the worst case is a repo
+          # that offers only the version just built.
+          mkdir -p old_site/fdroid/repo
+          if curl -fsS --max-time 60 -o prev-index.json "$PAGES_BASE/fdroid/repo/index-v2.json"; then
+            python3 -c "import json;idx=json.load(open('prev-index.json'));print('\n'.join(v['file']['name'].lstrip('/') for p in idx.get('packages',{}).values() for v in p.get('versions',{}).values() if v.get('file',{}).get('name','').endswith('.apk')))" > prev-apks.txt
+            while read -r apk; do
+              [ -n "$apk" ] || continue
+              curl -fsSL --max-time 600 -o "old_site/fdroid/repo/$apk" \
+                "$PAGES_BASE/fdroid/repo/$apk" || rm -f "old_site/fdroid/repo/$apk"
+            done < prev-apks.txt
+            echo "carried forward $(ls -1 old_site/fdroid/repo/ 2>/dev/null | wc -l) APK(s) from the live site"
           else
-            mkdir old_site
+            echo "no published index yet; starting a fresh repository"
           fi
 
-          # Start an orphan branch on every run to avoid repo bloat (Option B).
-          mkdir site && cd site
-          git init
-          git checkout --orphan fdroid-repo
-          cd ..
+          mkdir site
 
           # Serve the repo under /fdroid/repo so plain https links auto-open F-Droid.
           mkdir -p site/fdroid/repo site/fdroid/metadata
@@ -377,20 +394,26 @@ jobs:
               -e "s|{{APP_CERT_SHA256}}|${APP_CERT_SHA256}|g" \
               fdroid/landing.html > site/index.html
 
-          # Commit only the public, signed artifacts, never the config or keystore.
-          cat > site/.gitignore <<'EOF'
-          config.yml
-          *.p12
-          *.jks
-          tmp/
-          EOF
+          # Everything under site/ is about to be published to the web, so
+          # the signing material that had to live there while fdroid ran
+          # has to go first. This used to be handled by a .gitignore,
+          # which worked only because the site was committed; an artifact
+          # upload takes the directory as it stands and would put the
+          # repository index signing key on the public internet.
+          rm -f site/fdroid/config.yml site/fdroid/fdroid.p12 site/fdroid/keystore.p12
+          rm -rf site/fdroid/tmp
 
-          cd site
-          git add -A
-          git -c user.name='github-actions[bot]' \
-              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
-              commit -m "Publish synctang versionCode $CODE" || { echo "nothing to commit"; exit 0; }
-          git push --force "$REMOTE" HEAD:fdroid-repo
+          # Belt and braces, because the cost of being wrong here is the
+          # signing key rather than a broken page: refuse to publish if
+          # anything that could be private material is still in the tree.
+          if find site -type f \( -name '*.p12' -o -name '*.jks' -o -name '*.keystore' \
+                                 -o -name 'config.yml' -o -name '*.pem' \) | grep -q .; then
+            echo "::error::refusing to publish: private material found under site/" >&2
+            find site -type f \( -name '*.p12' -o -name '*.jks' -o -name '*.keystore' \
+                                -o -name 'config.yml' -o -name '*.pem' \) >&2
+            exit 1
+          fi
+          echo "site/ contains no keystore, config or private key material"
 
       # Binary transparency: log the published APK and the signed repo index
       # (entry.jar) in the public Sigstore transparency log. Attesting the index
@@ -405,15 +428,26 @@ jobs:
             site/fdroid/repo/synctang-${{ steps.version.outputs.code }}*.apk
             site/fdroid/repo/entry.jar
 
-      - name: Enable GitHub Pages (best-effort, first run only)
+      # Deployed as an artifact rather than by pushing a branch, so no
+      # APK is ever stored in this repository's history. The published
+      # site is the only copy, which is why the step above reads the
+      # previous APKs back out of it.
+      - name: Configure Pages
         if: steps.gate.outputs.ready == 'true'
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          curl -sf -X POST \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/pages" \
-            -d '{"source":{"branch":"fdroid-repo","path":"/"}}' \
-            && echo "Pages enabled." || echo "Pages already enabled or must be enabled manually."
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+        with:
+          # Creates the Pages site with build_type=workflow if it does not
+          # exist, so switching from branch deployment needs no click in
+          # the settings. Harmless when it already exists.
+          enablement: true
+
+      - name: Upload the site
+        if: steps.gate.outputs.ready == 'true'
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          path: site
+
+      - name: Deploy to Pages
+        if: steps.gate.outputs.ready == 'true'
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
