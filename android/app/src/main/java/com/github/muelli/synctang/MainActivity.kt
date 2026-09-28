@@ -30,6 +30,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -164,14 +165,18 @@ private fun PairingScreen(identity: Identity, model: UnlockViewModel) {
  * loose hex strings, because that is the form it is actually used in.
  */
 @Composable
-private fun EnrolmentDetails(identity: Identity) {
+private fun EnrolmentDetails(
+    identity: Identity,
+    title: String = stringResource(R.string.pair_enrol_title),
+    hint: String = stringResource(R.string.pair_enrol_hint),
+) {
     val context = LocalContext.current
     val command = remember(identity) {
         enrolCommand(identity.publicKeyHex, identity.deviceId)
     }
 
-    Text(stringResource(R.string.pair_enrol_title), style = MaterialTheme.typography.titleMedium)
-    Text(stringResource(R.string.pair_enrol_hint), style = MaterialTheme.typography.bodyMedium)
+    Text(title, style = MaterialTheme.typography.titleMedium)
+    Text(hint, style = MaterialTheme.typography.bodyMedium)
     SelectionContainer {
         Text(
             command,
@@ -202,7 +207,25 @@ private fun ReadyScreen(state: UnlockUiState.Ready, model: UnlockViewModel) {
         Text(stringResource(R.string.unlock_action))
     }
     Spacer(Modifier.height(8.dp))
-    EnrolmentDetails(state.identity)
+    // Collapsed, and worded for a phone that is already enrolled. Shown
+    // open on this screen it read as an instruction still to be carried
+    // out, which is how a successful QR pairing came to look like it had
+    // produced a command to go and run.
+    var showManual by rememberSaveable { mutableStateOf(false) }
+    TextButton(onClick = { showManual = !showManual }, modifier = Modifier.focusRing()) {
+        Text(
+            stringResource(
+                if (showManual) R.string.enrol_manual_hide else R.string.enrol_manual_show,
+            ),
+        )
+    }
+    if (showManual) {
+        EnrolmentDetails(
+            state.identity,
+            title = stringResource(R.string.enrol_manual_title),
+            hint = stringResource(R.string.enrol_manual_hint),
+        )
+    }
     TextButton(onClick = { model.forgetMachine() }, modifier = Modifier.focusRing()) {
         Text(stringResource(R.string.unlock_forget))
     }

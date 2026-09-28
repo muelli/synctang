@@ -10,6 +10,10 @@
     <string name="pair_manual_label">Machine device ID</string>
     <string name="pair_manual_action">Pair</string>
     <string name="pair_invalid">That is not a machine device ID.</string>
+    <string name="enrol_manual_show">Enrol this phone somewhere by hand</string>
+    <string name="enrol_manual_hide">Hide the manual enrolment command</string>
+    <string name="enrol_manual_title">Manual enrolment</string>
+    <string name="enrol_manual_hint">This phone is already enrolled on the machine above. You only need this command to enrol it on a machine that cannot show a pairing code.</string>
     <string name="pair_enrol_title">Enrol this phone on the machine</string>
     <string name="pair_enrol_hint">Run this on the machine, once, to let this phone unlock it.</string>
     <string name="pair_copy">Copy the enrolment command</string>
