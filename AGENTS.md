@@ -12,6 +12,12 @@
 - No AI attribution in commits or code. Git author is always
   `Tobias Mueller <muelli@cryptobitch.de>` (set per-commit with
   `-c user.name= -c user.email=`, not the host's global git config).
+- Docs never tell a user to put the LUKS passphrase in a file on disk:
+  examples use `--existing-passphrase-file <(printf %s "$PASS")` (`-`
+  reads stdin, which `pair` also needs for its confirmation question).
+- The README is for installing and using the software. Design notes go
+  in `docs/`, conventions and gotchas here, current state in
+  `STATUS.md`, release and publishing mechanics in `docs/releasing.md`.
 - `[V]`/`[I]`/`[U]` markers in docs: verified, inferred, unknown/pending.
 - Strict TDD: a failing test before the implementation that makes it
   pass. Small commits, each referencing the work package (WP0-WP7) or

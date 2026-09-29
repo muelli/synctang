@@ -47,7 +47,7 @@ jobs:
         run: |
           if [ -z "$APP_SIGNING_SEED" ] || [ -z "$FDROID_SIGNING_SEED" ]; then
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Skipping F-Droid publish: set the APP_SIGNING_SEED and FDROID_SIGNING_SEED secrets (one high-entropy string each; see README 'Signing')."
+            echo "::warning::Skipping F-Droid publish: set the APP_SIGNING_SEED and FDROID_SIGNING_SEED secrets (one high-entropy string each; see docs/releasing.md)."
           else
             echo "ready=true" >> "$GITHUB_OUTPUT"
           fi

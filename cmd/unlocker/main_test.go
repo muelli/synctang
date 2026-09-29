@@ -304,7 +304,7 @@ func TestReadPassphraseStripsOneTrailingNewline(t *testing.T) {
 }
 
 // Enrolling a disk image belonging to some other machine is a
-// documented use (the README's quick start says "device-or-image"),
+// supported use (--device takes an image as well as a block device),
 // and in that case --machine-key-file's default is wrong: it points at
 // this host's own identity, which for an image is nobody's. enrol then
 // silently generates a brand new identity here and prints it as "this
