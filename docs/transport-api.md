@@ -84,7 +84,8 @@ assignments `[V]`):
 | `Multi.Transports` | yes | **keep** |
 | `SyncthingRelay.RelayPoolURL`, `.DiscoveryURL`, `.AnnounceURLs` | none | keep as options only if self-hosted infrastructure is a goal; otherwise **unexport?** |
 | `SyncthingRelay.AnnounceInterval`, `.AnnounceRefresh`, `.RelayLossGrace` | none (in-package tests only) | **unexport?** (test seams) |
-| `LocalDiscovery.GroupAddr`, `.Port`, `.AnnounceInterval` | `Port` and `AnnounceInterval` in tests of `cmd/unlocker`, `mobile` | **unexport?** if those tests move behind a test-only constructor |
+| `LocalDiscovery.GroupAddr`, `.Port` | none | **unexport?** (test seams) |
+| `LocalDiscovery.AnnounceInterval` | tests of `cmd/unlocker`, `mobile` (`cmd/unlocker/agent_test.go`, `mobile/local_discovery_test.go`) | **unexport?** if those tests move behind a test-only constructor |
 | `Multi.RetryInterval` | none | **unexport?** |
 
 ## What to stabilise
@@ -104,7 +105,7 @@ assignments `[V]`):
    server, `InsecureSkipVerify` on the client with the Device ID check
    replacing CA verification, authorised-peer check strictly after the
    handshake. These are in `doServerHandshake` and `doClientHandshake`
-   `[V]` (read).
+   `[I]`.
 4. **The race and retry behaviour of `Multi`.** Listen restarts a failed
    leg, Dial does not; a late second success is closed, not leaked; each
    attempt has its own context and the winner's is released by its

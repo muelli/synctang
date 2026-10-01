@@ -16,7 +16,8 @@ point `S = s.G` and `kid = SHA-256(S)`.
 
 **Enrol** (machine, once per key holder):
 
-1. Generate a random 32-byte volume secret `P`; hex-encode it and add
+1. Generate a random 32-byte volume secret `P` (`mrcore.Enrol` returns
+   the raw bytes). The LUKS application hex-encodes it and adds
    *that* as a new LUKS2 keyslot with `cryptsetup luksAddKey` (the
    existing passphrase is required), never the raw bytes: systemd's
    ask-password protocol (used at recovery time, below) silently
@@ -31,12 +32,15 @@ point `S = s.G` and `kid = SHA-256(S)`.
 4. Store a LUKS2 token of type `mr-1` carrying, per recipient: `kid`, `S`,
    `C`, `ct`, `nonce`, and an opaque `transport` blob (that recipient's
    transport identity). Several recipients can share one token; any one
-   of them can recover `P`. Discard `c`, `K`, `k`, `P` from memory once
+   of them can recover its own `P`: each recipient is enrolled with a fresh
+   `P` and gets its own keyslot, so recipients share a token, not a
+   secret. Discard `c`, `K`, `k`, `P` from memory once
    the keyslot and token are written. Nothing on disk is secret on its
    own, matching Tang's property that the header is useless without the
    key holder.
 
-**Recover** (machine, per attempt):
+**Recover** (machine, per attempt; the machine listens and the key
+holder dials in, though nothing in MR-1 depends on which side dials):
 
 1. Pick an ephemeral scalar `e`, compute `E = e.G`, and send
    `X = C + E` together with `kid` to the key holder
@@ -84,13 +88,19 @@ WP5's Android instrumented tests to verify an independent Kotlin
 implementation against the same numbers, not just against `mrcore`'s own
 tests.
 
-**Wire format**: the recovery exchange is two JSON messages over the
+**Wire format**: the recovery exchange is JSON messages over the
 transport's authenticated connection, each prefixed with a 4-byte
-big-endian length (`mrcore.WriteMessage`/`ReadMessage`,
-`mrcore.RecoverRequest`/`RecoverResponse`). A `Hello` message (the
-machine's name) is sent first, and, when `--confirm-code` is active, a
-`ConfirmCodeChallenge`/`ConfirmCodeResponse` pair is exchanged before the
-recovery request; see [threat-model.md](threat-model.md) for why.
+big-endian length (`mrcore.WriteMessage`/`ReadMessage`), at most 65536
+bytes each, with byte fields as standard padded base64. The machine
+sends `Hello` (its name) first, then always a `ConfirmCodeChallenge`
+(its `code` is empty unless `--confirm-code` is active). Only when a
+code is in use does the key holder answer with a `ConfirmCodeResponse`;
+see [threat-model.md](threat-model.md) for why. Then come
+`RecoverRequest` and `RecoverResponse`, and finally the machine sends
+`RecoverResult` to say whether the recovered secret opened the volume.
+The complete specification, with the token format, the nonce and AEAD
+details, the order in which the two sign candidates are tried and worked
+test vectors, is in [mr1-spec.md](mr1-spec.md).
 
 ## Pairing
 

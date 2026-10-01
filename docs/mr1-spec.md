@@ -45,7 +45,7 @@ only ECDH, not general scalar multiplication, and can therefore return
 only the x-coordinate of a result (Android Keystore, TPM 2.0).
 
 In scope: the group, the encodings, the key derivation, the authenticated
-encryption, the on-disk token, enrolment, recovery, and the five
+encryption, the on-disk token, enrolment, recovery, and the six
 messages of the recovery exchange. Out of scope: how machine and key
 holder find each other and authenticate each other (the transport), how
 a key holder's public key reaches the machine (pairing), and what the
@@ -55,7 +55,10 @@ one.
 
 There are two roles. The **key holder** has a long-term scalar `s` and
 publishes `S = s.G`. The **machine** stores a token and, at recovery
-time, opens a connection to the key holder and asks for help. Both
+time, listens for the key holder to connect and then asks it for help.
+In the reference implementation the machine listens and the key holder
+dials `[I]` (`cmd/unlocker/agent.go`, `cmd/keyholder/unlock.go`); MR-1
+itself does not depend on which side dials. Both
 roles MUST speak over a channel that authenticates the peer's identity
 and protects confidentiality and integrity; MR-1 does not provide that
 itself (section 12.1).
@@ -245,9 +248,9 @@ valid LUKS2 token document. Nothing in it is secret.
 | Field | JSON type | Meaning |
 |---|---|---|
 | `type` | string | The constant `"mr-1"`. |
-| `version` | integer | The constant `1` for this specification. |
-| `keyslots` | array of strings | LUKS2 keyslot identifiers (decimal numbers as strings) holding the volume keys. Required by LUKS2 even when empty; not part of MR-1. A writer MUST emit `[]` rather than `null` or omit it; the reference encoder substitutes `[]` for a nil list `[I]`. |
-| `recipients` | array of Recipient | One entry per enrolled key holder. |
+| `version` | integer | The constant `1` for this specification. The reference encoder does not force it, so a `Token` built with another version writes a document that no reader accepts `[I]`. |
+| `keyslots` | array of strings | LUKS2 keyslot identifiers (decimal numbers as strings) holding the volume keys. Required by LUKS2 even when empty; not part of MR-1. A writer MUST emit `[]` rather than `null` or omit it; the reference encoder substitutes `[]` for a nil list `[V]` (`TestTokenAlwaysEncodesAKeyslotsArray`). |
+| `recipients` | array of Recipient | One entry per enrolled key holder. The reference encoder writes a nil list as `null`, so a writer SHOULD emit `[]` `[I]`. |
 | `machine` | object | `{"name": string, "transport_id": string}`: a label for the machine and its transport identity, shown to a key holder before approval. |
 
 Recipient:
@@ -280,7 +283,7 @@ policy and not part of MR-1.
 Several recipients may share one token. Each recipient is enrolled
 independently with its own random `P` (section 7), so recovering through
 one recipient yields that recipient's `P`, which opens that recipient's
-keyslot and no other `[V]` (`cmd/unlocker/enrol.go` calls `Enrol` once
+keyslot and no other `[I]` (`cmd/unlocker/enrol.go` calls `Enrol` once
 per recipient and adds one keyslot per call).
 
 ## 7. Enrolment
@@ -329,6 +332,11 @@ keeps `K` and `P` from the key holder and from an eavesdropper.
 
 1. Look up the private scalar for `kid`. If there is none, or the human
    operator declines, reply with `RecoverResponse{error}` and stop.
+   The reference laptop key holder does not do either: it holds one
+   scalar, ignores `kid`, and closes the channel with an error instead of
+   sending an `error` response `[I]` (`cmd/keyholder/unlock.go`). Only the
+   phone sends one `[I]` (`mobile/mobile.go`). A machine MUST therefore
+   treat a closed channel as a failed recovery.
 2. Validate `X`: it MUST be non-empty, MUST NOT be `O` (the single byte
    `0x00`), and MUST be a valid curve point. Refuse otherwise. The
    point is chosen by the peer and the key holder is about to apply its
@@ -405,7 +413,7 @@ Each message is
 where `body` is a JSON document (UTF-8) and `length = len(body)`. The
 maximum body length is 65536 bytes. A sender MUST NOT send a longer
 body, and a receiver MUST reject a larger declared length before
-allocating anything `[V]` (`mrcore/wire.go`: `maxMessageSize`; the
+allocating anything `[I]` (`mrcore/wire.go`: `maxMessageSize`; the
 check precedes the allocation). A short read of either part is an
 error. The channel is a reliable byte stream; the framing is the only
 delimiter.
@@ -700,7 +708,18 @@ ECDH are out of scope.
 12.12 **Version and algorithm agility.** There is none beyond
 `version`. A change of curve, KDF or AEAD requires a new `version` and a
 new `info` string. The reference code anticipates a `Group` abstraction
-for another curve but implements only P-256 `[V]` (`mrcore/group.go`).
+for another curve but implements only P-256 `[I]` (`mrcore/group.go`).
+
+12.13 **Known gaps `[I]`.** These are not specified because the reference
+code does not decide them in `mrcore`: how a machine chooses which
+recipient to contact when a token has several; what a receiver does with
+a point that is not 65 bytes (section 4.1 binds emitters only); which
+token fields are optional on read (the reference decoder's treatment of
+absent fields was not examined `[U]`); the handling of a declared
+frame length of 0 (an empty body is not valid JSON, so the reference
+reader fails at decoding); and the length and character set of the
+confirm-code (the reference machine uses six decimal digits). An
+independent implementation SHOULD NOT rely on any of these.
 
 ## 13. Differences from Tang (McCallum-Relyea)
 
@@ -726,8 +745,7 @@ specifications in this session `[U]`.
   the JOSE key-agreement KDF; MR-1 uses HKDF-SHA-256 with `kid` as salt
   and a fixed `info` string `[I]`.
 - **Key identifier.** Tang identifies keys by a JWK thumbprint. MR-1's
-  `kid` is `SHA-256` over the 65-byte encoded public point `[V]` (this
-  document's own definition) `[I]` (the Tang side).
+  `kid` is `SHA-256` over the 65-byte encoded public point `[I]`.
 - **Binding to storage.** Clevis stores a JWE in a LUKS2 token and
   one secret per binding. MR-1 stores one recipient per key holder in a
   single token, each with its own secret and keyslot.
@@ -741,15 +759,15 @@ specifications in this session `[U]`.
 
 This specification follows the code (`mrcore/*.go`, and the callers in
 `cmd/` where the sequence of messages is decided). `docs/mr1-protocol.md`
-differs as follows. Each item is `[V]` by reading both texts against the
-code; none of them is a cryptographic disagreement.
+differs as follows. Each item is `[I]`, established by reading both texts
+against the code; none of them is a cryptographic disagreement.
 
 1. **Number of messages.** The document says the recovery exchange is
    two JSON messages and describes `Hello` and a confirm-code pair as
-   additions. The code has five message types in the exchange
-   (`Hello`, `ConfirmCodeChallenge`, `RecoverRequest`,
-   `RecoverResponse`, `RecoverResult`), plus `ConfirmCodeResponse` when
-   a code is in use. The document does not mention `RecoverResult` at
+   additions. The code has six message types in the exchange
+   (`Hello`, `ConfirmCodeChallenge`, `ConfirmCodeResponse`,
+   `RecoverRequest`, `RecoverResponse`, `RecoverResult`), of which the
+   response is sent only when a code is in use. The document does not mention `RecoverResult` at
    all.
 2. **The confirm-code challenge is always sent.** The document, and the
    comment on `ConfirmCodeChallenge` in `mrcore/wire.go`, say the pair is
@@ -764,15 +782,16 @@ code; none of them is a cryptographic disagreement.
    token, not a secret; recovering through a recipient yields that
    recipient's own `P`. (`docs/threat-model.md` likewise describes
    sharing `P` across recipients as unbuilt future work.)
-4. **Where hexadecimal belongs.** The document's enrolment step 1 reads
-   as though the protocol hex-encodes `P`. In the code `mrcore.Enrol`
-   returns raw `P`; the hexadecimal form is applied by the LUKS
-   application (`luksKeyMaterial` in `cmd/unlocker`).
+4. **Where hexadecimal belongs (wording only).** The document already
+   says the keyslot gets the hex form and cites `luksKeyMaterial`, but
+   its enrolment step 1 reads as though the protocol hex-encodes `P`. In
+   the code `mrcore.Enrol` returns raw `P`; the hexadecimal form is
+   applied by the LUKS application (`luksKeyMaterial` in `cmd/unlocker`).
 5. **Gaps rather than conflicts.** The document does not state the JSON
    encoding of byte fields (standard padded base64), the message-size
    limit (65536 bytes), that `X` and `Y` are validated, that
-   `RecoverResponse` fields are mutually exclusive, the token's `type`,
-   `version`, `keyslots` and `machine` fields, the 12-byte nonce check,
+   `RecoverResponse` fields are mutually exclusive, the token's `version`,
+   `keyslots` and `machine` fields, the 12-byte nonce check,
    that the sign candidates are tried even first and odd second, or that
    the GCM associated data is empty. This specification states each.
 6. **Test vector file comment.** `testdata/mr1.json` says "every value is
