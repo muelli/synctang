@@ -21,7 +21,6 @@ import (
 
 	"github.com/syncthing/syncthing/lib/protocol"
 	"github.com/syncthing/syncthing/lib/relay/client"
-	socket "syncthing-socket"
 )
 
 // defaultRelayPoolURL is the public Syncthing relay pool, the same default
@@ -72,7 +71,7 @@ const defaultAnnounceInterval = 2 * time.Second
 // the time before. syncthing-socket, whose discovery servers these
 // are, refreshes every thirty minutes; matching it is both the polite
 // number and the one known to keep a record alive.
-const defaultAnnounceRefresh = socket.DefaultAnnounceInterval
+const defaultAnnounceRefresh = 30 * time.Minute
 
 // levelTrace sits below slog's own lowest built-in level (Debug, -4),
 // for detail below what a caller's --log-level debug would want by
@@ -89,7 +88,7 @@ const levelTrace = slog.Level(-8)
 // announce endpoints: an authenticated POST identifying the announcer
 // by its TLS client certificate, which the discovery server reads
 // the Device ID off. This is deliberately not the same URL as
-// socket.DefaultDiscoveryURL: that one only answers unauthenticated
+// defaultDiscoveryURL: that one only answers unauthenticated
 // GET lookups for a peer's address, and does not accept announcements
 // at all. syncthing-socket's own server mode uses exactly these two
 // as its default (see its main.go "discovery" flag on the server
@@ -108,9 +107,9 @@ var defaultAnnounceURLs = []string{
 // both and is intended for offline tests and same-network pairing.
 type SyncthingRelay struct {
 	// Cert is this identity's own certificate. Callers derive it however
-	// suits the situation, for example socket.GenerateDeterministicCert
-	// from a one-time pairing secret, or an arbitrary persisted cert for
-	// steady-state use; SyncthingRelay itself does not care.
+	// suits the situation, for example from a one-time pairing secret, or
+	// an arbitrary persisted cert for steady-state use; SyncthingRelay
+	// itself does not care.
 	Cert tls.Certificate
 
 	// RelayPoolURL overrides the relay pool to connect to. Empty means
@@ -118,7 +117,7 @@ type SyncthingRelay struct {
 	RelayPoolURL string
 
 	// DiscoveryURL overrides the discovery server used to look a
-	// peer's address up (Dial). Empty means socket.DefaultDiscoveryURL.
+	// peer's address up (Dial). Empty means the public Syncthing discovery server.
 	// This is not used for announcing; see AnnounceURLs.
 	DiscoveryURL string
 
@@ -411,7 +410,7 @@ func (t *SyncthingRelay) relayPoolURL() string {
 }
 
 func (t *SyncthingRelay) discoveryURL() string {
-	return cmp.Or(t.DiscoveryURL, socket.DefaultDiscoveryURL)
+	return cmp.Or(t.DiscoveryURL, defaultDiscoveryURL)
 }
 
 // relayLossGrace is how long this listener tolerates having no relay
@@ -639,7 +638,7 @@ func (t *SyncthingRelay) dialRelayOnce(ctx context.Context, peerID string) (net.
 	}
 
 	t.logger().Log(ctx, levelTrace, "looking peer up on discovery", "peer", targetID.String(), "url", t.discoveryURL())
-	record, err := socket.LookupRecord(ctx, targetID.String(), t.discoveryURL())
+	record, err := lookupRecord(ctx, targetID.String(), t.discoveryURL())
 	if err != nil {
 		return nil, fmt.Errorf("transport: discovery lookup for %s: %w", targetID, err)
 	}
