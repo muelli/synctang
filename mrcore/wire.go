@@ -68,9 +68,10 @@ type Hello struct {
 	Name string `json:"name"`
 }
 
-// ConfirmCodeChallenge is sent first, before RecoverRequest, when the
-// machine is running with --confirm-code: the key holder must relay
-// Code back exactly, proving whoever is answering can see the
+// ConfirmCodeChallenge is always sent after Hello and before
+// RecoverRequest. Code is empty unless the machine is running with
+// --confirm-code, in which case the key holder must relay Code back
+// exactly, proving whoever is answering can see the
 // machine's own console, not merely reach it over the network. The
 // same code is reused for every connection attempt during one agent
 // run, so a human only has to read it off the console once.
