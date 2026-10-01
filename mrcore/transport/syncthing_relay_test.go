@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/syncthing/syncthing/lib/protocol"
-	socket "syncthing-socket"
 )
 
 // freeAddr reserves an ephemeral TCP port on the loopback interface and
@@ -41,14 +40,8 @@ func freeAddr(t *testing.T) string {
 func TestDirectListenDialRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	listenerCert, err := socket.GenerateDeterministicCert("t2.1-pairing-secret-listener")
-	if err != nil {
-		t.Fatalf("generating listener cert: %v", err)
-	}
-	dialerCert, err := socket.GenerateDeterministicCert("t2.1-pairing-secret-dialer")
-	if err != nil {
-		t.Fatalf("generating dialer cert: %v", err)
-	}
+	listenerCert := testCert(t)
+	dialerCert := testCert(t)
 
 	wantListenerID := protocol.NewDeviceID(listenerCert.Certificate[0]).String()
 	wantDialerID := protocol.NewDeviceID(dialerCert.Certificate[0]).String()
@@ -123,18 +116,9 @@ func TestDirectListenDialRoundTrip(t *testing.T) {
 func TestDirectListenRejectsUnauthorizedPeer(t *testing.T) {
 	t.Parallel()
 
-	listenerCert, err := socket.GenerateDeterministicCert("t2.2-pairing-secret-listener")
-	if err != nil {
-		t.Fatalf("generating listener cert: %v", err)
-	}
-	authorizedCert, err := socket.GenerateDeterministicCert("t2.2-pairing-secret-authorized")
-	if err != nil {
-		t.Fatalf("generating authorized-peer cert: %v", err)
-	}
-	unauthorizedCert, err := socket.GenerateDeterministicCert("t2.2-pairing-secret-intruder")
-	if err != nil {
-		t.Fatalf("generating unauthorized-peer cert: %v", err)
-	}
+	listenerCert := testCert(t)
+	authorizedCert := testCert(t)
+	unauthorizedCert := testCert(t)
 
 	wantListenerID := protocol.NewDeviceID(listenerCert.Certificate[0]).String()
 	authorizedID := protocol.NewDeviceID(authorizedCert.Certificate[0]).String()
@@ -208,10 +192,7 @@ func TestDirectListenRejectsUnauthorizedPeer(t *testing.T) {
 func TestListenContextCancellation(t *testing.T) {
 	t.Parallel()
 
-	cert, err := socket.GenerateDeterministicCert("cancellation-test-listener")
-	if err != nil {
-		t.Fatalf("generating cert: %v", err)
-	}
+	cert := testCert(t)
 
 	addr := freeAddr(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
@@ -220,7 +201,7 @@ func TestListenContextCancellation(t *testing.T) {
 	listener := NewSyncthingRelay(cert)
 
 	start := time.Now()
-	_, err = listener.Listen(ctx, ListenOptions{DirectAddr: addr})
+	_, err := listener.Listen(ctx, ListenOptions{DirectAddr: addr})
 	elapsed := time.Since(start)
 
 	if err == nil {
