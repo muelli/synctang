@@ -81,7 +81,7 @@ into a small exported one (what key holders need) and an unexported one
 (what recovery needs). That keeps the extension point and shrinks what an
 implementer must write.
 
-### 3.2 Unexport internal helpers of the wire and pairing messages
+### 3.2 Pairing symbols
 
 `PairChallenge`, `PairRequest` and `PairResult` are exported because
 `cmd/unlocker`, `cmd/keyholder` and `mobile` all construct them `[V]`;
