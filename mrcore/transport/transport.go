@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package transport connects a machine (unlocker) waiting to be unlocked
-// with a key holder (Android app or other client) over an authenticated,
-// bidirectional byte stream.
-//
-// The identity of each side is a Syncthing Device ID derived from a TLS
-// certificate. A Transport implementation decides how the two sides find
-// each other (relay network, direct TCP, or a future rendezvous server),
-// but always produces the same Conn, with the peer's identity verified
-// cryptographically rather than merely asserted.
 package transport
 
 import (
