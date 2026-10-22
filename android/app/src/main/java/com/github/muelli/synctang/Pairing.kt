@@ -164,11 +164,16 @@ internal fun ByteArray.toHex(): String =
  *
  * --recipient-transport-id, not --transport-id. The latter sets the
  * machine's own transport identity; this is the identity of the party
- * allowed to unlock it.
+ * allowed to unlock it. Likewise --name is the machine's own name, not
+ * this phone's, so it gets a placeholder for the person to fill in.
+ *
+ * The passphrase is read into a shell variable and handed to enrol
+ * through a process substitution, exactly as the README does, so it
+ * never touches a disk. Never a path to a passphrase file.
  */
 fun enrolCommand(publicKeyHex: String, deviceId: String): String =
-    "unlocker enrol --device /dev/... \\\n" +
+    "read -rsp 'LUKS passphrase: ' PASS\n" +
+        "unlocker enrol --device /dev/sdXN --name my-machine \\\n" +
         "  --pubkey $publicKeyHex \\\n" +
         "  --recipient-transport-id $deviceId \\\n" +
-        "  --existing-passphrase-file /path/to/passphrase \\\n" +
-        "  --name phone"
+        "  --existing-passphrase-file <(printf %s \"\$PASS\")"

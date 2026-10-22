@@ -58,15 +58,33 @@ class PairingPayloadTest {
  * adopt the phone's Device ID as its own and to enrol a recipient
  * with no transport identity at all, so the phone would then have
  * been refused as an unauthorized peer, with nothing on either screen
- * to suggest the command had been the problem. It also omitted
- * --existing-passphrase-file, which enrol requires.
+ * to suggest the command had been the problem.
+ *
+ * It then told people to keep the LUKS passphrase in a file
+ * (--existing-passphrase-file /path/to/passphrase), which this project
+ * never does: the passphrase is read into a shell variable and handed
+ * over through a process substitution, as the README shows, so it
+ * never touches a disk. And it passed --name phone, but enrol's --name
+ * is the machine's own name, so the first enrolment would have
+ * labelled the machine "phone".
  */
 class EnrolCommandTest {
 
-    private val command = enrolCommand(
-        publicKeyHex = "04aabb",
-        deviceId = "ABCDEFG-HIJKLMN-OPQRSTU-VWXYZ23-4567ABC-DEFGHIJ-KLMNOPQ-RSTUVWX",
-    )
+    private val deviceId = "ABCDEFG-HIJKLMN-OPQRSTU-VWXYZ23-4567ABC-DEFGHIJ-KLMNOPQ-RSTUVWX"
+
+    private val command = enrolCommand(publicKeyHex = "04aabb", deviceId = deviceId)
+
+    @Test
+    fun isExactlyTheReadmeForm() {
+        assertEquals(
+            "read -rsp 'LUKS passphrase: ' PASS\n" +
+                "unlocker enrol --device /dev/sdXN --name my-machine \\\n" +
+                "  --pubkey 04aabb \\\n" +
+                "  --recipient-transport-id $deviceId \\\n" +
+                "  --existing-passphrase-file <(printf %s \"\$PASS\")",
+            command,
+        )
+    }
 
     @Test
     fun namesTheRecipientFlagAndNotTheMachinesOwn() {
@@ -81,11 +99,31 @@ class EnrolCommandTest {
     }
 
     @Test
-    fun includesThePassphraseFileEnrolRequires() {
+    fun neverPointsThePassphraseAtAFileOnDisk() {
+        val given = Regex("--existing-passphrase-file\\s+(\\S+)").findAll(command).map { it.groupValues[1] }.toList()
+        assertEquals("enrol needs the passphrase exactly once: $command", 1, given.size)
         assertTrue(
-            "enrol refuses to run without an existing passphrase: $command",
-            command.contains("--existing-passphrase-file"),
+            "the passphrase must arrive through a process substitution, not a path: $command",
+            given.single().startsWith("<("),
         )
+        assertFalse(command.contains("/path/to"))
+        assertFalse(Regex("passphrase[^ ]*\\.(txt|key)|/passphrase").containsMatchIn(command))
+    }
+
+    @Test
+    fun readsThePassphraseWithoutEchoingIt() {
+        assertTrue(command.lines().first() == "read -rsp 'LUKS passphrase: ' PASS")
+    }
+
+    @Test
+    fun usesAPlaceholderDeviceRatherThanAnEllipsis() {
+        assertTrue(command.contains("--device /dev/sdXN "))
+        assertFalse(command.contains("/dev/..."))
+    }
+
+    @Test
+    fun doesNotNameTheMachineAfterThePhone() {
+        assertFalse(command.contains("--name phone"))
     }
 
     @Test
