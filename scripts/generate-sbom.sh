@@ -10,11 +10,10 @@
 # Everything here reads the *built* artefact rather than go.mod, so the
 # result describes what was actually linked into the thing being
 # shipped. That distinction matters for this project: THIRD_PARTY.md
-# already records that pion/ice and pion/stun are genuinely linked in
-# (they arrive with syncthing-socket's root package) even though no ICE
-# code path is ever reached, and an SBOM generated from the manifest
-# instead of the binary would disagree with that entry in one direction
-# or the other.
+# records modules that are linked in only transitively (Syncthing's
+# libraries pull in prometheus and gopsutil, for instance), and an SBOM
+# generated from the manifest instead of the binary could disagree with
+# that in one direction or the other.
 #
 # CycloneDX 1.6 throughout, because that is what the Gradle plugin
 # emits for the Android app's JVM dependencies, and one format across
@@ -73,9 +72,10 @@ esac
 # The component list comes from the artefact, but licences cannot: a
 # compiled binary carries no LICENSE files. Pointing syft at the local
 # module cache lets it read each module's licence from the source it was
-# built from, which takes this project's Go SBOMs from 1 component in 67
-# carrying a licence to 65. The module cache is populated by the build
-# that produced the artefact, so this needs nothing fetched.
+# built from, which takes a Go SBOM of cmd/unlocker from 1 component in
+# 29 carrying a licence to 27 (measured 2026-10-22). The module cache is
+# populated by the build that produced the artefact, so this needs
+# nothing fetched.
 export SYFT_GOLANG_SEARCH_LOCAL_MOD_CACHE_LICENSES=true
 
 syft scan "$target" -o "cyclonedx-json@1.6=$output" -q
@@ -101,10 +101,8 @@ fi
 
 # Zero licences means the module cache lookup above found nothing at all,
 # usually because the SBOM is being generated somewhere the build did not
-# happen. Worth failing on, where merely incomplete coverage is not: two
-# modules here legitimately have none (this repo's own, and
-# syncthing-socket, whose bare declared module path the cache lookup
-# cannot resolve).
+# happen. Worth failing on, where merely incomplete coverage is not: this
+# repo's own module legitimately has none.
 if [ "$licensed" -eq 0 ]; then
 	echo "$0: $output has no licence data at all; was this run without the module cache the build used?" >&2
 	exit 1

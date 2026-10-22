@@ -41,11 +41,13 @@
 
 ## Hard-won gotchas (each cost real debugging time; do not rediscover)
 
-- **`syncthing-socket`'s `go.mod` declares a bare module path**
-  (`module syncthing-socket`, not the full import path). A plain
-  `go get github.com/muelli/syncthing-socket` fails with a
-  module-path-mismatch error; needs the `replace` directive already in
-  this repo's `go.mod`. (Proposed fixing this upstream; not yet done.)
+- **Import only `syncthing-socket`'s `identity` and `discovery`
+  packages, never its root package.** The root package is the whole CLI
+  and drags in WebRTC, SOCKS and cobra (65 modules in the `cmd/unlocker`
+  binary instead of 26). Its tags are plain integers (`v164`), which Go
+  cannot query, so bump it by commit: `go get
+  github.com/muelli/syncthing-socket@<commit>`. The old bare module path
+  and the `replace` directive it needed are gone as of release v164.
 - **Go's `encoding/json` case-folds field names that differ only in
   case** onto the same struct field, and the later key in document
   order silently wins. `testdata/mr1.json` uses `s_scalar`/`c_scalar`/

@@ -20,27 +20,25 @@ plus the public relay pool, via LAN multicast, or via both raced
 
 ## Done in this branch
 
-- `mrcore/transport` (tests included) no longer imports
-  `syncthing-socket` `[V]`: `go list -deps -test ./mrcore/transport |
-  grep -c syncthing-socket` prints `0`.
-- `LookupRecord`, `DefaultDiscoveryURL`, and `DefaultAnnounceInterval`
-  were reimplemented locally as unexported `lookupRecord`,
-  `defaultDiscoveryURL`, and `defaultAnnounceRefresh`
-  (`discovery_lookup.go`), covered by `httptest` discovery-server tests
-  `[V]` (`go test ./mrcore/transport`). Behaviour was copied from the
-  `syncthing-socket` source in the module cache (query joining with `?`
-  or `&`, 404 as `(nil, nil)`, other non-200 as an error, undated
-  record kept, 10 second client timeout, server certificate verified).
-  Equivalence was checked by reading, not by running both
-  implementations against each other `[I]`.
+- `mrcore/transport` (tests included) no longer imports the root
+  package of `syncthing-socket`, which is the whole CLI. It imports only
+  `github.com/muelli/syncthing-socket/discovery` (`LookupRecord`,
+  `DefaultURL`, `DefaultAnnounceInterval`), a package that uses the
+  standard library alone `[V]`: `go list -deps -test ./mrcore/transport`
+  shows exactly one `syncthing-socket` package, `discovery`, and
+  `go list -deps -test ./...` shows the root package nowhere.
+- Behaviour of the discovery lookup is `syncthing-socket`'s, covered by
+  its own tests; this package's tests exercise it only through
+  `SyncthingRelay` and its `httptest` discovery servers `[V]`
+  (`go test ./mrcore/transport`).
 - `doc.go` carries the package documentation; `example_test.go` holds
   one runnable `Example` (direct loopback TCP, with an
   `// Output:` check) `[V]`.
-- `syncthing-socket` stays in `go.mod` because `mobile/` and `cmd/`
-  still use it; `go mod tidy -diff` printed nothing `[V]`, so `go.mod`,
-  `go.sum`, and `THIRD_PARTY.md` are unchanged.
-- A throwaway module outside the repository, with a `replace` onto this
-  worktree and `GOPROXY=off`, imported `transport` and built `[V]`.
+- `go.mod` requires `syncthing-socket` at a real pseudo-version with no
+  `replace` directive `[V]`. A throwaway module outside the repository,
+  with a `replace` onto this worktree for `github.com/muelli/synctang`
+  and `GOPROXY=off`, imported `transport` and built `[V]`
+  (`go list -m` there reported the same `syncthing-socket` version).
   That works because every module is already in the local module cache;
   whether it resolves from a clean machine against a published module
   is `[U]` (see risk 6).
@@ -122,7 +120,7 @@ assignments `[V]`):
   `testing` constructor, keeping `Cert` and `Logger`.
 - Nothing else is exported that should not be. All helpers
   (`doServerHandshake`, `raceRelayAddresses`, `watchRelayLoss`,
-  `announceOnce`, `lookupRecord`, and so on) are already unexported
+  `announceOnce`, and so on) are already unexported
   `[V]` (`go doc -all`).
 
 ## Gaps a stand-alone consumer would hit
@@ -150,9 +148,11 @@ assignments `[V]`):
 
 Measured with `go list -deps` on the package (non-test) `[V]`:
 
-- 302 packages in total: 208 standard library, 93 from third-party
-  modules, 1 from this repository's own module.
-- 20 third-party modules (21 with this repository's module):
+- 303 packages in total: 208 standard library, 93 from third-party
+  modules, 1 from `syncthing-socket` (`discovery`), 1 from this
+  repository's own module.
+- 21 third-party modules (22 with this repository's module), the 20
+  below plus `github.com/muelli/syncthing-socket`:
 
   ```
   github.com/beorn7/perks              github.com/prometheus/client_golang
@@ -167,18 +167,20 @@ Measured with `go list -deps` on the package (non-test) `[V]`:
   golang.org/x/text                    google.golang.org/protobuf
   ```
 
-- Only two direct third-party imports, both Syncthing:
-  `lib/protocol` (`NewDeviceID`, `DeviceIDFromString`, `DeviceID`) and
+- Three direct third-party imports: Syncthing's `lib/protocol`
+  (`NewDeviceID`, `DeviceIDFromString`, `DeviceID`) and
   `lib/relay/client` (`NewClient`, `GetInvitationFromRelay`,
-  `JoinSession`). Everything else in the list above is pulled
-  in by those two (protobuf, prometheus, lz4, xdr, suture, and so on).
+  `JoinSession`), and `syncthing-socket/discovery`. Everything else in
+  the list above is pulled in by the two Syncthing packages (protobuf,
+  prometheus, lz4, xdr, suture, and so on); `discovery` adds nothing.
 - `github.com/syncthing/syncthing` is licensed MPL-2.0 `[V]` (first lines
   of its `LICENSE` in the module cache). Whether an AGPL-3.0-or-later
   package may link it without further steps follows what
   `THIRD_PARTY.md` already records for this repository; a split would
   need to carry that entry over `[U]` (not re-examined here).
-- The previously needed `syncthing-socket` is gone from the package's
-  graph `[V]`; `mrcore` itself needs only `filippo.io/nistec` and the
+- `syncthing-socket` is in the package's graph only as `discovery`
+  `[V]`, and it is AGPL-3.0-or-later like this repository `[V]` (every Go
+  file in that module carries the SPDX header); `mrcore` itself needs only `filippo.io/nistec` and the
   standard library `[V]` (`go list -deps ./mrcore`).
 
 Cheapest ways to cut the count, none applied: add `DeviceID`/validation
@@ -212,13 +214,12 @@ drag in).
    announcement comes from the datagram source, never the payload.
 6. **Module path.** The import path is
    `github.com/muelli/synctang/mrcore/transport`. A split changes it and
-   every importer. Separately, this repository's `go.mod` still requires
-   `syncthing-socket` under a bare module path with a `replace` that a
-   dependent module would not inherit; a module outside this repository
-   that required `github.com/muelli/synctang` could trip over that if
-   Go needs to load that module's `go.mod` `[U]` (it did not in the
-   offline experiment above, where everything came from the module
-   cache).
+   every importer. This repository's `go.mod` no longer carries a
+   `replace` directive, and `syncthing-socket` is required at a real
+   pseudo-version, so a module outside this repository can require it
+   without inheriting a broken graph `[V]` (offline experiment above).
+   `syncthing-socket`'s release tags are plain integers (`v164`), which
+   Go cannot query, so consumers pin it by commit.
 7. **`LoadOrCreateCert` writes a private key file** (mode `0600`,
    directory `0700`) and treats an existing file as authoritative; there
    is no rotation or revocation.

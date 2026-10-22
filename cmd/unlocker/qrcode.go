@@ -39,10 +39,8 @@ const (
 // module rows per line of text.
 //
 // The layout comes from qrterminal, which syncthing-socket uses for the
-// same job and which is already linked into this binary (it arrives
-// with syncthing-socket's own package), so this is neither a new
-// dependency nor hand-rolled geometry. Only the cell strings are ours,
-// for the contrast reason above.
+// same job, so the geometry is not hand-rolled. Only the cell strings
+// are ours, for the contrast reason above.
 //
 // Drawn in process rather than by shelling out to qrencode, which is
 // what syncthing-socket's initramfs setup script does: that makes the

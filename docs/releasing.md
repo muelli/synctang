@@ -112,10 +112,9 @@ which evidence came from where.
 Everything is read out of the built artefact rather than from `go.mod`
 or `build.gradle.kts`, so an SBOM describes what was actually linked
 rather than what was declared. That distinction is not academic here:
-`THIRD_PARTY.md` records that `pion/ice` and `pion/stun` really are
-linked into every Go binary, arriving with `syncthing-socket`'s root
-package, even though no ICE code path is ever reached. A
-manifest-derived SBOM would disagree with that entry.
+`THIRD_PARTY.md` records modules that are linked in only transitively
+(Syncthing's libraries pull in prometheus and gopsutil, for instance). A
+manifest-derived SBOM could disagree with that.
 
 ### Why the binary, and not the source
 
@@ -125,16 +124,19 @@ also asks the compiler the same question independently
 to agree exactly. A misparse, a binary stripped of its build info, or
 an SBOM generated against the wrong artefact would otherwise be a
 confidently wrong document rather than a visible failure. Measured on
-`cmd/unlocker`: 65 third-party modules from the binary, the same 65
-from `go list -deps`.
+`cmd/unlocker`: 26 third-party modules from the binary, the same 26
+from `go list -deps` `[V]` (2026-10-22, after `syncthing-socket`'s root
+package stopped being imported; it was 65 before).
 
 Where the two disagree, the binary has so far been the more accurate,
 which is why it is the one published:
 
-- **It resolves replaced modules.** `syncthing-socket` declares a bare
-  `module syncthing-socket`, so source analysis names a component no
-  purl can resolve to a real project; the binary records
-  `github.com/muelli/syncthing-socket` at a real pseudo-version.
+- **It resolves replaced modules.** A module whose `go.mod` declares a
+  different path from the one it is fetched under is named by source
+  analysis under its declared path and by the binary under the real one.
+  `syncthing-socket` was such a case until its module path was fixed
+  (release v164); no module in this repository's graph is replaced
+  today, so the check is kept for when one reappears.
 - **It includes the standard library and toolchain**, as
   `stdlib@go1.26.0`, so a Go release CVE is in scope. `go list -deps`
   does not report the standard library as a module.
@@ -149,10 +151,9 @@ which is why it is the one published:
 The one thing a binary genuinely cannot supply is licence text, since it
 carries no `LICENSE` files. Syft is therefore pointed at the local
 module cache, reading each module's licence from the source it was built
-from, which takes the Go SBOMs from 1 component in 67 carrying a licence
-to 65. The two without are this repo's own module and, again,
-`syncthing-socket`, whose declared path the cache lookup cannot resolve;
-both are recorded in `THIRD_PARTY.md`.
+from, which takes the SBOM of `cmd/unlocker` from 1 component in 29
+carrying a licence to 27 `[V]` (2026-10-22). Of the two without, one is
+this repo's own module and the other is the scanned file itself.
 
 The dracut package has no SBOM: it ships shell scripts and a systemd
 unit, with nothing compiled in it.

@@ -132,11 +132,12 @@ reproducibility are untested and not claimed.
 
 - `[U]` Whether `go-tpm`'s ECDH support is reachable for the
   `keyholder` TPM2 backend; may remain a stub with tests skipped.
-- `[U]` Three fixes for `syncthing-socket` (bare `go.mod` module path,
-  `ensureResolver` accepting a loopback-only stub, `RunClient` not
-  retrying a stale discovery record) were reported to the user as a
-  written summary; not yet turned into patches or a PR, pending their
-  say.
+- `[U]` Two fixes for `syncthing-socket` (`ensureResolver` accepting a
+  loopback-only stub, `RunClient` not retrying a stale discovery
+  record) were reported to the user as a written summary; whether they
+  have become patches since was not checked. The third, the bare
+  `go.mod` module path, is done: release v164 declares the real path and
+  this repository imports its `identity` and `discovery` packages `[V]`.
 - `[U]` One item left from the `mrcore`/transport review: a `Token`
   Marshal/Unmarshal refactor. The other three are done: `Group.Negate`
   now multiplies by the group order minus one instead of doing modular

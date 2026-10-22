@@ -25,12 +25,12 @@ Three differences are expected rather than suspicious:
     dropped: an unexplained absence must fail.
   * The main module is the artefact, not a dependency of it.
   * A replaced module is reported by "go list" under its declared path
-    and by the binary under the path it was replaced with. This is not
-    hypothetical here: syncthing-socket declares a bare "module
-    syncthing-socket", so source analysis alone yields a component name
-    no purl can resolve to a real project, which is one concrete way the
-    binary is the more accurate of the two. Replacements are read from
-    go.mod rather than hard-coded.
+    and by the binary under the path it was replaced with. This was the
+    case here until syncthing-socket's module path was fixed (it declared
+    a bare "module syncthing-socket"), when source analysis alone yielded
+    a component name no purl can resolve to a real project, which was one
+    concrete way the binary was the more accurate of the two.
+    Replacements are read from go.mod rather than hard-coded.
 """
 
 import json
