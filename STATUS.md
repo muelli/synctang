@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+
 # Status
 
 Current state only, kept up to date in place; not a session log. History

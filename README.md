@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+
 # synctang
 
 An on-demand LUKS volume unlocker for dracut-based boots. A machine asks;

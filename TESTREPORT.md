@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+
 # Test report
 
 Filled in as WP7 (VM acceptance) proceeds. `[V]` verified as described,

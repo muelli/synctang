@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+
 # WP0: Android Keystore ECDH against a manually-constructed point
 
 Status: spike complete on emulator, no real device tested. `[U]` for

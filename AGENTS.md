@@ -2,8 +2,10 @@
 
 ## Conventions
 
-- Licence: AGPL-3.0-or-later. SPDX header (`// SPDX-License-Identifier:
-  AGPL-3.0-or-later`) on every source file. Every dependency tracked in
+- Licence: AGPL-3.0-or-later, everywhere, including code meant for
+  reuse. SPDX header (`// SPDX-License-Identifier: AGPL-3.0-or-later`,
+  or the `#` and `<!-- -->` forms) on every tracked source, doc and
+  config file. Every dependency tracked in
   `THIRD_PARTY.md`.
 - No em-dashes anywhere (`scripts/check-em-dash.sh`, run in CI); British
   spelling, serial commas. Note the checker greps via `git grep`, so it

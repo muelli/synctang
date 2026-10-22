@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 name: Bootstrap signing certificates
 
 # One-time setup for the seed-derived signing scheme: derives both signing
