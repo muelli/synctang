@@ -31,9 +31,7 @@ class BiometricGateImpl(private val activity: FragmentActivity) : BiometricGate 
     override suspend fun authenticate(title: String, subtitle: String): AuthOutcome {
         val manager = BiometricManager.from(activity)
         val can = manager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-        if (can != BiometricManager.BIOMETRIC_SUCCESS) {
-            return AuthOutcome.UNAVAILABLE
-        }
+        authOutcomeForCapability(can)?.let { return it }
 
         return suspendCancellableCoroutine { continuation ->
             val prompt = BiometricPrompt(
@@ -45,7 +43,7 @@ class BiometricGateImpl(private val activity: FragmentActivity) : BiometricGate 
                     }
 
                     override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                        if (continuation.isActive) continuation.resume(AuthOutcome.CANCELLED)
+                        if (continuation.isActive) continuation.resume(authOutcomeForError(errorCode))
                     }
 
                     // A single non-matching finger is not a decision:

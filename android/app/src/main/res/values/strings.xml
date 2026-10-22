@@ -52,6 +52,9 @@
     <!-- Errors -->
     <string name="error_cancelled">Cancelled. Nothing was sent to the machine.</string>
     <string name="error_no_biometric">This phone has no usable biometric enrolled, so the key cannot be created or used. Enrol a fingerprint or a face in the phone\'s settings, then come back.</string>
+    <string name="error_biometric_lockout">Too many attempts did not match, so the phone has locked its biometric sensor for a while. Wait a little, then try again. Nothing was sent to the machine.</string>
+    <string name="error_biometric_lockout_permanent">Too many attempts did not match, so the phone has locked its biometric sensor until you unlock the phone with its PIN, pattern, or password. Do that, then try again. Nothing was sent to the machine.</string>
+    <string name="error_biometric_unavailable">The phone\'s biometric hardware cannot be used right now, so the key cannot be used either. Try again in a moment. Nothing was sent to the machine.</string>
     <string name="error_title">That did not work</string>
     <string name="error_retry">Try again</string>
 </resources>

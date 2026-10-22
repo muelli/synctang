@@ -16,7 +16,14 @@ import mobile.Session
 /**
  * The outcome of a biometric prompt, as the unlock flow cares about it.
  */
-enum class AuthOutcome { SUCCEEDED, CANCELLED, UNAVAILABLE }
+enum class AuthOutcome {
+    SUCCEEDED,
+    CANCELLED,
+    LOCKED_OUT,
+    LOCKED_OUT_PERMANENTLY,
+    NO_BIOMETRIC,
+    UNAVAILABLE,
+}
 
 /**
  * A biometric prompt, abstracted so the unlock flow does not depend on
@@ -302,10 +309,7 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
         val app = getApplication<Application>()
         _state.value = UnlockUiState.Failed(
             machine,
-            when (outcome) {
-                AuthOutcome.UNAVAILABLE -> app.getString(R.string.error_no_biometric)
-                else -> app.getString(R.string.error_cancelled)
-            },
+            app.getString(failureMessage(outcome)),
         )
     }
 
