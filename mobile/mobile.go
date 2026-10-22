@@ -208,6 +208,14 @@ const (
 type Session struct {
 	mu sync.Mutex
 
+	// cancelMu guards cancel and cancelled, and is never held while
+	// anything blocks. It is separate from mu because Connect holds mu
+	// for as long as it dials, and Cancel exists to interrupt exactly
+	// that.
+	cancelMu  sync.Mutex
+	cancel    context.CancelFunc
+	cancelled bool
+
 	seed      string
 	machineID string
 
@@ -283,6 +291,10 @@ func (s *Session) Connect() error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.timeoutSeconds)*time.Second)
 	defer cancel()
+	if !s.armCancel(cancel) {
+		return errCancelled
+	}
+	defer s.armCancel(nil)
 
 	// Retry the whole attempt, not just the dial.
 	//
@@ -306,8 +318,14 @@ func (s *Session) Connect() error {
 		if lastErr == nil {
 			return nil
 		}
+		if s.isCancelled() {
+			return errCancelled
+		}
 		select {
 		case <-ctx.Done():
+			if s.isCancelled() {
+				return errCancelled
+			}
 			return fmt.Errorf("mobile: gave up dialling %s after %ds (last attempt: %w)",
 				s.machineID, s.timeoutSeconds, lastErr)
 		case <-time.After(connectRetryInterval):
@@ -367,6 +385,14 @@ func (s *Session) connectOnceLocked(ctx context.Context, cert tls.Certificate) e
 		return fmt.Errorf("mobile: dialling %s: %w", s.machineID, err)
 	}
 	s.conn = conn
+
+	// The reads below honour no context, so a cancelled or timed-out
+	// attempt would otherwise sit in them until the machine spoke.
+	// Closing the connection under them is what ends them. Stopped on
+	// the way out, so that Connect's own deferred cancel does not close
+	// a connection it has just succeeded in setting up.
+	stop := context.AfterFunc(ctx, func() { conn.Close() })
+	defer stop()
 
 	var hello mrcore.Hello
 	if err := mrcore.ReadMessage(conn, &hello); err != nil {
@@ -605,9 +631,52 @@ func (s *Session) Decline(reason string) error {
 	return nil
 }
 
+// errCancelled is what an interrupted Connect or Pair returns. The
+// caller asked for it, so its text says so rather than describing a
+// network failure that did not happen.
+var errCancelled = errors.New("mobile: cancelled")
+
+// Cancel interrupts a Connect that is in progress on another thread,
+// which then returns an error promptly instead of carrying on until
+// its timeout. It returns at once, does not wait for Connect to
+// finish, and does not tell the machine anything: there is no
+// connection yet to tell it over. A Cancel before Connect makes that
+// Connect fail without dialling; one after Connect has returned does
+// nothing, and the connection it made stays usable (Decline it, then
+// Close it).
+func (s *Session) Cancel() {
+	s.cancelMu.Lock()
+	defer s.cancelMu.Unlock()
+	s.cancelled = true
+	if s.cancel != nil {
+		s.cancel()
+	}
+}
+
+// armCancel records the cancel function of the Connect now in
+// progress, or clears it when passed nil. It reports false if Cancel
+// has already been called, in which case nothing is recorded.
+func (s *Session) armCancel(cancel context.CancelFunc) bool {
+	s.cancelMu.Lock()
+	defer s.cancelMu.Unlock()
+	if cancel != nil && s.cancelled {
+		return false
+	}
+	s.cancel = cancel
+	return true
+}
+
+func (s *Session) isCancelled() bool {
+	s.cancelMu.Lock()
+	defer s.cancelMu.Unlock()
+	return s.cancelled
+}
+
 // Close releases the connection. It is safe to call more than once,
-// and safe to call on a Session that never connected.
+// and safe to call on a Session that never connected. A Connect still
+// in progress is cancelled first, so Close does not wait it out.
 func (s *Session) Close() error {
+	s.Cancel()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.closeLocked()

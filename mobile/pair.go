@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/muelli/synctang/mrcore"
@@ -37,7 +38,59 @@ const pairRetryInterval = 2 * time.Second
 // Takes the public key as hex because that is what the Kotlin side
 // already has: the key lives in the Android Keystore and only its
 // public half ever leaves it.
+//
+// Pair cannot be interrupted; see Pairer for a pairing that can.
 func Pair(machineID, pairingCode, seed, publicKeyHex, name, directAddr string, timeoutSeconds int) error {
+	return NewPairer().Pair(machineID, pairingCode, seed, publicKeyHex, name, directAddr, timeoutSeconds)
+}
+
+// Pairer is one pairing attempt that another thread can cancel, so the
+// app can offer a Cancel button instead of a spinner that runs out its
+// whole timeout. gomobile cannot bind a context.Context, hence an
+// object with a Cancel method rather than a context parameter.
+//
+// A Pairer is single-use: a Pair after Cancel fails without dialling.
+type Pairer struct {
+	mu        sync.Mutex
+	cancel    context.CancelFunc
+	cancelled bool
+}
+
+// NewPairer returns a Pairer ready for one Pair call.
+func NewPairer() *Pairer { return &Pairer{} }
+
+// Cancel interrupts a Pair in progress on another thread, which then
+// returns an error promptly. It returns at once. If the machine had
+// already accepted the request before the cancel landed, the phone
+// may be enrolled even though Pair reports the cancellation; pairing
+// again simply enrols it again.
+func (p *Pairer) Cancel() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.cancelled = true
+	if p.cancel != nil {
+		p.cancel()
+	}
+}
+
+func (p *Pairer) arm(cancel context.CancelFunc) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if cancel != nil && p.cancelled {
+		return false
+	}
+	p.cancel = cancel
+	return true
+}
+
+func (p *Pairer) isCancelled() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.cancelled
+}
+
+// Pair is the package-level Pair, interruptible by Cancel.
+func (p *Pairer) Pair(machineID, pairingCode, seed, publicKeyHex, name, directAddr string, timeoutSeconds int) error {
 	secret, err := mrcore.DecodePairingSecret(pairingCode)
 	if err != nil {
 		return fmt.Errorf("mobile: %w", err)
@@ -60,12 +113,19 @@ func Pair(machineID, pairingCode, seed, publicKeyHex, name, directAddr string, t
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
 	defer cancel()
+	if !p.arm(cancel) {
+		return errCancelled
+	}
+	defer p.arm(nil)
 
 	var lastErr error
 	for {
 		lastErr = pairOnce(ctx, cert, machineID, selfID, secret, publicKey, name, directAddr)
 		if lastErr == nil {
 			return nil
+		}
+		if p.isCancelled() {
+			return errCancelled
 		}
 		// The machine answering "no" is final: retrying cannot make a
 		// wrong code right or change a human's mind. Only being unable
@@ -76,6 +136,9 @@ func Pair(machineID, pairingCode, seed, publicKeyHex, name, directAddr string, t
 		}
 		select {
 		case <-ctx.Done():
+			if p.isCancelled() {
+				return errCancelled
+			}
 			return fmt.Errorf("mobile: gave up pairing with %s after %ds (last attempt: %w)",
 				machineID, timeoutSeconds, lastErr)
 		case <-time.After(pairRetryInterval):
@@ -90,6 +153,10 @@ func pairOnce(ctx context.Context, cert tls.Certificate, machineID, selfID strin
 		return fmt.Errorf("mobile: dialling %s: %w", machineID, err)
 	}
 	defer conn.Close()
+	// As in Session.connectOnceLocked: the reads honour no context, so
+	// a cancelled attempt closes the connection under them.
+	stop := context.AfterFunc(ctx, func() { conn.Close() })
+	defer stop()
 
 	var challenge mrcore.PairChallenge
 	if err := mrcore.ReadMessage(conn, &challenge); err != nil {
