@@ -12,7 +12,7 @@ import (
 
 	"github.com/muelli/synctang/mrcore"
 	"github.com/muelli/synctang/mrcore/transport"
-	socket "syncthing-socket"
+	"github.com/muelli/syncthing-socket/identity"
 )
 
 // pairRetryInterval matches connectRetryInterval: the machine may not
@@ -49,7 +49,7 @@ func Pair(machineID, pairingCode, seed, publicKeyHex, name, directAddr string, t
 		return fmt.Errorf("mobile: the public key is not valid hex: %w", err)
 	}
 
-	cert, err := socket.GenerateDeterministicCert(seed)
+	cert, err := identity.GenerateDeterministicCert(seed)
 	if err != nil {
 		return fmt.Errorf("mobile: deriving this key holder's identity: %w", err)
 	}

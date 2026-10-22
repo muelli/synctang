@@ -12,7 +12,7 @@ import (
 
 	"github.com/muelli/synctang/mrcore"
 	"github.com/muelli/synctang/mrcore/transport"
-	socket "syncthing-socket"
+	"github.com/muelli/syncthing-socket/identity"
 )
 
 // fakeMachine plays the machine's side of a pairing window: challenge,
@@ -22,7 +22,7 @@ import (
 func fakeMachine(t *testing.T, addr, machineSeed string, secret []byte, accept bool) <-chan mrcore.PairRequest {
 	t.Helper()
 
-	cert, err := socket.GenerateDeterministicCert(machineSeed)
+	cert, err := identity.GenerateDeterministicCert(machineSeed)
 	if err != nil {
 		t.Fatalf("machine cert: %v", err)
 	}

@@ -16,7 +16,7 @@ import (
 
 	"github.com/muelli/synctang/mrcore"
 	"github.com/muelli/synctang/mrcore/transport"
-	socket "syncthing-socket"
+	"github.com/muelli/syncthing-socket/identity"
 )
 
 // vectors mirrors the parts of testdata/mr1.json this package needs.
@@ -164,7 +164,7 @@ func runSession(t *testing.T, v vectors, withConfirmCode bool) {
 		t.Fatalf("DeviceIDForSeed: %v", err)
 	}
 
-	machineCert, err := socket.GenerateDeterministicCert(machineSeed)
+	machineCert, err := identity.GenerateDeterministicCert(machineSeed)
 	if err != nil {
 		t.Fatalf("machine cert: %v", err)
 	}
@@ -412,7 +412,7 @@ func TestSessionConnectRetriesUntilTheMachineAnswers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DeviceIDForSeed: %v", err)
 	}
-	machineCert, err := socket.GenerateDeterministicCert(machineSeed)
+	machineCert, err := identity.GenerateDeterministicCert(machineSeed)
 	if err != nil {
 		t.Fatalf("machine cert: %v", err)
 	}
@@ -493,7 +493,7 @@ func TestAnswerXOnlyReportsAMachineThatCouldNotUseTheAnswer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DeviceIDForSeed: %v", err)
 	}
-	machineCert, err := socket.GenerateDeterministicCert(machineSeed)
+	machineCert, err := identity.GenerateDeterministicCert(machineSeed)
 	if err != nil {
 		t.Fatalf("machine cert: %v", err)
 	}

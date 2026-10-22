@@ -10,7 +10,7 @@ import (
 
 	"github.com/muelli/synctang/mrcore"
 	"github.com/muelli/synctang/mrcore/transport"
-	socket "syncthing-socket"
+	"github.com/muelli/syncthing-socket/identity"
 )
 
 func multicastOrSkip(t *testing.T) {
@@ -60,7 +60,7 @@ func TestSessionConnectsOverLocalDiscoveryWithoutTheRelay(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DeviceIDForSeed: %v", err)
 	}
-	machineCert, err := socket.GenerateDeterministicCert(machineSeed)
+	machineCert, err := identity.GenerateDeterministicCert(machineSeed)
 	if err != nil {
 		t.Fatalf("machine cert: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestSessionConnectsOverLocalDiscoveryWithoutTheRelay(t *testing.T) {
 // relying on exactly one destination being tried. cmd/keyholder's
 // newDialTransport draws the same line.
 func TestDialTransportUsesLocalDiscoveryOnlyWithoutADirectAddress(t *testing.T) {
-	cert, err := socket.GenerateDeterministicCert("test seed for transport shape")
+	cert, err := identity.GenerateDeterministicCert("test seed for transport shape")
 	if err != nil {
 		t.Fatalf("GenerateDeterministicCert: %v", err)
 	}

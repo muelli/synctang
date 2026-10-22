@@ -31,7 +31,7 @@ import (
 
 	"github.com/muelli/synctang/mrcore"
 	"github.com/muelli/synctang/mrcore/transport"
-	socket "syncthing-socket"
+	"github.com/muelli/syncthing-socket/identity"
 )
 
 // uncompressedPointLen is the length of a SEC1 uncompressed P-256
@@ -73,7 +73,7 @@ func certForSeed(seed string) (tls.Certificate, error) {
 	if strings.TrimSpace(seed) == "" {
 		return tls.Certificate{}, errors.New("mobile: empty identity seed")
 	}
-	cert, err := socket.GenerateDeterministicCert(seed)
+	cert, err := identity.GenerateDeterministicCert(seed)
 	if err != nil {
 		return tls.Certificate{}, fmt.Errorf("mobile: deriving identity: %w", err)
 	}
