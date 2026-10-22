@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/muelli/syncthing-socket/discovery"
 	"github.com/syncthing/syncthing/lib/protocol"
 	"github.com/syncthing/syncthing/lib/relay/client"
 )
@@ -71,7 +72,7 @@ const defaultAnnounceInterval = 2 * time.Second
 // the time before. syncthing-socket, whose discovery servers these
 // are, refreshes every thirty minutes; matching it is both the polite
 // number and the one known to keep a record alive.
-const defaultAnnounceRefresh = 30 * time.Minute
+const defaultAnnounceRefresh = discovery.DefaultAnnounceInterval
 
 // levelTrace sits below slog's own lowest built-in level (Debug, -4),
 // for detail below what a caller's --log-level debug would want by
@@ -88,7 +89,7 @@ const levelTrace = slog.Level(-8)
 // announce endpoints: an authenticated POST identifying the announcer
 // by its TLS client certificate, which the discovery server reads
 // the Device ID off. This is deliberately not the same URL as
-// defaultDiscoveryURL: that one only answers unauthenticated
+// discovery.DefaultURL: that one only answers unauthenticated
 // GET lookups for a peer's address, and does not accept announcements
 // at all. syncthing-socket's own server mode uses exactly these two
 // as its default (see its main.go "discovery" flag on the server
@@ -410,7 +411,7 @@ func (t *SyncthingRelay) relayPoolURL() string {
 }
 
 func (t *SyncthingRelay) discoveryURL() string {
-	return cmp.Or(t.DiscoveryURL, defaultDiscoveryURL)
+	return cmp.Or(t.DiscoveryURL, discovery.DefaultURL)
 }
 
 // relayLossGrace is how long this listener tolerates having no relay
@@ -638,7 +639,7 @@ func (t *SyncthingRelay) dialRelayOnce(ctx context.Context, peerID string) (net.
 	}
 
 	t.logger().Log(ctx, levelTrace, "looking peer up on discovery", "peer", targetID.String(), "url", t.discoveryURL())
-	record, err := lookupRecord(ctx, targetID.String(), t.discoveryURL())
+	record, err := discovery.LookupRecord(ctx, targetID.String(), t.discoveryURL())
 	if err != nil {
 		return nil, fmt.Errorf("transport: discovery lookup for %s: %w", targetID, err)
 	}
