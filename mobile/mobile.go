@@ -333,6 +333,32 @@ func (s *Session) Connect() error {
 	}
 }
 
+// replyTimeout bounds each wait for the machine once Connect has
+// returned: for the recovery request after the confirm code, and for
+// the verdict after the answer. Neither waits on a human, so a machine
+// that stays silent this long has gone wrong, and without a bound the
+// phone waited for it for ever. Generous, because the verdict comes
+// only after the machine has run cryptsetup, whose key derivation can
+// take several seconds on a slow machine. A variable for the tests.
+var replyTimeout = 60 * time.Second
+
+// errNoReply is what a read cut short by replyTimeout reports.
+var errNoReply = errors.New("the machine did not answer")
+
+// withReplyTimeoutLocked runs exchange, closing the connection under
+// it if it is still running after replyTimeout: the reads it makes
+// honour no deadline of their own. Reports errNoReply when that
+// happened, rather than the read error the close produced.
+func (s *Session) withReplyTimeoutLocked(exchange func() error) error {
+	conn := s.conn
+	timer := time.AfterFunc(replyTimeout, func() { conn.Close() })
+	err := exchange()
+	if !timer.Stop() && err != nil {
+		return fmt.Errorf("%w within %s", errNoReply, replyTimeout)
+	}
+	return err
+}
+
 // connectRetryInterval is how long Connect waits between attempts.
 // Matches cmd/keyholder's unlockRetryInterval: fast enough not to
 // waste the caller's timeout budget, slow enough not to hammer the
@@ -510,12 +536,18 @@ func (s *Session) SubmitConfirmCode(code string) error {
 	if s.confirmCode == "" {
 		return errors.New("mobile: machine did not ask for a confirm code")
 	}
-	if err := mrcore.WriteMessage(s.conn, mrcore.ConfirmCodeResponse{Code: code}); err != nil {
-		s.closeLocked()
-		return fmt.Errorf("mobile: sending confirm code: %w", err)
+	err := s.withReplyTimeoutLocked(func() error {
+		if err := mrcore.WriteMessage(s.conn, mrcore.ConfirmCodeResponse{Code: code}); err != nil {
+			s.closeLocked()
+			return fmt.Errorf("mobile: sending confirm code: %w", err)
+		}
+		s.confirmCode = ""
+		return s.readRecoverRequestLocked()
+	})
+	if errors.Is(err, errNoReply) {
+		return fmt.Errorf("mobile: after the confirm code, %w", err)
 	}
-	s.confirmCode = ""
-	return s.readRecoverRequestLocked()
+	return err
 }
 
 // RequestKid identifies which enrolled key holder the machine is
@@ -602,7 +634,8 @@ func (s *Session) AnswerXOnly(xOnly []byte) error {
 	// holder saying "done" when the disk is still locked is worse than
 	// one saying nothing, because it stops the person trying.
 	var result mrcore.RecoverResult
-	if err := mrcore.ReadMessage(s.conn, &result); err != nil {
+	err := s.withReplyTimeoutLocked(func() error { return mrcore.ReadMessage(s.conn, &result) })
+	if err != nil {
 		return fmt.Errorf("mobile: answer sent, but the machine did not report the outcome, so it may or may not have unlocked: %w", err)
 	}
 	if !result.OK {
