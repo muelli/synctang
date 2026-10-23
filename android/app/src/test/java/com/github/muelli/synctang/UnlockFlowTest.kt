@@ -407,7 +407,7 @@ class UnlockFlowTest {
         assertTrue(session.cancelled)
     }
 
-    // Refuse and back on a waiting machine (defect 3)
+    // Decline and back on a waiting machine (defect 3)
 
     private fun connectToARequest(): FakeSession {
         store.saved = machineA

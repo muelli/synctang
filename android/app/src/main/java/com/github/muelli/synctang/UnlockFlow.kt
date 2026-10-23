@@ -161,7 +161,7 @@ enum class BackAction {
     /** Leave the app, as back normally does. */
     EXIT,
 
-    /** Exactly what Refuse or Cancel on that screen does: [UnlockFlow.cancel]. */
+    /** Exactly what Decline or Cancel on that screen does: [UnlockFlow.cancel]. */
     CANCEL,
 
     /** Leave the pairing screen for the machine already paired. */
@@ -173,7 +173,7 @@ enum class BackAction {
 
 /**
  * Back on a screen where the machine is waiting for this phone must
- * tell the machine, as Refuse does, rather than finish the activity
+ * tell the machine, as Decline does, rather than finish the activity
  * and leave it waiting for its timeout.
  *
  * Working is swallowed rather than cancelled: it covers the moments
@@ -386,7 +386,7 @@ class UnlockFlow(
                 session = fresh
                 if (attempt.cancelled) {
                     // Cancelled just as the dial succeeded: the machine
-                    // is now waiting, so tell it, as Refuse would.
+                    // is now waiting, so tell it, as Decline would.
                     declineAndGoHome(DECLINED_BY_KEY_HOLDER)
                 } else {
                     _state.value = describe(machine)
@@ -493,7 +493,7 @@ class UnlockFlow(
      * Backs out of whatever is happening, without answering anything.
      * A dial or pairing still running is interrupted; a machine that is
      * already waiting for this phone is told no, rather than left to
-     * wait for its timeout. Refuse, Cancel, Escape and back all come
+     * wait for its timeout. Decline, Cancel, Escape and back all come
      * here.
      */
     fun cancel() {

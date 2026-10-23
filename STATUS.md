@@ -53,13 +53,22 @@ not here. See `TESTREPORT.md` for the acceptance table (A1-A11).
   forgetting anything first, and a pairing that replaces a different
   machine is offered back by an Undo snackbar. Connecting and pairing can be cancelled
   (`Session.Cancel`, `Pairer.Cancel` interrupt the Go call), and back
-  on a screen where the machine is waiting declines as Refuse does.
+  on a screen where the machine is waiting declines as Decline does.
   Once connected, each wait for the machine is bounded (60 s), so a
   machine that goes silent mid-exchange cannot hold the phone for ever.
   Failures are explained in the app's own words rather than as Go error
   text: the Go bridge names each one (`Session.LastFailure`,
-  `Pairer.LastFailure`) and the app maps the kind to a message, keeping
-  the machine's reason or the raw text as a detail line. A key
+  `Pairer.LastFailure`) and the app maps the kind to a message, showing
+  the machine's own reason where it gave one and the raw text behind a
+  Details toggle; every failure is also logged. The manual enrolment
+  command, the phone's full Device ID and public key, how its key is
+  held, and the app version live on an About this phone screen reached
+  from the app bar, offered only where nothing is under way. Every
+  screen shares one layout (title, explanation, one main action; a
+  glyph and headline on Done and Failed), and long identifiers show in
+  a short form with the full value one tap away. Each screen state has
+  a Compose `@Preview` in `ui/Previews.kt`; none of the layouts has been
+  looked at on a screen or in a rendered preview yet `[U]`. A key
   invalidated by a newly enrolled fingerprint now gets a fresh key and
   transport identity and says which old Device ID to revoke `[V]` in
   JVM tests; the Keystore exceptions it relies on have not been

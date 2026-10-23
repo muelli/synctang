@@ -16,7 +16,6 @@
     <string name="enrol_manual_hint">Only for a machine that cannot show a pairing code. Run this on the machine, once, to let this phone unlock it.</string>
     <string name="pair_copy">Copy the enrolment command</string>
     <string name="pair_by_hand">No pairing code? Enrol by hand</string>
-    <string name="pair_copied">Copied.</string>
     <string name="pair_again">Pair with a machine again</string>
     <string name="pair_keeps_previous">%1$s stays paired until a new pairing works.</string>
     <string name="pair_keep_current">Keep using %1$s</string>
@@ -54,7 +53,7 @@
     <string name="identifier_show_less">Show less</string>
     <string name="unlock_request_key">Key requested</string>
     <string name="unlock_approve">Approve and unlock</string>
-    <string name="unlock_decline">Refuse</string>
+    <string name="unlock_decline">Decline</string>
     <string name="unlock_done">%1$s can now unlock its disk.</string>
     <string name="done_title">Answered</string>
     <string name="unlock_again">Unlock something again</string>
