@@ -11,8 +11,8 @@ import org.junit.Test
  * and tells the person holding the phone nothing. Each kind of failure
  * the Go bridge names now has words of its own. The machine's own
  * reason, where it gave one, is kept as a detail beneath them, and
- * anything unrecognised keeps its raw text there too, since that is
- * then the only clue there is.
+ * the raw text of every failure stays one tap away, behind Details,
+ * for a bug report.
  */
 class ExplainTest {
 
@@ -48,18 +48,27 @@ class ExplainTest {
     }
 
     @Test
-    fun aRecognisedFailureShowsNoRawText() {
+    fun aRecognisedFailureShowsNoDetail() {
         assertNull(explain(failure(FailureKind.UNREACHABLE)).detail)
         assertNull(explain(failure(FailureKind.PAIR_CODE_MISMATCH)).detail)
     }
 
     @Test
-    fun anUnrecognisedFailureKeepsItsRawTextAsTheDetail() {
-        assertEquals("mobile: raw text for OTHER", explain(failure(FailureKind.OTHER)).detail)
-        assertEquals("mobile: raw text for PROTOCOL", explain(failure(FailureKind.PROTOCOL)).detail)
+    fun anUnrecognisedFailureHasNoDetailEither() {
+        assertNull(explain(failure(FailureKind.OTHER)).detail)
+        assertNull(explain(failure(FailureKind.PROTOCOL)).detail)
         val plain = explain(IllegalStateException("something nobody expected"))
         assertEquals(R.string.failure_other, plain.message)
-        assertEquals("something nobody expected", plain.detail)
+        assertNull(plain.detail)
+    }
+
+    @Test
+    fun everyFailureKeepsItsRawTextForTheDetailsToggle() {
+        for (kind in FailureKind.values()) {
+            assertEquals("mobile: raw text for $kind", explain(failure(kind)).technical)
+        }
+        assertEquals("something nobody expected", explain(IllegalStateException("something nobody expected")).technical)
+        assertEquals("IllegalStateException", explain(IllegalStateException()).technical)
     }
 
     @Test

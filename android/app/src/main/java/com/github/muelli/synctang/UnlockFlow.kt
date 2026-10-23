@@ -79,13 +79,15 @@ sealed interface UnlockUiState {
 
     /**
      * [message] is in words for a person; [detail], when there is one,
-     * is the machine's own reason or the raw error text behind it.
+     * is the machine's own reason. [technical] is the raw error text,
+     * shown only on request.
      */
     data class Failed(
         val machine: Machine?,
         val message: String,
         val retry: Retry = Retry.REFRESH,
         val detail: String? = null,
+        val technical: String? = null,
     ) : UnlockUiState
 }
 
@@ -356,7 +358,6 @@ class UnlockFlow(
                 if (attempt.cancelled) {
                     _state.value = home(previous = previous, forcePairing = true)
                 } else {
-                    log("pairing failed", e)
                     _state.value = failed(machine, e, Retry.SCAN_AGAIN)
                 }
             } finally {
@@ -516,8 +517,15 @@ class UnlockFlow(
     }
 
     private fun failed(machine: Machine?, e: Exception, retry: Retry = Retry.REFRESH): UnlockUiState.Failed {
+        log("failed", e)
         val explained = explain(e)
-        return UnlockUiState.Failed(machine, strings.get(explained.message), retry, explained.detail)
+        return UnlockUiState.Failed(
+            machine,
+            strings.get(explained.message),
+            retry,
+            explained.detail,
+            explained.technical,
+        )
     }
 
     private suspend fun declineQuietly(active: MachineSession) = withContext(io) {

@@ -46,6 +46,7 @@ class UnlockFlowTest {
     private val identity = Identity("PHONE-ID", "04ab", KeyHolderKey.Backing.TEE_OR_SOFTWARE)
     @Volatile private var agreeFails: Exception? = null
     @Volatile private var identityResets = 0
+    private val logged = Collections.synchronizedList(mutableListOf<Throwable>())
 
     private val flow = UnlockFlow(
         scope = scope,
@@ -64,6 +65,7 @@ class UnlockFlowTest {
             override fun get(id: Int, vararg args: Any) =
                 "res:$id" + if (args.isEmpty()) "" else args.joinToString(",", "(", ")")
         },
+        log = { _, e -> logged += e },
     )
 
     @After
@@ -346,19 +348,36 @@ class UnlockFlowTest {
         assertEquals(Retry.REFRESH, failed.retry)
         assertEquals("res:${R.string.failure_unreachable}", failed.message)
         assertNull(failed.detail)
+        assertEquals("mobile: gave up dialling", failed.technical)
     }
 
     @Test
-    fun anUnexpectedFailureStillShowsItsRawTextAsTheDetail() {
+    fun anUnexpectedFailureKeepsItsRawTextAndIsLogged() {
         store.saved = machineA
         onMain { flow.refresh() }
         await<UnlockUiState.Ready>()
-        nextSession = { FakeSession(failWith = Exception("mobile: something new")) }
+        val error = Exception("mobile: something new")
+        nextSession = { FakeSession(failWith = error) }
 
         onMain { flow.connect() }
         val failed = await<UnlockUiState.Failed>()
         assertEquals("res:${R.string.failure_other}", failed.message)
-        assertEquals("mobile: something new", failed.detail)
+        assertNull(failed.detail)
+        assertEquals("mobile: something new", failed.technical)
+        // By text: coroutines may rethrow a copy across withContext.
+        assertEquals(listOf(error.message), logged.map { it.message })
+    }
+
+    @Test
+    fun aFailedPairingIsLoggedOnce() {
+        onMain { flow.refresh() }
+        await<UnlockUiState.NeedsPairing>()
+        val error = Exception("mobile: gave up pairing")
+        nextPairing = { FakePairing(failWith = error) }
+
+        onMain { flow.pair(payload(machineB)) }
+        await<UnlockUiState.Failed>()
+        assertEquals(listOf(error.message), logged.map { it.message })
     }
 
     @Test

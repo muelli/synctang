@@ -132,7 +132,7 @@ private fun FailedLongPreview() = Frame {
         UnlockUiState.Failed(
             machine,
             stringResource(R.string.failure_other),
-            detail = "mobile: gave up dialling $DEVICE_ID after 1m30s (last attempt: " +
+            technical = "mobile: gave up dialling $DEVICE_ID after 1m30s (last attempt: " +
                 "relay: could not find a connectable relay; local discovery: no announcement heard)",
         ),
         {},

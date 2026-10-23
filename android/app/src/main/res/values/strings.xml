@@ -68,6 +68,8 @@
     <string name="error_title">That did not work</string>
     <string name="error_retry">Try again</string>
     <string name="error_scan_again">Scan again</string>
+    <string name="error_details_show">Details</string>
+    <string name="error_details_hide">Hide details</string>
     <string name="error_connection_lost">The connection to the machine was lost.</string>
     <string name="error_nothing_to_approve">The machine connected but sent nothing to approve.</string>
     <string name="failure_unreachable">Could not reach the machine. Check that it is waiting at its unlock prompt, that this phone is online or on the same network, and that this phone is enrolled on it.</string>
@@ -81,7 +83,7 @@
     <string name="failure_pair_declined">The machine\'s operator declined the pairing.</string>
     <string name="failure_pair_refused">The machine refused the pairing.</string>
     <string name="failure_protocol">The machine sent something this phone will not act on, so nothing was answered.</string>
-    <string name="failure_other">Something went wrong.</string>
+    <string name="failure_other">Something unexpected went wrong. Try again; if it keeps happening, the details below help a bug report.</string>
     <string name="failure_auth_expired">The fingerprint or face check ran out before the answer was ready, so nothing was sent. Try again.</string>
     <string name="failure_key_invalidated">This phone\'s key stopped working because a fingerprint or face was added to the phone, and the machine was not answered. The phone now has a new key: pair with the machine again. On the machine, revoke this phone\'s old device ID, %1$s, with unlocker enrol --remove.</string>
 </resources>
