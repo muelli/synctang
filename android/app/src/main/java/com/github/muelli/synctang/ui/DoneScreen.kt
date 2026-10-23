@@ -1,0 +1,31 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+package com.github.muelli.synctang.ui
+
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.res.stringResource
+import com.github.muelli.synctang.R
+import com.github.muelli.synctang.UnlockUiState
+import com.github.muelli.synctang.UnlockViewModel
+import com.github.muelli.synctang.focusRing
+import com.github.muelli.synctang.rememberAutoFocusRequester
+
+@Composable
+internal fun DoneScreen(state: UnlockUiState.Done, model: UnlockViewModel) {
+    MachineHeading(state.machine)
+    Text(stringResource(R.string.unlock_done), style = MaterialTheme.typography.bodyLarge)
+    Button(
+        onClick = { model.refresh() },
+        modifier = Modifier
+            .fillMaxWidth()
+            .focusRequester(rememberAutoFocusRequester())
+            .focusRing(),
+    ) {
+        Text(stringResource(R.string.unlock_again))
+    }
+}

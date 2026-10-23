@@ -1,0 +1,47 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+package com.github.muelli.synctang.ui
+
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
+import com.github.muelli.synctang.R
+import com.github.muelli.synctang.UnlockUiState
+import com.github.muelli.synctang.UnlockViewModel
+import com.github.muelli.synctang.focusRing
+import com.github.muelli.synctang.onEscape
+import com.github.muelli.synctang.rememberAutoFocusRequester
+
+@Composable
+internal fun ConfirmCodeScreen(state: UnlockUiState.ConfirmCode, model: UnlockViewModel) {
+    MachineHeading(state.machine)
+    Text(stringResource(R.string.confirm_title), style = MaterialTheme.typography.headlineSmall)
+    Text(stringResource(R.string.confirm_hint), style = MaterialTheme.typography.bodyMedium)
+    Text(state.code, style = MaterialTheme.typography.displaySmall, fontFamily = FontFamily.Monospace)
+    Labelled(stringResource(R.string.unlock_request_identity), state.peerId)
+    Button(
+        onClick = { model.submitConfirmCode(state.code) },
+        modifier = Modifier
+            .fillMaxWidth()
+            .focusRequester(rememberAutoFocusRequester())
+            .onEscape { model.cancel() }
+            .focusRing(),
+    ) {
+        Text(stringResource(R.string.confirm_action))
+    }
+    OutlinedButton(
+        onClick = { model.cancel() },
+        modifier = Modifier
+            .fillMaxWidth()
+            .onEscape { model.cancel() }
+            .focusRing(),
+    ) {
+        Text(stringResource(R.string.unlock_decline))
+    }
+}
