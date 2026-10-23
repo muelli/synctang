@@ -121,3 +121,14 @@ type PairResult struct {
 	OK    bool   `json:"ok"`
 	Error string `json:"error,omitempty"`
 }
+
+// The reasons a machine gives in PairResult.Error. Defined once here,
+// beside the message, so that the key holder can tell them apart and
+// explain each in its own words without the two sides' wording
+// drifting. Any other reason is still shown as the machine sent it.
+const (
+	PairRefusedCodeMismatch = "the pairing code did not match"
+	PairRefusedInvalidKey   = "the public key offered is not a valid P-256 point"
+	PairRefusedDeclined     = "the operator declined the pairing"
+	PairRefusedEnrolFailed  = "the machine could not enrol this key holder"
+)

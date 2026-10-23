@@ -60,7 +60,7 @@ func fakeMachine(t *testing.T, addr, machineSeed string, secret []byte, accept b
 		ok := accept && string(expected) == string(req.Proof)
 		result := mrcore.PairResult{OK: ok}
 		if !ok {
-			result.Error = "the pairing code did not match"
+			result.Error = mrcore.PairRefusedCodeMismatch
 		}
 		_ = mrcore.WriteMessage(conn, result)
 		got <- req

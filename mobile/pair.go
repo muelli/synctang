@@ -54,6 +54,22 @@ type Pairer struct {
 	mu        sync.Mutex
 	cancel    context.CancelFunc
 	cancelled bool
+
+	failure lastFailure
+}
+
+// LastFailure is the kind of failure the last Pair ended in (one of
+// the Failure constants), or FailureNone if it succeeded.
+func (p *Pairer) LastFailure() int {
+	kind, _ := p.failure.get()
+	return kind
+}
+
+// LastFailureDetail is the machine's own reason for refusing, when it
+// gave one the app has no words of its own for. Empty otherwise.
+func (p *Pairer) LastFailureDetail() string {
+	_, detail := p.failure.get()
+	return detail
 }
 
 // NewPairer returns a Pairer ready for one Pair call.
@@ -90,10 +106,11 @@ func (p *Pairer) isCancelled() bool {
 }
 
 // Pair is the package-level Pair, interruptible by Cancel.
-func (p *Pairer) Pair(machineID, pairingCode, seed, publicKeyHex, name, directAddr string, timeoutSeconds int) error {
+func (p *Pairer) Pair(machineID, pairingCode, seed, publicKeyHex, name, directAddr string, timeoutSeconds int) (err error) {
+	defer func() { p.failure.record(err) }()
 	secret, err := mrcore.DecodePairingSecret(pairingCode)
 	if err != nil {
-		return fmt.Errorf("mobile: %w", err)
+		return withKind(FailureBadPairingCode, fmt.Errorf("mobile: %w", err))
 	}
 	defer mrcore.Wipe(secret)
 
@@ -132,15 +149,15 @@ func (p *Pairer) Pair(machineID, pairingCode, seed, publicKeyHex, name, directAd
 		// to reach it is worth another attempt.
 		var refused *pairRefused
 		if errors.As(lastErr, &refused) {
-			return lastErr
+			return refused.withKind()
 		}
 		select {
 		case <-ctx.Done():
 			if p.isCancelled() {
 				return errCancelled
 			}
-			return fmt.Errorf("mobile: gave up pairing with %s after %ds (last attempt: %w)",
-				machineID, timeoutSeconds, lastErr)
+			return withKind(FailureUnreachable, fmt.Errorf("mobile: gave up pairing with %s after %ds (last attempt: %w)",
+				machineID, timeoutSeconds, lastErr))
 		case <-time.After(pairRetryInterval):
 		}
 	}
@@ -183,6 +200,20 @@ func pairOnce(ctx context.Context, cert tls.Certificate, machineID, selfID strin
 // not be reached", because only the second is worth retrying and only
 // the first has something to tell the person holding the phone.
 type pairRefused struct{ reason string }
+
+// withKind names the refusal. The reasons the app has words of its own
+// for get a kind and no detail; any other is passed on as the detail,
+// so a newer machine's reason still reaches the person.
+func (e *pairRefused) withKind() error {
+	switch e.reason {
+	case mrcore.PairRefusedCodeMismatch:
+		return withKind(FailurePairCodeMismatch, e)
+	case mrcore.PairRefusedDeclined:
+		return withKind(FailurePairDeclined, e)
+	default:
+		return withKindDetail(FailurePairRefused, e.reason, e)
+	}
+}
 
 func (e *pairRefused) Error() string {
 	if e.reason == "" {

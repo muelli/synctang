@@ -109,7 +109,7 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 	expected := mrcore.PairProof(opts.secret, machineID, peerID, nonce)
 	if !hmac.Equal(expected, req.Proof) {
 		logger.Warn("refused a pairing attempt with a bad proof", "peer", peerID)
-		return refusePairing(conn, "the pairing code did not match")
+		return refusePairing(conn, mrcore.PairRefusedCodeMismatch)
 	}
 
 	// Rejected here rather than being left for enrolRecipient, so a
@@ -117,18 +117,18 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 	// it. PointToX decodes the point, which is the validation wanted:
 	// on the curve, in the right subgroup, not the point at infinity.
 	if _, err := mrcore.P256().PointToX(req.PubKey); err != nil {
-		return refusePairing(conn, "the public key offered is not a valid P-256 point")
+		return refusePairing(conn, mrcore.PairRefusedInvalidKey)
 	}
 
 	if opts.confirm != nil && !opts.confirm(peerID, req.PubKey) {
-		return refusePairing(conn, "the operator declined the pairing")
+		return refusePairing(conn, mrcore.PairRefusedDeclined)
 	}
 
 	if err := enrolRecipient(opts.device, opts.existingPassphrase, req.PubKey,
 		opts.machineName, machineID, peerID); err != nil {
 		// The key holder is waiting, and "it failed" is worth far more
 		// to whoever is holding the phone than a timeout.
-		_ = mrcore.WriteMessage(conn, mrcore.PairResult{Error: "the machine could not enrol this key holder"})
+		_ = mrcore.WriteMessage(conn, mrcore.PairResult{Error: mrcore.PairRefusedEnrolFailed})
 		waitForPeerClose(conn, resultLingerTimeout)
 		return fmt.Errorf("unlocker: enrolling the paired key holder: %w", err)
 	}

@@ -216,6 +216,8 @@ type Session struct {
 	cancel    context.CancelFunc
 	cancelled bool
 
+	failure lastFailure
+
 	seed      string
 	machineID string
 
@@ -273,7 +275,8 @@ func (s *Session) SetTimeoutSeconds(n int) {
 //
 // After Connect returns without error, ConfirmCodeChallenge tells the
 // caller which of the two happened.
-func (s *Session) Connect() error {
+func (s *Session) Connect() (err error) {
+	defer func() { s.failure.record(err) }()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -326,8 +329,8 @@ func (s *Session) Connect() error {
 			if s.isCancelled() {
 				return errCancelled
 			}
-			return fmt.Errorf("mobile: gave up dialling %s after %ds (last attempt: %w)",
-				s.machineID, s.timeoutSeconds, lastErr)
+			return withKind(FailureUnreachable, fmt.Errorf("mobile: gave up dialling %s after %ds (last attempt: %w)",
+				s.machineID, s.timeoutSeconds, lastErr))
 		case <-time.After(connectRetryInterval):
 		}
 	}
@@ -343,7 +346,7 @@ func (s *Session) Connect() error {
 var replyTimeout = 60 * time.Second
 
 // errNoReply is what a read cut short by replyTimeout reports.
-var errNoReply = errors.New("the machine did not answer")
+var errNoReply = withKind(FailureNoReply, errors.New("the machine did not answer"))
 
 // withReplyTimeoutLocked runs exchange, closing the connection under
 // it if it is still running after replyTimeout: the reads it makes
@@ -354,7 +357,7 @@ func (s *Session) withReplyTimeoutLocked(exchange func() error) error {
 	timer := time.AfterFunc(replyTimeout, func() { conn.Close() })
 	err := exchange()
 	if !timer.Stop() && err != nil {
-		return fmt.Errorf("%w within %s", errNoReply, replyTimeout)
+		return withKind(FailureNoReply, fmt.Errorf("%w within %s", errNoReply, replyTimeout))
 	}
 	return err
 }
@@ -471,11 +474,11 @@ func (s *Session) readRecoverRequestLocked() error {
 	var req mrcore.RecoverRequest
 	if err := mrcore.ReadMessage(s.conn, &req); err != nil {
 		s.closeLocked()
-		return fmt.Errorf("mobile: reading recovery request: %w", err)
+		return withKind(FailureHungUp, fmt.Errorf("mobile: reading recovery request: %w", err))
 	}
 	if len(req.X) == 0 {
 		s.closeLocked()
-		return errors.New("mobile: machine sent a recovery request with no challenge point")
+		return withKind(FailureProtocol, errors.New("mobile: machine sent a recovery request with no challenge point"))
 	}
 	// The machine chose this point and the Keystore is about to apply the
 	// long-term key to it. Checked here, before the point is kept or shown
@@ -526,7 +529,8 @@ func (s *Session) ConfirmCodeChallenge() string {
 // then reads the recovery request that follows. The machine, not this
 // code, decides whether the answer was right: a wrong code makes the
 // machine hang up, which surfaces here as a read error.
-func (s *Session) SubmitConfirmCode(code string) error {
+func (s *Session) SubmitConfirmCode(code string) (err error) {
+	defer func() { s.failure.record(err) }()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -536,16 +540,16 @@ func (s *Session) SubmitConfirmCode(code string) error {
 	if s.confirmCode == "" {
 		return errors.New("mobile: machine did not ask for a confirm code")
 	}
-	err := s.withReplyTimeoutLocked(func() error {
+	err = s.withReplyTimeoutLocked(func() error {
 		if err := mrcore.WriteMessage(s.conn, mrcore.ConfirmCodeResponse{Code: code}); err != nil {
 			s.closeLocked()
-			return fmt.Errorf("mobile: sending confirm code: %w", err)
+			return withKind(FailureHungUp, fmt.Errorf("mobile: sending confirm code: %w", err))
 		}
 		s.confirmCode = ""
 		return s.readRecoverRequestLocked()
 	})
 	if errors.Is(err, errNoReply) {
-		return fmt.Errorf("mobile: after the confirm code, %w", err)
+		return withKind(FailureNoReply, fmt.Errorf("mobile: after the confirm code, %w", err))
 	}
 	return err
 }
@@ -598,7 +602,8 @@ func (s *Session) HasRequest() bool {
 // xOnly is what java.security.KeyAgreement.generateSecret() returns
 // for an EC key, which is the raw coordinate and not a KDF output
 // (confirmed on device, see docs/wp0-keystore-ecdh.md).
-func (s *Session) AnswerXOnly(xOnly []byte) error {
+func (s *Session) AnswerXOnly(xOnly []byte) (err error) {
+	defer func() { s.failure.record(err) }()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -612,7 +617,7 @@ func (s *Session) AnswerXOnly(xOnly []byte) error {
 	// request arrived, because this is the call that is about to reach
 	// the Keystore key.
 	if err := mrcore.ValidateChallengePoint(mrcore.P256(), s.x); err != nil {
-		return fmt.Errorf("mobile: refusing the machine's challenge: %w", err)
+		return withKind(FailureProtocol, fmt.Errorf("mobile: refusing the machine's challenge: %w", err))
 	}
 	if s.answered {
 		return errors.New("mobile: this request has already been answered")
@@ -622,7 +627,7 @@ func (s *Session) AnswerXOnly(xOnly []byte) error {
 	}
 
 	if err := mrcore.WriteMessage(s.conn, mrcore.RecoverResponse{XOnly: xOnly}); err != nil {
-		return fmt.Errorf("mobile: sending answer: %w", err)
+		return withKind(FailureHungUp, fmt.Errorf("mobile: sending answer: %w", err))
 	}
 	s.answered = true
 
@@ -634,12 +639,15 @@ func (s *Session) AnswerXOnly(xOnly []byte) error {
 	// holder saying "done" when the disk is still locked is worse than
 	// one saying nothing, because it stops the person trying.
 	var result mrcore.RecoverResult
-	err := s.withReplyTimeoutLocked(func() error { return mrcore.ReadMessage(s.conn, &result) })
+	err = s.withReplyTimeoutLocked(func() error { return mrcore.ReadMessage(s.conn, &result) })
 	if err != nil {
-		return fmt.Errorf("mobile: answer sent, but the machine did not report the outcome, so it may or may not have unlocked: %w", err)
+		return withKind(FailureOutcomeUnknown, fmt.Errorf(
+			"mobile: answer sent, but the machine did not report the outcome, so it may or may not have unlocked: %w", err))
 	}
 	if !result.OK {
-		return fmt.Errorf("mobile: the machine could not use the answer: %s", mrcore.SafeLabel(result.Error, machineErrorMaxRunes))
+		reason := mrcore.SafeLabel(result.Error, machineErrorMaxRunes)
+		return withKindDetail(FailureAnswerRejected, reason,
+			fmt.Errorf("mobile: the machine could not use the answer: %s", reason))
 	}
 	return nil
 }
@@ -667,7 +675,24 @@ func (s *Session) Decline(reason string) error {
 // errCancelled is what an interrupted Connect or Pair returns. The
 // caller asked for it, so its text says so rather than describing a
 // network failure that did not happen.
-var errCancelled = errors.New("mobile: cancelled")
+var errCancelled = withKind(FailureCancelled, errors.New("mobile: cancelled"))
+
+// LastFailure is the kind of failure the most recent Connect,
+// SubmitConfirmCode or AnswerXOnly ended in (one of the Failure
+// constants), or FailureNone if it succeeded. An error crossing into
+// Kotlin keeps only its text, hence this alongside it.
+func (s *Session) LastFailure() int {
+	kind, _ := s.failure.get()
+	return kind
+}
+
+// LastFailureDetail is what the machine said about the failure, when
+// it said anything worth showing a person: its reason for not being
+// able to use an answer. Empty otherwise.
+func (s *Session) LastFailureDetail() string {
+	_, detail := s.failure.get()
+	return detail
+}
 
 // Cancel interrupts a Connect that is in progress on another thread,
 // which then returns an error promptly instead of carrying on until
