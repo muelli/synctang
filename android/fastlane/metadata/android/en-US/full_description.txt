@@ -23,9 +23,10 @@ How it works:
 - One Unlock button, behind a strong biometric. The key is created so that the
   phone's secure hardware, not this app, refuses to use it without a recent
   biometric match.
-- Optionally, the machine can print a code on its own console that has to be
-  checked on the phone first, so that somebody who has only stolen the disk
-  cannot get an unlock approved over the network.
+- Optionally, the machine can print a code on its own console that is checked
+  on the phone first, which shows you that the request comes from the machine
+  you are standing at. It does not protect you if someone has a copy of the
+  disk: approve an unlock only when you are rebooting that machine yourself.
 
 Machine and phone find each other over the public Syncthing relay network, so
 no port forwarding and no server of your own are needed. The relay sees two

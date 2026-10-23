@@ -43,6 +43,17 @@
 
 ## Hard-won gotchas (each cost real debugging time; do not rediscover)
 
+- **Most of `cmd/unlocker`'s tests need `cryptsetup` and a loop device**
+  (`formatLoopbackImage`). Where they are missing the suite does not
+  fail fast: it stalls, about 30 seconds per test, until the timeout
+  `[U]` (seen in a sandbox without `cryptsetup`; the cause was not
+  diagnosed further). Run the ones that need no device by name, for
+  example `go test ./cmd/unlocker -run 'TestAuthorizedPeers|TestCanonical|TestPairGivesUp'`,
+  and say plainly which tests did not run.
+- **Device IDs are compared in canonical form** (dashed, upper case). A
+  transport id typed any other way never matches what the transport
+  reports; use `canonicalDeviceID` in `cmd/unlocker` on anything a person
+  typed.
 - **Import only `syncthing-socket`'s `identity` and `discovery`
   packages, never its root package.** The root package is the whole CLI
   and drags in WebRTC, SOCKS and cobra (65 modules in the `cmd/unlocker`

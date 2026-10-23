@@ -132,6 +132,33 @@ reproducibility are untested and not claimed.
 
 ## Open items
 
+- `[U]` Findings of the external security review of `a57ae27` (2026-10-23)
+  that are still open. Fixed since: silent peers holding a listener or the
+  pairing window, the phone validating the challenge point only after the
+  Keystore, empty `PeerID` dials and empty recipient lists failing open,
+  unfiltered peer strings, recipient transport ids not canonicalised,
+  non-uniform scalars, no length check on the recovered secret, and the
+  documents that overstated the confirm code. Open:
+  - The confirm code does not defend against a copy of the disk, and the
+    phone app echoes it instead of asking the user to type it. Fixing it
+    means a design decision: remember at pairing time that a machine
+    requires a code, make the phone take typed input, or drop the
+    claim for good.
+  - A disk image plus one approval recovers the volume secret. The fix is
+    sealing the machine identity in a TPM (not built).
+  - The Android key is usable for a 15 second window after any strong
+    biometric, not bound to the request.
+  - No limit on wrong confirm codes.
+  - `PairProof` does not cover the public key being enrolled. Not
+    changed because it alters the pairing exchange and a phone and a
+    machine on different versions would stop pairing; it needs a
+    versioned bump, and there is no attack today because the pinned
+    channel already stops anyone but the proof's author altering it.
+  - Whether the initrd that carries `machine.pem` is `0600` on a target
+    distribution; scanning any QR code replaces the paired machine before
+    pairing succeeds (Android); device auto-discovery takes the first
+    block device with an `mr-1` token rather than the one being asked
+    about.
 - `[U]` Whether `go-tpm`'s ECDH support is reachable for the
   `keyholder` TPM2 backend; may remain a stub with tests skipped.
 - `[U]` Two fixes for `syncthing-socket` (`ensureResolver` accepting a

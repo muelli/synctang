@@ -26,20 +26,27 @@ Work in progress; see `STATUS.md` for what is built and what is not.
 ## Threat model, in short
 
 The LUKS2 token and the machine's network identity sit on the unencrypted
-disk. They are useless without a key holder, but a thief can still *ask*,
-so:
+disk. They are useless without a key holder, but together they let whoever
+has the disk, or an image of it, *pose as the machine*:
 
-- The key holder shows the machine's name and identity and waits for you
-  to approve every unlock.
-- `--confirm-code` makes the machine print a code on its own console that
-  you must read back, so a thief without eyes on the console cannot
-  complete an unlock.
+- The key holder shows the machine's name and verified identity and waits
+  for you to approve every unlock. **One approval of a request from a copy
+  of your disk hands over the volume secret.** Approve only when you are
+  rebooting that machine yourself. After any suspected exposure of the
+  disk or a backup, change the LUKS passphrase and enrol your key holders
+  again.
+- `--confirm-code` makes the machine print a code on its console that the
+  key holder reads back. It shows you that a request comes from the machine
+  you are standing at. It does not stop someone with a copy of the disk,
+  who simply does not ask for a code, and the phone app currently echoes
+  the code back instead of making you type it.
 - Everything crosses TLS 1.3 with the peer pinned by Device ID; rendezvous
   servers and relays see two Device IDs and a traffic volume, nothing else.
 
-Not defended against: a coerced or careless human pressing approve, and
-unattended reboots by design. Details in `docs/threat-model.md`; the
-protocol is in `docs/mr1-protocol.md`.
+Not defended against: the copied-disk case above until the machine's
+identity can be sealed in a TPM (not built), a coerced or careless human
+pressing approve, and unattended reboots by design. Details in
+`docs/threat-model.md`; the protocol is in `docs/mr1-protocol.md`.
 
 ## Installing
 
@@ -134,7 +141,8 @@ Kernel command line options:
 
 - `rd.unlocker=0` does not start the agent; the escape hatch for when the
   network path is what is broken.
-- `rd.unlocker.confirm_code=1` starts it in confirm-code mode. Off by
+- `rd.unlocker.confirm_code=1` starts it in confirm-code mode (see the
+  threat model above for what that does and does not give you). Off by
   default because it needs a human at the console; opt in per machine.
 
 Off the local network the phone needs Internet access; on the same

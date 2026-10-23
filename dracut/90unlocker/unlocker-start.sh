@@ -26,8 +26,10 @@ fi
 
 # rd.unlocker.confirm_code=1 turns on confirm-code mode: the agent prints a
 # six-digit code to this console and refuses to send a recovery request until a
-# key holder reads it back, so a thief holding only the disk cannot complete an
-# unlock over the network. Off by default, deliberately: it requires a human
+# key holder reads it back. That shows whoever is standing at this console that
+# a request comes from this machine; it does not stop someone running a copy of
+# the disk, who simply does not ask for a code (docs/threat-model.md). Off by
+# default, deliberately: it requires a human
 # with eyes on this machine's console, which is exactly what the ordinary
 # remote-unlock case does not have. Opt in per machine, the same way
 # rd.unlocker=0 opts out of the whole agent.

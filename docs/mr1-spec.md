@@ -129,11 +129,13 @@ rely on this: a token whose `S` is not 65 bytes is not valid MR-1.
 
 A scalar is 32 bytes, big-endian. A freshly generated scalar (`c`, `e`,
 and a new `s`) MUST be uniform in `[1, n-1]`. The reference
-implementation draws 32 random bytes, retries on all-zero, and does not
-reject values `>= n`; its curve library reduces them modulo `n` `[V]`
-(`n + 1` gives `G`, `n` gives `O`). The resulting bias is about
-`2^-32` and is not a concern for conforming implementations, which
-SHOULD reject and redraw instead.
+implementation draws 32 random bytes and rejects and redraws any value
+that is zero or not less than `n` `[V]` (`TestRandomScalar*` in
+`mrcore/scalar_test.go`, including a check that the test fails if the
+upper bound is loosened). Before that was added it accepted anything
+non-zero and relied on its curve library reducing values `>= n` modulo
+`n` (`n + 1` gave `G`, `n` gave `O`), a bias of about `2^-32`; a
+conforming implementation MUST NOT do that.
 
 ### 4.3 x-only results
 
@@ -236,8 +238,11 @@ Decryption MUST check that the nonce is exactly 12 bytes before calling
 the cipher: a corrupt token otherwise crashes some libraries, which
 panic rather than return an error. The reference implementation does
 this `[V]` (`mrcore/mr1.go`; probe call with a 1-byte nonce returns the
-error `invalid nonce length 1, want 12`). It does not check the length
-of the recovered plaintext; an application that expects 32 bytes MUST.
+error `invalid nonce length 1, want 12`). `mrcore` does not check the
+length of the recovered plaintext, since it treats `P` as opaque; an
+application that expects 32 bytes MUST. The reference LUKS application
+does (`checkSecretLength` in `cmd/unlocker/agent.go`, `[V]` by its unit
+test).
 
 ## 6. The token
 
@@ -334,7 +339,9 @@ keeps `K` and `P` from the key holder and from an eavesdropper.
    operator declines, reply with `RecoverResponse{error}` and stop.
    The reference laptop key holder does not do either: it holds one
    scalar, ignores `kid`, and closes the channel with an error instead of
-   sending an `error` response `[I]` (`cmd/keyholder/unlock.go`). Only the
+   sending an `error` response `[I]` (`cmd/keyholder/unlock.go`). The
+   phone also ignores `kid`, which it keeps for display only `[I]`
+   (`mobile/mobile.go`). Only the
    phone sends one `[I]` (`mobile/mobile.go`). A machine MUST therefore
    treat a closed channel as a failed recovery.
 2. Validate `X`: it MUST be non-empty, MUST NOT be `O` (the single byte
@@ -648,7 +655,12 @@ check, so the operation is refused visibly rather than silently
 performed. In the reference implementation, `ValidateChallengePoint`
 rejects empty input, `O`, and anything that does not decode to a curve
 point. Both key holders call it (`cmd/keyholder/unlock.go`,
-`mobile/mobile.go`; `[I]`, from reading). Its hostile-input test,
+`mobile/mobile.go`; `[I]`, from reading). The phone calls it as soon as
+the request is read, before the point is kept or shown to the Kotlin
+side, and again inside the answer step `[V]`
+(`TestConnectRefusesAnOffCurveChallengePoint`); until that was added it
+checked only inside the answer step, after the Keystore had already been
+used. Its hostile-input test,
 `TestValidateChallengePointRefusesHostileInput`, passes `[V]`.
 
 12.3 **What blinding protects, and what it does not.** The key holder
@@ -659,9 +671,24 @@ However, a key holder that also obtains a copy of the token holds `C`,
 `kid`, `nonce` and `ct`, can compute `K = s.C`, and can decrypt `P`
 offline. The scheme therefore protects against a key holder that has
 only seen the exchange, not against one that has also had the disk.
-The same holds for Tang. Likewise anyone with the disk and a willing key
-holder (or a coerced one) can recover `P`; the design's defence is a
-human in the loop for every recovery, not cryptography.
+The same holds for Tang.
+
+The same applies to anyone who holds the token and the machine's
+transport identity, which sit on the unencrypted disk together. Such a
+party can present the machine's Device ID to a key holder, send any `X`
+it likes (including the unblinded `X = C`, that is `e = 0`), and finish
+the recovery exactly as the real machine would `[I]` (an independent
+reviewer ran the algebra; it was not re-run here). Blinding hides `C` from the key holder; it does
+nothing against a machine impersonator. One approval from the human is
+therefore enough to hand over `P`, and that approval need not be careless:
+if the impersonator is listening while the owner reboots the real machine,
+both announce the same Device ID, the key holder takes the first handshake
+that pins correctly, and the owner may approve the wrong one `[I]`.
+Revoking the key holder afterwards does not help, because the keyslot in
+the copied image still opens with `P`. The design's defence is a human in
+the loop for every recovery, not cryptography; the defence that would
+survive a disk image is sealing the machine's identity in a TPM, which is
+not built (`docs/threat-model.md`).
 
 12.4 **Replay.** `Y` depends on `X`, which depends on a fresh `e` drawn
 for each attempt; a recorded answer is useless for a later attempt.
@@ -688,16 +715,44 @@ paths. The reference implementation does so on a best-effort basis; Go
 offers no guarantee that a write to memory is not optimised away `[I]`
 (its own comment on `Wipe` says so).
 
-12.9 **Confirm code.** It proves possession of the console, not of any
-key, is compared in constant time, and is reused across attempts in one
-run. The protocol puts no limit on the number of attempts; any such
-limit is the machine's policy and was not examined `[U]`. A
-six-digit code is documented for the reference implementation
-(`docs/threat-model.md`), not enforced by the wire format.
+12.9 **Confirm code.** It is a secret the machine shows on its own
+console and the key holder must hand back before the machine sends its
+recovery request. What it can show is narrow. It shows the owner, who is
+standing at the console, that the request comes from the machine in front
+of them, which exposes a machine impersonator (section 12.3) whose
+console they cannot see. It does NOT protect against a party holding a
+copy of the disk: the machine decides whether to ask, an empty `code`
+means "not required", and both reference key holders skip the step when
+it is empty, so an impersonator simply does not ask `[I]` (read in
+`cmd/keyholder/unlock.go` and `mobile/mobile.go`, not run). A
+key holder that wants the protection MUST remember at pairing time that
+this machine requires a code and refuse an exchange that offers none;
+the reference key holders do not yet `[I]`.
+
+The reference phone application also shows the received code on screen
+and sends it back on one tap, so the user never types it; for the phone
+the code is currently a display of what the machine said and proves
+nothing `[I]`. The reference laptop key holder asks the user to type it.
+
+The comparison is constant time and the same code is reused across
+attempts in one run. The protocol puts no limit on the number of
+attempts, and the reference machine accepts one attempt per connection
+indefinitely, so six digits guessed by an authorised peer take roughly
+11 to 12 days at one attempt every two seconds `[I]`. A six-digit code is
+the reference implementation's choice (`docs/threat-model.md`), not
+enforced by the wire format.
 
 12.10 **Denial of service.** The 64 KiB message cap bounds memory per
 message. Nothing in the protocol bounds the number of connections or
-requests; that is up to the transport and the application.
+requests; that is up to the transport and the application. The reference
+transport bounds each TLS handshake to ten seconds on both sides, so a
+peer that connects and goes silent cannot hold a listener, and bounds the
+wait for a pairing request to thirty seconds `[V]`
+(`TestServerHandshakeGivesUpOnASilentPeer`,
+`TestPairGivesUpOnAPeerThatNeverSendsItsRequest`). Before that a single
+silent connection could take the machine off the air for the rest of the
+boot. An attacker can still occupy a listener for the length of one
+handshake timeout at a time `[I]`.
 
 12.11 **Side channels.** The reference implementation uses a
 constant-time P-256 library for scalar multiplication, including in

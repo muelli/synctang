@@ -131,16 +131,25 @@ assignments `[V]`):
    `func DeviceID(cert tls.Certificate) string` (and a parser or
    validator for ID strings), so callers need not import Syncthing at
    all. This is an addition, not a trim, so it was not applied.
-2. **`Dial` with an empty `PeerID` pins nothing** when `DirectAddr` is
-   set: `doClientHandshake` skips the comparison when
-   `expectedPeerID == ""`. The relay path rejects an empty or invalid ID
-   when it parses it. Proposal: reject an empty `PeerID` up front in
-   every implementation, unless an explicit "trust on first use" option
-   is added for pairing `[I]`.
-3. **`Listen` and `Dial` differ in retry semantics** (listen restarts,
+2. **`Dial` with an empty `PeerID`.** Done: every implementation now
+   returns `ErrNoPeerID` up front `[V]` (`TestDialRefusesAnEmptyPeerID`).
+   Before that, a direct dial with no ID skipped the comparison and
+   pinned nobody. `Listen` still treats an empty `AuthorizedPeers` as
+   "accept any peer that completes the handshake", which pairing relies
+   on and `cmd/unlocker`'s agent now refuses to start with (`[V]`,
+   `TestAuthorizedPeersRefusesATokenWithNoTransportIdentity`); an explicit
+   option for "any peer" would make that fail-open default a visible
+   choice, and was not added `[I]`.
+3. **Handshake deadline.** Every TLS handshake is bounded by the
+   package variable `handshakeTimeout` (ten seconds) on both sides, so a
+   peer that connects and says nothing cannot hold a `Listen` leg
+   `[V]`. It is a variable only so tests can shorten it; it is not part
+   of the API. `Listen` still handshakes one connection at a time, so a
+   stranger can occupy a leg for up to one timeout per connection `[I]`.
+4. **`Listen` and `Dial` differ in retry semantics** (listen restarts,
    dial does not); this is documented in `doc.go` but not in the
    `Transport` interface comment.
-4. **Logging** uses `log/slog` with a custom trace level
+5. **Logging** uses `log/slog` with a custom trace level
    (`slog.Level(-8)`) that `cmd/unlocker` redefines independently. A
    stand-alone package should export or document the level.
 
