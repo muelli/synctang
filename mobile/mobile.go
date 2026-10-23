@@ -187,6 +187,13 @@ func affineCoord(point []byte, off int) ([]byte, error) {
 	return append([]byte(nil), point[off:off+coordLen]...), nil
 }
 
+// machineNameMaxRunes and machineErrorMaxRunes bound text the machine
+// chose, before it reaches the screen.
+const (
+	machineNameMaxRunes  = 64
+	machineErrorMaxRunes = 200
+)
+
 // Session is one key holder side of an MR-1 recovery: dial the
 // machine, learn who is asking, hand the challenge point to the
 // Keystore, send the answer back.
@@ -366,7 +373,7 @@ func (s *Session) connectOnceLocked(ctx context.Context, cert tls.Certificate) e
 		s.closeLocked()
 		return fmt.Errorf("mobile: reading hello: %w", err)
 	}
-	s.machineName = hello.Name
+	s.machineName = mrcore.SafeLabel(hello.Name, machineNameMaxRunes)
 
 	return s.readChallengeLocked()
 }
@@ -573,7 +580,7 @@ func (s *Session) AnswerXOnly(xOnly []byte) error {
 		return fmt.Errorf("mobile: answer sent, but the machine did not report the outcome, so it may or may not have unlocked: %w", err)
 	}
 	if !result.OK {
-		return fmt.Errorf("mobile: the machine could not use the answer: %s", result.Error)
+		return fmt.Errorf("mobile: the machine could not use the answer: %s", mrcore.SafeLabel(result.Error, machineErrorMaxRunes))
 	}
 	return nil
 }

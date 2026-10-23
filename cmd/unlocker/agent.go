@@ -175,7 +175,7 @@ func runExchange(
 		return fmt.Errorf("unlocker: reading recover response: %w", err)
 	}
 	if resp.Error != "" {
-		return fmt.Errorf("unlocker: key holder declined: %s", resp.Error)
+		return fmt.Errorf("unlocker: key holder declined: %s", mrcore.SafeLabel(resp.Error, 200))
 	}
 
 	// From here on the key holder has done its part and is waiting to

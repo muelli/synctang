@@ -63,7 +63,7 @@ func runUnlockOnce(ctx context.Context, s []byte, cert tls.Certificate, machineI
 	in := bufio.NewReader(stdin)
 
 	if !yes {
-		fmt.Fprintf(stdout, "Machine %q (%s) wants to unlock. Press Enter to approve, Ctrl-C to abort: ", hello.Name, machineID)
+		fmt.Fprintf(stdout, "Machine %q (%s) wants to unlock. Press Enter to approve, Ctrl-C to abort: ", mrcore.SafeLabel(hello.Name, 64), machineID)
 		if _, err := in.ReadString('\n'); err != nil && err != io.EOF {
 			return fmt.Errorf("reading approval: %w", err)
 		}
