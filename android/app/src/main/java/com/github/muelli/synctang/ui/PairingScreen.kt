@@ -42,8 +42,7 @@ internal fun PairingScreen(
     var typed by remember { mutableStateOf("") }
     var rejected by remember { mutableStateOf(false) }
 
-    Text(stringResource(R.string.pair_title), style = MaterialTheme.typography.headlineSmall)
-    Text(stringResource(R.string.pair_scan_hint), style = MaterialTheme.typography.bodyMedium)
+    ScreenHeader(stringResource(R.string.pair_title), stringResource(R.string.pair_scan_hint))
     state.previous?.let { previous ->
         val name = previous.name.ifBlank { previous.deviceId }
         Text(stringResource(R.string.pair_keeps_previous, name), style = MaterialTheme.typography.bodyMedium)
@@ -78,7 +77,9 @@ internal fun PairingScreen(
     Button(
         onClick = { rejected = !onPair(typed) },
         enabled = typed.isNotBlank(),
-        modifier = Modifier.focusRing(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .focusRing(),
     ) {
         Text(stringResource(R.string.pair_manual_action))
     }
@@ -92,7 +93,9 @@ internal fun PairingScreen(
     state.previous?.let { previous ->
         OutlinedButton(
             onClick = onKeepCurrent,
-            modifier = Modifier.focusRing(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRing(),
         ) {
             Text(stringResource(R.string.pair_keep_current, previous.name.ifBlank { previous.deviceId }))
         }

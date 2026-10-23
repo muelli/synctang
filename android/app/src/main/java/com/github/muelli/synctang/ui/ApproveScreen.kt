@@ -7,6 +7,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
@@ -18,14 +20,9 @@ import com.github.muelli.synctang.rememberAutoFocusRequester
 
 @Composable
 internal fun ApproveScreen(state: UnlockUiState.Approve, onApprove: () -> Unit, onDecline: () -> Unit) {
-    Text(stringResource(R.string.unlock_request_title), style = MaterialTheme.typography.headlineSmall)
-    MachineHeading(state.machine)
-    // The verified identity is shown as well as the name, because the
-    // name is only what the machine called itself and nothing proves
-    // it; the device ID is derived from the certificate the peer
-    // proved possession of during the handshake.
-    Labelled(stringResource(R.string.unlock_request_identity), state.peerId)
-    Labelled(stringResource(R.string.unlock_request_key), state.kidHex)
+    ScreenHeader(stringResource(R.string.unlock_request_title), stringResource(R.string.approve_explanation))
+    MachineIdentity(state.machine, state.peerId, onEscape = onDecline)
+    Identifier(stringResource(R.string.unlock_request_key), state.kidHex, shortKeyId(state.kidHex), onDecline)
 
     // Focus starts on Approve even though it is the consequential
     // button, because approving still has to get past BiometricPrompt:
@@ -35,12 +32,12 @@ internal fun ApproveScreen(state: UnlockUiState.Approve, onApprove: () -> Unit, 
     Button(
         onClick = onApprove,
         modifier = Modifier
-            .fillMaxWidth()
+            .heroAction()
             .focusRequester(rememberAutoFocusRequester())
             .onEscape(onDecline)
             .focusRing(),
     ) {
-        Text(stringResource(R.string.unlock_approve))
+        Text(stringResource(R.string.unlock_approve), style = MaterialTheme.typography.titleMedium)
     }
     OutlinedButton(
         onClick = onDecline,

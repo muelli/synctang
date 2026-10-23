@@ -39,17 +39,24 @@
 
     <!-- Unlock -->
     <string name="unlock_machine">Machine</string>
+    <string name="ready_paired_with">Paired with</string>
     <string name="unlock_action">Unlock</string>
     <string name="unlock_connecting">Connecting to the machine…</string>
     <string name="unlock_working">Working…</string>
     <string name="busy_cancel">Cancel</string>
     <string name="unlock_waiting_hint">The machine has to be waiting at its unlock prompt before this will connect.</string>
     <string name="unlock_request_title">A machine is asking to be unlocked</string>
-    <string name="unlock_request_identity">Verified identity</string>
+    <string name="approve_explanation">Approving answers it with this phone\'s key, after a fingerprint or face check. Approve only if you are unlocking this machine now.</string>
+    <string name="unlock_request_identity">Device ID</string>
+    <string name="identity_matches">This is the machine this phone was paired with.</string>
+    <string name="identity_mismatch">This is not the machine this phone was paired with.</string>
+    <string name="identifier_show_all">Show in full</string>
+    <string name="identifier_show_less">Show less</string>
     <string name="unlock_request_key">Key requested</string>
     <string name="unlock_approve">Approve and unlock</string>
     <string name="unlock_decline">Refuse</string>
-    <string name="unlock_done">Answered. The machine can now unlock its disk.</string>
+    <string name="unlock_done">%1$s can now unlock its disk.</string>
+    <string name="done_title">Answered</string>
     <string name="unlock_again">Unlock something again</string>
 
     <!-- Confirm code -->

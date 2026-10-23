@@ -90,19 +90,25 @@ private fun ReadyLargeFontPreview() = Frame {
 @Preview(name = "Connecting", widthDp = 360, heightDp = 640)
 @Composable
 private fun ConnectingPreview() = Frame {
-    Busy(stringResource(R.string.unlock_connecting), onCancel = {})
+    Busy(stringResource(R.string.unlock_connecting), machine, onCancel = {})
 }
 
 @Preview(name = "Pairing", widthDp = 360, heightDp = 640)
 @Composable
 private fun PairingPreview() = Frame {
-    Busy(stringResource(R.string.pair_working), onCancel = {})
+    Busy(stringResource(R.string.pair_working), machine, onCancel = {})
 }
 
 @Preview(name = "Working", widthDp = 360, heightDp = 640)
 @Composable
 private fun WorkingPreview() = Frame {
-    Busy(stringResource(R.string.unlock_working))
+    Busy(stringResource(R.string.unlock_working), machine)
+}
+
+@Preview(name = "Approve, identity does not match", widthDp = 360, heightDp = 800)
+@Composable
+private fun ApproveMismatchPreview() = Frame {
+    ApproveScreen(UnlockUiState.Approve(machine, PHONE_ID, KID), {}, {})
 }
 
 @Preview(name = "ConfirmCode", widthDp = 360, heightDp = 800)

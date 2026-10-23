@@ -3,6 +3,8 @@ package com.github.muelli.synctang.ui
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -24,32 +26,17 @@ import com.github.muelli.synctang.rememberAutoFocusRequester
 
 @Composable
 internal fun FailedScreen(state: UnlockUiState.Failed, onRetry: () -> Unit, onScanAgain: () -> Unit) {
-    state.machine?.let { MachineHeading(it) }
-    Text(stringResource(R.string.error_title), style = MaterialTheme.typography.headlineSmall)
-    SelectionContainer {
-        Text(
-            state.message,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.error,
-        )
-    }
+    StatusHeader(
+        Icons.Filled.Warning,
+        MaterialTheme.colorScheme.error,
+        stringResource(R.string.error_title),
+        state.message,
+    )
+    state.machine?.let { MachineName(it) }
     // The machine's own reason, where it gave one.
     state.detail?.let { detail ->
         SelectionContainer {
             Text(detail, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
-        }
-    }
-    // Of no use to most people, but the one thing worth quoting in a
-    // bug report, so it is selectable.
-    state.technical?.let { technical ->
-        var showDetails by rememberSaveable { mutableStateOf(false) }
-        TextButton(onClick = { showDetails = !showDetails }, modifier = Modifier.focusRing()) {
-            Text(stringResource(if (showDetails) R.string.error_details_hide else R.string.error_details_show))
-        }
-        if (showDetails) {
-            SelectionContainer {
-                Text(technical, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
-            }
         }
     }
     // A pairing code is single-use, so retrying a failed pairing means
@@ -64,5 +51,19 @@ internal fun FailedScreen(state: UnlockUiState.Failed, onRetry: () -> Unit, onSc
             .focusRing(),
     ) {
         Text(stringResource(if (scanAgain) R.string.error_scan_again else R.string.error_retry))
+    }
+    // Of no use to most people, but the one thing worth quoting in a
+    // bug report, so it is selectable. Below the action, so that it
+    // never pushes the action off a small screen.
+    state.technical?.let { technical ->
+        var showDetails by rememberSaveable { mutableStateOf(false) }
+        TextButton(onClick = { showDetails = !showDetails }, modifier = Modifier.focusRing()) {
+            Text(stringResource(if (showDetails) R.string.error_details_hide else R.string.error_details_show))
+        }
+        if (showDetails) {
+            SelectionContainer {
+                Text(technical, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+            }
+        }
     }
 }
