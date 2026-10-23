@@ -418,6 +418,14 @@ func (s *Session) readRecoverRequestLocked() error {
 		s.closeLocked()
 		return errors.New("mobile: machine sent a recovery request with no challenge point")
 	}
+	// The machine chose this point and the Keystore is about to apply the
+	// long-term key to it. Checked here, before the point is kept or shown
+	// to the caller, so nothing off the curve can reach the Kotlin side;
+	// AnswerXOnly checks again as the last step before the answer is sent.
+	if err := mrcore.ValidateChallengePoint(mrcore.P256(), req.X); err != nil {
+		s.closeLocked()
+		return fmt.Errorf("mobile: refusing the machine's challenge: %w", err)
+	}
 	s.kid = req.Kid
 	s.x = req.X
 	return nil

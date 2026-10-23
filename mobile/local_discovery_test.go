@@ -91,10 +91,22 @@ func TestSessionConnectsOverLocalDiscoveryWithoutTheRelay(t *testing.T) {
 		}
 		// A recovery request the phone will never be asked to answer:
 		// this test is about reachability, and Connect returns once it
-		// has read this far.
+		// has read this far. The point still has to be a real one, since
+		// Connect refuses anything off the curve.
+		g := mrcore.P256()
+		scalar, err := g.RandomScalar()
+		if err != nil {
+			machineErr <- err
+			return
+		}
+		point, err := g.ScalarBaseMult(scalar)
+		if err != nil {
+			machineErr <- err
+			return
+		}
 		if err := mrcore.WriteMessage(conn, mrcore.RecoverRequest{
 			Kid: []byte("test-kid"),
-			X:   make([]byte, 32),
+			X:   point,
 		}); err != nil {
 			machineErr <- err
 			return
