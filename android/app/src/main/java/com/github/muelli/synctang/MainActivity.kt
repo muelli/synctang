@@ -5,6 +5,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.os.Bundle
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -79,6 +80,17 @@ class MainActivity : FragmentActivity() {
 fun SynctangApp(gate: BiometricGate, model: UnlockViewModel = viewModel()) {
     val state by model.state.collectAsState()
 
+    // Only intercepted where something is waiting on this phone; on
+    // every other screen back leaves the app as usual.
+    val back = backAction(state)
+    BackHandler(enabled = back != BackAction.EXIT) {
+        when (back) {
+            BackAction.CANCEL -> model.cancel()
+            BackAction.KEEP_CURRENT_MACHINE -> model.keepCurrentMachine()
+            BackAction.IGNORE, BackAction.EXIT -> Unit
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -87,9 +99,10 @@ fun SynctangApp(gate: BiometricGate, model: UnlockViewModel = viewModel()) {
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         when (val current = state) {
-            is UnlockUiState.NeedsPairing -> PairingScreen(current.identity, model)
+            is UnlockUiState.NeedsPairing -> PairingScreen(current, model)
             is UnlockUiState.Ready -> ReadyScreen(current, model)
-            is UnlockUiState.Connecting -> Busy(stringResource(R.string.unlock_connecting))
+            is UnlockUiState.Connecting -> Busy(stringResource(R.string.unlock_connecting), onCancel = model::cancel)
+            is UnlockUiState.Pairing -> Busy(stringResource(R.string.pair_working), onCancel = model::cancel)
             is UnlockUiState.Working -> Busy(stringResource(R.string.unlock_working))
             is UnlockUiState.ConfirmCode -> ConfirmCodeScreen(current, model)
             is UnlockUiState.Approve -> ApproveScreen(current, gate, model)
@@ -99,19 +112,41 @@ fun SynctangApp(gate: BiometricGate, model: UnlockViewModel = viewModel()) {
     }
 }
 
+/**
+ * A spinner, and a Cancel button when [onCancel] is given. A dial can
+ * run for a minute and a half against a machine that is not waiting,
+ * which is too long to offer nothing but the back gesture.
+ */
 @Composable
-private fun Busy(message: String) {
+private fun Busy(message: String, onCancel: (() -> Unit)? = null) {
     CircularProgressIndicator()
     Text(message, style = MaterialTheme.typography.bodyLarge)
+    if (onCancel != null) {
+        OutlinedButton(
+            onClick = onCancel,
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(rememberAutoFocusRequester())
+                .onEscape(onCancel)
+                .focusRing(),
+        ) {
+            Text(stringResource(R.string.busy_cancel))
+        }
+    }
 }
 
 @Composable
-private fun PairingScreen(identity: Identity, model: UnlockViewModel) {
+private fun PairingScreen(state: UnlockUiState.NeedsPairing, model: UnlockViewModel) {
+    val identity = state.identity
     var typed by remember { mutableStateOf("") }
     var rejected by remember { mutableStateOf(false) }
 
     Text(stringResource(R.string.pair_title), style = MaterialTheme.typography.headlineSmall)
     Text(stringResource(R.string.pair_scan_hint), style = MaterialTheme.typography.bodyMedium)
+    state.previous?.let { previous ->
+        val name = previous.name.ifBlank { previous.deviceId }
+        Text(stringResource(R.string.pair_keeps_previous, name), style = MaterialTheme.typography.bodyMedium)
+    }
 
     QrScanner(
         onScanned = { scanned -> model.pair(scanned).also { rejected = !it } },
@@ -152,6 +187,14 @@ private fun PairingScreen(identity: Identity, model: UnlockViewModel) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.error,
         )
+    }
+    state.previous?.let { previous ->
+        OutlinedButton(
+            onClick = { model.keepCurrentMachine() },
+            modifier = Modifier.focusRing(),
+        ) {
+            Text(stringResource(R.string.pair_keep_current, previous.name.ifBlank { previous.deviceId }))
+        }
     }
 
     Spacer(Modifier.height(8.dp))
@@ -204,6 +247,11 @@ private fun ReadyScreen(state: UnlockUiState.Ready, model: UnlockViewModel) {
             .focusRing(),
     ) {
         Text(stringResource(R.string.unlock_action))
+    }
+    // Not destructive: the machine above stays paired, and stays the
+    // one Unlock dials, until a new pairing has actually worked.
+    TextButton(onClick = { model.startPairing() }, modifier = Modifier.focusRing()) {
+        Text(stringResource(R.string.pair_again))
     }
     Spacer(Modifier.height(8.dp))
     // Collapsed, and worded for a phone that is already enrolled. Shown
@@ -318,14 +366,18 @@ private fun FailedScreen(state: UnlockUiState.Failed, model: UnlockViewModel) {
             color = MaterialTheme.colorScheme.error,
         )
     }
+    // A pairing code is single-use, so retrying a failed pairing means
+    // a fresh scan, not a dial against a machine that never enrolled
+    // this phone.
+    val scanAgain = state.retry == Retry.SCAN_AGAIN
     Button(
-        onClick = { model.refresh() },
+        onClick = { if (scanAgain) model.startPairing() else model.refresh() },
         modifier = Modifier
             .fillMaxWidth()
             .focusRequester(rememberAutoFocusRequester())
             .focusRing(),
     ) {
-        Text(stringResource(R.string.error_retry))
+        Text(stringResource(if (scanAgain) R.string.error_scan_again else R.string.error_retry))
     }
 }
 

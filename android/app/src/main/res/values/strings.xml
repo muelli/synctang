@@ -20,6 +20,10 @@
     <string name="pair_enrol_hint">Run this on the machine, once, to let this phone unlock it.</string>
     <string name="pair_copy">Copy the enrolment command</string>
     <string name="pair_copied">Copied.</string>
+    <string name="pair_again">Pair with a machine again</string>
+    <string name="pair_keeps_previous">%1$s stays paired until a new pairing works.</string>
+    <string name="pair_keep_current">Keep using %1$s</string>
+    <string name="pair_working">Pairing with the machine…</string>
 
     <!-- Identity -->
     <string name="identity_device_id">This phone\'s device ID</string>
@@ -32,6 +36,7 @@
     <string name="unlock_action">Unlock</string>
     <string name="unlock_connecting">Connecting to the machine…</string>
     <string name="unlock_working">Working…</string>
+    <string name="busy_cancel">Cancel</string>
     <string name="unlock_waiting_hint">The machine has to be waiting at its unlock prompt before this will connect.</string>
     <string name="unlock_request_title">A machine is asking to be unlocked</string>
     <string name="unlock_request_identity">Verified identity</string>
@@ -59,4 +64,7 @@
     <string name="error_biometric_unavailable">The phone\'s biometric hardware cannot be used right now, so the key cannot be used either. Try again in a moment. Nothing was sent to the machine.</string>
     <string name="error_title">That did not work</string>
     <string name="error_retry">Try again</string>
+    <string name="error_scan_again">Scan again</string>
+    <string name="error_connection_lost">The connection to the machine was lost.</string>
+    <string name="error_nothing_to_approve">The machine connected but sent nothing to approve.</string>
 </resources>

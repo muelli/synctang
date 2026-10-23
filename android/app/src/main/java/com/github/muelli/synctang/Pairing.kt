@@ -27,7 +27,7 @@ data class Machine(val deviceId: String, val name: String)
  * at an attacker's machine, so this uses EncryptedSharedPreferences
  * rather than a plain file.
  */
-class PairingStore(context: Context) {
+class PairingStore(context: Context) : MachineStore {
 
     private val prefs: SharedPreferences by lazy {
         val masterKey = MasterKey.Builder(context)
@@ -54,12 +54,12 @@ class PairingStore(context: Context) {
         return fresh
     }
 
-    fun machine(): Machine? {
+    override fun machine(): Machine? {
         val id = prefs.getString(KEY_MACHINE_ID, null) ?: return null
         return Machine(id, prefs.getString(KEY_MACHINE_NAME, null).orEmpty())
     }
 
-    fun saveMachine(machine: Machine) {
+    override fun saveMachine(machine: Machine) {
         prefs.edit()
             .putString(KEY_MACHINE_ID, machine.deviceId)
             .putString(KEY_MACHINE_NAME, machine.name)
