@@ -53,7 +53,10 @@ func enrolRecipient(device string, existingPassphrase, recipientPublicKey []byte
 	defer mrcore.Wipe(P)
 
 	if recipientTransportID != "" {
-		rec.Transport = json.RawMessage(fmt.Sprintf(`{"device_id":%q}`, recipientTransportID))
+		rec.Transport, err = recipientTransportBlob(recipientTransportID)
+		if err != nil {
+			return fmt.Errorf("--recipient-transport-id: %w", err)
+		}
 	}
 
 	// The keyslot is added with keyMaterial, not raw P: see
@@ -160,8 +163,9 @@ func loadEnrolledToken(device string) (mrcore.Token, int, error) {
 }
 
 func recipientIndexByTransportID(tok mrcore.Token, recipientTransportID string) (int, error) {
+	want := canonicalOrRaw(recipientTransportID)
 	for i, rec := range tok.Recipients {
-		if id, ok := rec.TransportDeviceID(); ok && id == recipientTransportID {
+		if id, ok := rec.TransportDeviceID(); ok && canonicalOrRaw(id) == want {
 			return i, nil
 		}
 	}

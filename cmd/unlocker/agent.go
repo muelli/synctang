@@ -37,7 +37,7 @@ func authorizedPeersFor(tok mrcore.Token) ([]string, error) {
 	var peers []string
 	for _, rec := range tok.Recipients {
 		if id, ok := rec.TransportDeviceID(); ok {
-			peers = append(peers, id)
+			peers = append(peers, canonicalOrRaw(id))
 		}
 	}
 	if len(peers) == 0 {
@@ -134,7 +134,7 @@ func runExchange(
 
 	var matched *mrcore.Recipient
 	for i := range tok.Recipients {
-		if id, ok := tok.Recipients[i].TransportDeviceID(); ok && id == conn.PeerID() {
+		if id, ok := tok.Recipients[i].TransportDeviceID(); ok && canonicalOrRaw(id) == conn.PeerID() {
 			matched = &tok.Recipients[i]
 			break
 		}
