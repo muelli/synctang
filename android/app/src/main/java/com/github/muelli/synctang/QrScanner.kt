@@ -47,7 +47,7 @@ import java.util.concurrent.Executors
  */
 @Composable
 fun QrScanner(
-    onScanned: (String) -> Unit,
+    onScanned: (String) -> Boolean,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -65,10 +65,11 @@ fun QrScanner(
 
     val lifecycleOwner = LocalLifecycleOwner.current
     val executor = remember { Executors.newSingleThreadExecutor() }
-    // One decode is enough: the pairing screen closes on the first
-    // result, and delivering the same code repeatedly would fight the
-    // navigation that follows.
-    var delivered by remember { mutableStateOf(false) }
+    // An accepted code ends scanning, since the pairing screen closes
+    // on it. A rejected one re-arms the latch so the camera keeps
+    // looking, but the same text is not re-offered for a couple of
+    // seconds, or one bad code would fire the callback every frame.
+    val latch = remember { ScanLatch { android.os.SystemClock.elapsedRealtime() } }
 
     DisposableEffect(Unit) {
         onDispose { executor.shutdown() }
@@ -92,9 +93,10 @@ fun QrScanner(
                     analysis.setAnalyzer(executor) { image ->
                         val text = image.decodeQrCode()
                         image.close()
-                        if (text != null && !delivered) {
-                            delivered = true
-                            previewView.post { onScanned(text) }
+                        if (text != null && latch.offer(text)) {
+                            previewView.post {
+                                if (onScanned(text)) latch.accepted() else latch.rejected()
+                            }
                         }
                     }
 
@@ -109,6 +111,44 @@ fun QrScanner(
                 previewView
             },
         )
+    }
+}
+
+private const val REPEAT_IGNORE_MS = 2000L
+
+/**
+ * Decides which decoded codes reach the caller. Rejected scans re-arm,
+ * so a bad code does not leave the camera dead; identical text is
+ * debounced for [REPEAT_IGNORE_MS] since the analyser sees the same
+ * code on every frame. Touched from the analyser thread and the main
+ * thread, hence synchronized.
+ */
+class ScanLatch(private val now: () -> Long) {
+    private var done = false
+    private var inFlight = false
+    private var lastText: String? = null
+    private var lastOffered = 0L
+
+    @Synchronized
+    fun offer(text: String): Boolean {
+        if (done || inFlight) return false
+        val t = now()
+        if (text == lastText && t - lastOffered < REPEAT_IGNORE_MS) return false
+        inFlight = true
+        lastText = text
+        lastOffered = t
+        return true
+    }
+
+    @Synchronized
+    fun accepted() {
+        done = true
+        inFlight = false
+    }
+
+    @Synchronized
+    fun rejected() {
+        inFlight = false
     }
 }
 

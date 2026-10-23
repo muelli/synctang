@@ -114,7 +114,7 @@ private fun PairingScreen(identity: Identity, model: UnlockViewModel) {
     Text(stringResource(R.string.pair_scan_hint), style = MaterialTheme.typography.bodyMedium)
 
     QrScanner(
-        onScanned = { scanned -> rejected = !model.pair(scanned) },
+        onScanned = { scanned -> model.pair(scanned).also { rejected = !it } },
         modifier = Modifier
             .fillMaxWidth()
             .height(260.dp)
