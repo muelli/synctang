@@ -132,6 +132,9 @@ func (l *LocalDiscovery) Listen(ctx context.Context, opts ListenOptions) (Conn, 
 
 // Dial implements Transport.
 func (l *LocalDiscovery) Dial(ctx context.Context, opts DialOptions) (Conn, error) {
+	if opts.PeerID == "" {
+		return nil, ErrNoPeerID
+	}
 	// Keep listening after an announcement turns out to be useless.
 	//
 	// Anybody on the network can announce, and an announcement is only

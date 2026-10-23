@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -25,6 +26,26 @@ import (
 // host keys and other unrelated prompts, and handing a recovered LUKS
 // secret to whatever happens to be asking would be its own kind of bug.
 const cryptsetupAskIDPrefix = "cryptsetup"
+
+// authorizedPeersFor lists the transport Device IDs allowed to connect, one
+// per recipient that carries one. An empty list would mean "accept anyone"
+// to the transport, so a token whose recipients have none (a recipient
+// enrolled by hand without --recipient-transport-id) is refused here
+// instead of leaving the agent listening to strangers and failing to match
+// them afterwards.
+func authorizedPeersFor(tok mrcore.Token) ([]string, error) {
+	var peers []string
+	for _, rec := range tok.Recipients {
+		if id, ok := rec.TransportDeviceID(); ok {
+			peers = append(peers, id)
+		}
+	}
+	if len(peers) == 0 {
+		return nil, errors.New("unlocker: no enrolled recipient has a transport id, so no key holder could be told apart from a stranger; " +
+			"enrol again with --recipient-transport-id (see 'unlocker status')")
+	}
+	return peers, nil
+}
 
 // runAgentOnce performs one recovery attempt against device: it waits for
 // exactly one key holder to connect (via tr), runs the MR-1 recovery
@@ -54,11 +75,9 @@ func runAgentOnce(ctx context.Context, device string, machineCert tls.Certificat
 		return fmt.Errorf("unlocker: %s has no enrolled mr-1 recipients", device)
 	}
 
-	var authorizedPeers []string
-	for _, rec := range tok.Recipients {
-		if id, ok := rec.TransportDeviceID(); ok {
-			authorizedPeers = append(authorizedPeers, id)
-		}
+	authorizedPeers, err := authorizedPeersFor(tok)
+	if err != nil {
+		return err
 	}
 
 	opts := listenOpts

@@ -226,6 +226,9 @@ func (t *SyncthingRelay) Listen(ctx context.Context, opts ListenOptions) (Conn, 
 
 // Dial implements Transport.
 func (t *SyncthingRelay) Dial(ctx context.Context, opts DialOptions) (Conn, error) {
+	if opts.PeerID == "" {
+		return nil, ErrNoPeerID
+	}
 	if opts.DirectAddr != "" {
 		raw, err := t.dialDirect(ctx, opts.DirectAddr)
 		if err != nil {

@@ -4,6 +4,7 @@ package transport
 
 import (
 	"context"
+	"errors"
 	"io"
 )
 
@@ -48,11 +49,18 @@ type ListenOptions struct {
 	DirectAddr string
 }
 
+// ErrNoPeerID is what Dial returns when DialOptions.PeerID is empty. A
+// dial that pins no identity would complete its handshake with whoever
+// answered, so it is refused instead of being left to each caller to get
+// right.
+var ErrNoPeerID = errors.New("transport: Dial needs a PeerID to pin the peer's identity")
+
 // DialOptions configures Transport.Dial.
 type DialOptions struct {
-	// PeerID is the Device ID string of the identity to dial. Dial
-	// verifies, after the TLS handshake, that the peer's
-	// certificate-derived Device ID matches this value.
+	// PeerID is the Device ID string of the identity to dial. It must
+	// not be empty (Dial returns ErrNoPeerID). Dial verifies, after the
+	// TLS handshake, that the peer's certificate-derived Device ID
+	// matches this value.
 	PeerID string
 
 	// DirectAddr, when non-empty, is a "host:port" address to dial

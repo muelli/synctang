@@ -36,6 +36,9 @@ type multiResult struct {
 
 // Dial implements Transport.
 func (m *Multi) Dial(ctx context.Context, opts DialOptions) (Conn, error) {
+	if opts.PeerID == "" {
+		return nil, ErrNoPeerID
+	}
 	return m.race(ctx, false, func(ctx context.Context, tr Transport) (Conn, error) {
 		return tr.Dial(ctx, opts)
 	})
