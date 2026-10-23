@@ -321,6 +321,11 @@ func (t *SyncthingRelay) serverHandshake(raw net.Conn, authorizedPeers []string,
 	return doServerHandshake(t.Cert, t.logger(), raw, authorizedPeers, onClose)
 }
 
+// handshakeTimeout bounds one TLS handshake on either side. Without it a
+// peer that connects and then says nothing holds the connection, and with
+// it the listener leg, for as long as the caller's context lives.
+var handshakeTimeout = 10 * time.Second
+
 // doServerHandshake is serverHandshake's body, a free function so
 // LocalDiscovery can share it: the TLS handshake and Device ID checks
 // are exactly the same regardless of how the two sides found each
@@ -332,6 +337,7 @@ func doServerHandshake(cert tls.Certificate, logger *slog.Logger, raw net.Conn, 
 		MinVersion:   tls.VersionTLS13,
 	}
 	tlsConn := tls.Server(raw, tlsConf)
+	_ = raw.SetDeadline(time.Now().Add(handshakeTimeout))
 	if err := tlsConn.Handshake(); err != nil {
 		raw.Close()
 		if onClose != nil {
@@ -339,6 +345,7 @@ func doServerHandshake(cert tls.Certificate, logger *slog.Logger, raw net.Conn, 
 		}
 		return nil, fmt.Errorf("transport: server handshake: %w", err)
 	}
+	_ = raw.SetDeadline(time.Time{})
 
 	state := tlsConn.ConnectionState()
 	if len(state.PeerCertificates) == 0 {
@@ -382,10 +389,12 @@ func doClientHandshake(cert tls.Certificate, logger *slog.Logger, raw net.Conn, 
 		MinVersion:         tls.VersionTLS13,
 	}
 	tlsConn := tls.Client(raw, tlsConf)
+	_ = raw.SetDeadline(time.Now().Add(handshakeTimeout))
 	if err := tlsConn.Handshake(); err != nil {
 		raw.Close()
 		return nil, fmt.Errorf("transport: client handshake: %w", err)
 	}
+	_ = raw.SetDeadline(time.Time{})
 
 	state := tlsConn.ConnectionState()
 	if len(state.PeerCertificates) == 0 {

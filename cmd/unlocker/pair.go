@@ -23,6 +23,12 @@ import (
 	"github.com/syncthing/syncthing/lib/protocol"
 )
 
+// pairRequestTimeout is how long a peer that has completed the handshake
+// gets to send its pairing request. The key holder answers at once, so a
+// peer still silent after this is not going to; waiting longer only lets
+// it hold the pairing window against a real phone.
+var pairRequestTimeout = 30 * time.Second
+
 // pairNonceLen is the length of the per-connection nonce a key holder
 // binds its proof to.
 const pairNonceLen = 32
@@ -82,8 +88,17 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 		return fmt.Errorf("unlocker: sending the pairing challenge: %w", err)
 	}
 
+	// Closing the connection is what interrupts a blocked read: the
+	// transport's Conn has no deadlines. Both the per-peer timeout and
+	// the end of the whole pairing window do it, so a silent peer cannot
+	// outlive either.
+	requestTimer := time.AfterFunc(pairRequestTimeout, func() { conn.Close() })
+	stopOnWindowEnd := context.AfterFunc(ctx, func() { conn.Close() })
 	var req mrcore.PairRequest
-	if err := mrcore.ReadMessage(conn, &req); err != nil {
+	err = mrcore.ReadMessage(conn, &req)
+	requestTimer.Stop()
+	stopOnWindowEnd()
+	if err != nil {
 		return fmt.Errorf("unlocker: reading the pairing request: %w", err)
 	}
 
