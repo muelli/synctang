@@ -1,17 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 package com.github.muelli.synctang.ui
 
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -19,16 +18,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import com.github.muelli.synctang.Identity
 import com.github.muelli.synctang.QrScanner
 import com.github.muelli.synctang.R
 import com.github.muelli.synctang.UnlockUiState
-import com.github.muelli.synctang.enrolCommand
 import com.github.muelli.synctang.focusRing
 import com.github.muelli.synctang.rememberAutoFocusRequester
 import com.github.muelli.synctang.tabMovesFocus
@@ -38,12 +33,12 @@ internal fun PairingScreen(
     state: UnlockUiState.NeedsPairing,
     onPair: (String) -> Boolean,
     onKeepCurrent: () -> Unit,
+    onEnrolByHand: () -> Unit,
     // A slot so that previews, which have no camera, can show the
     // permission prompts instead.
     scanner: @Composable (onScanned: (String) -> Boolean, modifier: Modifier) -> Unit =
         { onScanned, modifier -> QrScanner(onScanned, modifier) },
 ) {
-    val identity = state.identity
     var typed by remember { mutableStateOf("") }
     var rejected by remember { mutableStateOf(false) }
 
@@ -103,40 +98,9 @@ internal fun PairingScreen(
         }
     }
 
-    Spacer(Modifier.height(8.dp))
-    EnrolmentDetails(identity)
-}
-
-/**
- * What the machine needs to be told, once, so that this phone can
- * unlock it. Shown as the exact command to run rather than as two
- * loose hex strings, because that is the form it is actually used in.
- */
-@Composable
-internal fun EnrolmentDetails(
-    identity: Identity,
-    title: String = stringResource(R.string.pair_enrol_title),
-    hint: String = stringResource(R.string.pair_enrol_hint),
-) {
-    val context = LocalContext.current
-    val command = remember(identity) {
-        enrolCommand(identity.publicKeyHex, identity.deviceId)
+    // For a machine that cannot show a pairing code: the command lives
+    // with the phone's other details rather than on every first run.
+    TextButton(onClick = onEnrolByHand, modifier = Modifier.focusRing()) {
+        Text(stringResource(R.string.pair_by_hand))
     }
-
-    Text(title, style = MaterialTheme.typography.titleMedium)
-    Text(hint, style = MaterialTheme.typography.bodyMedium)
-    SelectionContainer {
-        Text(
-            command,
-            style = MaterialTheme.typography.bodySmall,
-            fontFamily = FontFamily.Monospace,
-        )
-    }
-    OutlinedButton(
-        onClick = { context.copyToClipboard(command) },
-        modifier = Modifier.focusRing(),
-    ) {
-        Text(stringResource(R.string.pair_copy))
-    }
-    Text(identity.backingDescription(), style = MaterialTheme.typography.bodySmall)
 }

@@ -12,13 +12,10 @@
     <string name="pair_manual_label">Machine device ID</string>
     <string name="pair_manual_action">Pair</string>
     <string name="pair_invalid">That is not a machine device ID.</string>
-    <string name="enrol_manual_show">Enrol this phone somewhere by hand</string>
-    <string name="enrol_manual_hide">Hide the manual enrolment command</string>
-    <string name="enrol_manual_title">Manual enrolment</string>
-    <string name="enrol_manual_hint">This phone is already enrolled on the machine above. You only need this command to enrol it on a machine that cannot show a pairing code.</string>
-    <string name="pair_enrol_title">Enrol this phone on the machine</string>
-    <string name="pair_enrol_hint">Run this on the machine, once, to let this phone unlock it.</string>
+    <string name="enrol_manual_title">Enrol by hand</string>
+    <string name="enrol_manual_hint">Only for a machine that cannot show a pairing code. Run this on the machine, once, to let this phone unlock it.</string>
     <string name="pair_copy">Copy the enrolment command</string>
+    <string name="pair_by_hand">No pairing code? Enrol by hand</string>
     <string name="pair_copied">Copied.</string>
     <string name="pair_again">Pair with a machine again</string>
     <string name="pair_keeps_previous">%1$s stays paired until a new pairing works.</string>
@@ -27,6 +24,12 @@
     <string name="pair_replaced">Now paired with %1$s instead of %2$s.</string>
     <string name="pair_undo">Undo</string>
     <string name="pair_undo_dismiss">Dismiss</string>
+
+    <!-- About this phone -->
+    <string name="about_title">About this phone</string>
+    <string name="about_close">Back</string>
+    <string name="about_phone_title">This phone</string>
+    <string name="about_version">synctang version %1$s</string>
 
     <!-- Identity -->
     <string name="identity_device_id">This phone\'s device ID</string>

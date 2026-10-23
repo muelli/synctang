@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 package com.github.muelli.synctang.ui
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -30,9 +31,12 @@ private val identity = Identity(
 )
 
 @Composable
-private fun Frame(content: @Composable () -> Unit) {
+private fun Frame(aboutOpen: Boolean = false, content: @Composable () -> Unit) {
     SynctangTheme {
-        ScreenColumn { content() }
+        Column {
+            AppBar(aboutOpen, onOpenAbout = {}, onCloseAbout = {})
+            ScreenColumn { content() }
+        }
     }
 }
 
@@ -42,21 +46,27 @@ private val noScanner: @Composable (onScanned: (String) -> Boolean, modifier: Mo
 @Preview(name = "NeedsPairing", widthDp = 360, heightDp = 800)
 @Composable
 private fun NeedsPairingPreview() = Frame {
-    PairingScreen(UnlockUiState.NeedsPairing(identity), { true }, {}, noScanner)
+    PairingScreen(UnlockUiState.NeedsPairing(identity), { true }, {}, {}, noScanner)
 }
 
 @Preview(name = "NeedsPairing, pairing again", widthDp = 360, heightDp = 800)
 @Composable
 private fun PairingAgainPreview() = Frame {
-    PairingScreen(UnlockUiState.NeedsPairing(identity, previous = machine), { true }, {}, noScanner)
+    PairingScreen(UnlockUiState.NeedsPairing(identity, previous = machine), { true }, {}, {}, noScanner)
 }
 
 @Preview(name = "NeedsPairing, camera denied", widthDp = 360, heightDp = 800)
 @Composable
 private fun CameraDeniedPreview() = Frame {
-    PairingScreen(UnlockUiState.NeedsPairing(identity), { true }, {}) { _, modifier ->
+    PairingScreen(UnlockUiState.NeedsPairing(identity), { true }, {}, {}) { _, modifier ->
         CameraPermissionPrompt(CameraAccess.OPEN_SETTINGS, {}, {}, modifier)
     }
+}
+
+@Preview(name = "About this phone", widthDp = 360, heightDp = 1000)
+@Composable
+private fun AboutPreview() = Frame(aboutOpen = true) {
+    AboutScreen(identity, "42", onClose = {})
 }
 
 @Preview(name = "Ready", widthDp = 360, heightDp = 640)

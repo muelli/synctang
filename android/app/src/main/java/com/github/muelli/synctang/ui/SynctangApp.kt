@@ -3,6 +3,12 @@ package com.github.muelli.synctang.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
@@ -12,14 +18,20 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -31,15 +43,26 @@ import com.github.muelli.synctang.UnlockViewModel
 import com.github.muelli.synctang.backAction
 import com.github.muelli.synctang.focusRing
 import com.github.muelli.synctang.onEscape
+import com.github.muelli.synctang.rememberAutoFocusRequester
 
 @Composable
 fun SynctangApp(gate: BiometricGate, model: UnlockViewModel = viewModel()) {
     val state by model.state.collectAsState()
 
+    // About this phone is a flag rather than a route: there is one
+    // such screen, and it is only offered where nothing is under way.
+    var aboutOpen by rememberSaveable { mutableStateOf(false) }
+    val aboutFor = aboutIdentity(state)
+    LaunchedEffect(aboutFor == null) {
+        if (aboutFor == null) aboutOpen = false
+    }
+    val about = aboutFor?.takeIf { aboutOpen }
+    BackHandler(enabled = about != null) { aboutOpen = false }
+
     // Only intercepted where something is waiting on this phone; on
     // every other screen back leaves the app as usual.
     val back = backAction(state)
-    BackHandler(enabled = back != BackAction.EXIT) {
+    BackHandler(enabled = about == null && back != BackAction.EXIT) {
         when (back) {
             BackAction.CANCEL -> model.cancel()
             BackAction.KEEP_CURRENT_MACHINE -> model.keepCurrentMachine()
@@ -51,13 +74,25 @@ fun SynctangApp(gate: BiometricGate, model: UnlockViewModel = viewModel()) {
     UndoReplace(state as? UnlockUiState.Ready, snackbar, model)
 
     Scaffold(
+        topBar = {
+            AppBar(
+                aboutOpen = about != null,
+                onOpenAbout = if (aboutFor != null) ({ aboutOpen = true }) else null,
+                onCloseAbout = { aboutOpen = false },
+            )
+        },
         snackbarHost = { UndoSnackbarHost(snackbar) },
         // The Surface around this already paints the background.
         containerColor = Color.Transparent,
     ) { padding ->
         ScreenColumn(Modifier.padding(padding)) {
+            if (about != null) {
+                AboutScreen(about, appVersion(), onClose = { aboutOpen = false })
+                return@ScreenColumn
+            }
             when (val current = state) {
-                is UnlockUiState.NeedsPairing -> PairingScreen(current, model::pair, model::keepCurrentMachine)
+                is UnlockUiState.NeedsPairing ->
+                    PairingScreen(current, model::pair, model::keepCurrentMachine, onEnrolByHand = { aboutOpen = true })
                 is UnlockUiState.Ready -> ReadyScreen(current, model::connect, model::startPairing)
                 is UnlockUiState.Connecting -> Busy(stringResource(R.string.unlock_connecting), onCancel = model::cancel)
                 is UnlockUiState.Pairing -> Busy(stringResource(R.string.pair_working), onCancel = model::cancel)
@@ -68,6 +103,51 @@ fun SynctangApp(gate: BiometricGate, model: UnlockViewModel = viewModel()) {
                 is UnlockUiState.Failed -> FailedScreen(current, model::refresh, model::startPairing)
             }
         }
+    }
+}
+
+/**
+ * The app's name, or About this phone with a way back. [onOpenAbout]
+ * is null where About is not offered.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun AppBar(aboutOpen: Boolean, onOpenAbout: (() -> Unit)?, onCloseAbout: () -> Unit) {
+    TopAppBar(
+        title = {
+            Text(stringResource(if (aboutOpen) R.string.about_title else R.string.app_name))
+        },
+        navigationIcon = {
+            if (aboutOpen) {
+                IconButton(
+                    onClick = onCloseAbout,
+                    modifier = Modifier
+                        .focusRequester(rememberAutoFocusRequester())
+                        .onEscape(onCloseAbout)
+                        .focusRing(),
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.about_close))
+                }
+            }
+        },
+        actions = {
+            if (!aboutOpen && onOpenAbout != null) {
+                IconButton(onClick = onOpenAbout, modifier = Modifier.focusRing()) {
+                    Icon(Icons.Outlined.Info, contentDescription = stringResource(R.string.about_title))
+                }
+            }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+    )
+}
+
+@Composable
+private fun appVersion(): String {
+    val context = LocalContext.current
+    return remember(context) {
+        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
+            .getOrNull()
+            .orEmpty()
     }
 }
 
