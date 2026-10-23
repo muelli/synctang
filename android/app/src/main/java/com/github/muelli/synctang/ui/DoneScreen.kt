@@ -11,16 +11,15 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
 import com.github.muelli.synctang.R
 import com.github.muelli.synctang.UnlockUiState
-import com.github.muelli.synctang.UnlockViewModel
 import com.github.muelli.synctang.focusRing
 import com.github.muelli.synctang.rememberAutoFocusRequester
 
 @Composable
-internal fun DoneScreen(state: UnlockUiState.Done, model: UnlockViewModel) {
+internal fun DoneScreen(state: UnlockUiState.Done, onDone: () -> Unit) {
     MachineHeading(state.machine)
     Text(stringResource(R.string.unlock_done), style = MaterialTheme.typography.bodyLarge)
     Button(
-        onClick = { model.refresh() },
+        onClick = onDone,
         modifier = Modifier
             .fillMaxWidth()
             .focusRequester(rememberAutoFocusRequester())

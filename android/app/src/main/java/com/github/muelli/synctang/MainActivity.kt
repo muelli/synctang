@@ -3,13 +3,9 @@ package com.github.muelli.synctang
 
 import android.os.Bundle
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.ui.Modifier
 import androidx.fragment.app.FragmentActivity
 import com.github.muelli.synctang.ui.SynctangApp
+import com.github.muelli.synctang.ui.SynctangTheme
 
 /**
  * The whole app: one screen that is either "pair with a machine" or
@@ -33,10 +29,8 @@ class MainActivity : FragmentActivity() {
         val gate: BiometricGate =
             if (TestMode.noBiometric) OpenGate else BiometricGateImpl(this)
         setContent {
-            MaterialTheme(colorScheme = darkColorScheme()) {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    SynctangApp(gate)
-                }
+            SynctangTheme {
+                SynctangApp(gate)
             }
         }
     }

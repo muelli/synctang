@@ -28,14 +28,21 @@ import com.github.muelli.synctang.Identity
 import com.github.muelli.synctang.QrScanner
 import com.github.muelli.synctang.R
 import com.github.muelli.synctang.UnlockUiState
-import com.github.muelli.synctang.UnlockViewModel
 import com.github.muelli.synctang.enrolCommand
 import com.github.muelli.synctang.focusRing
 import com.github.muelli.synctang.rememberAutoFocusRequester
 import com.github.muelli.synctang.tabMovesFocus
 
 @Composable
-internal fun PairingScreen(state: UnlockUiState.NeedsPairing, model: UnlockViewModel) {
+internal fun PairingScreen(
+    state: UnlockUiState.NeedsPairing,
+    onPair: (String) -> Boolean,
+    onKeepCurrent: () -> Unit,
+    // A slot so that previews, which have no camera, can show the
+    // permission prompts instead.
+    scanner: @Composable (onScanned: (String) -> Boolean, modifier: Modifier) -> Unit =
+        { onScanned, modifier -> QrScanner(onScanned, modifier) },
+) {
     val identity = state.identity
     var typed by remember { mutableStateOf("") }
     var rejected by remember { mutableStateOf(false) }
@@ -47,9 +54,9 @@ internal fun PairingScreen(state: UnlockUiState.NeedsPairing, model: UnlockViewM
         Text(stringResource(R.string.pair_keeps_previous, name), style = MaterialTheme.typography.bodyMedium)
     }
 
-    QrScanner(
-        onScanned = { scanned -> model.pair(scanned).also { rejected = !it } },
-        modifier = Modifier
+    scanner(
+        { scanned -> onPair(scanned).also { rejected = !it } },
+        Modifier
             .fillMaxWidth()
             .height(260.dp),
     )
@@ -66,7 +73,7 @@ internal fun PairingScreen(state: UnlockUiState.NeedsPairing, model: UnlockViewM
         label = { Text(stringResource(R.string.pair_manual_label)) },
         singleLine = false,
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-        keyboardActions = KeyboardActions(onDone = { rejected = !model.pair(typed) }),
+        keyboardActions = KeyboardActions(onDone = { rejected = !onPair(typed) }),
         modifier = Modifier
             .fillMaxWidth()
             .focusRequester(field)
@@ -74,7 +81,7 @@ internal fun PairingScreen(state: UnlockUiState.NeedsPairing, model: UnlockViewM
             .focusRing(),
     )
     Button(
-        onClick = { rejected = !model.pair(typed) },
+        onClick = { rejected = !onPair(typed) },
         enabled = typed.isNotBlank(),
         modifier = Modifier.focusRing(),
     ) {
@@ -89,7 +96,7 @@ internal fun PairingScreen(state: UnlockUiState.NeedsPairing, model: UnlockViewM
     }
     state.previous?.let { previous ->
         OutlinedButton(
-            onClick = { model.keepCurrentMachine() },
+            onClick = onKeepCurrent,
             modifier = Modifier.focusRing(),
         ) {
             Text(stringResource(R.string.pair_keep_current, previous.name.ifBlank { previous.deviceId }))

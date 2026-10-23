@@ -84,31 +84,14 @@ fun QrScanner(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    when (access) {
-        CameraAccess.GRANTED -> Unit
-        CameraAccess.ASK -> {
-            Column(modifier) {
-                Button(
-                    onClick = { ask.launch(Manifest.permission.CAMERA) },
-                    modifier = Modifier.fillMaxWidth().focusRing(),
-                ) {
-                    Text(stringResource(R.string.pair_grant_camera))
-                }
-            }
-            return
-        }
-        CameraAccess.OPEN_SETTINGS -> {
-            Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(R.string.pair_camera_denied), style = MaterialTheme.typography.bodyMedium)
-                Button(
-                    onClick = { context.startActivity(appSettingsIntent(context)) },
-                    modifier = Modifier.fillMaxWidth().focusRing(),
-                ) {
-                    Text(stringResource(R.string.pair_open_settings))
-                }
-            }
-            return
-        }
+    if (access != CameraAccess.GRANTED) {
+        CameraPermissionPrompt(
+            access,
+            onAsk = { ask.launch(Manifest.permission.CAMERA) },
+            onOpenSettings = { context.startActivity(appSettingsIntent(context)) },
+            modifier = modifier,
+        )
+        return
     }
 
     val executor = remember { Executors.newSingleThreadExecutor() }
@@ -263,5 +246,39 @@ private fun ImageProxy.decodeQrCode(): String? {
         null
     } finally {
         reader.reset()
+    }
+}
+
+/** What stands in for the camera until it may be used. */
+@Composable
+fun CameraPermissionPrompt(
+    access: CameraAccess,
+    onAsk: () -> Unit,
+    onOpenSettings: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    when (access) {
+        CameraAccess.GRANTED -> Unit
+        CameraAccess.ASK -> {
+            Column(modifier) {
+                Button(
+                    onClick = onAsk,
+                    modifier = Modifier.fillMaxWidth().focusRing(),
+                ) {
+                    Text(stringResource(R.string.pair_grant_camera))
+                }
+            }
+        }
+        CameraAccess.OPEN_SETTINGS -> {
+            Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.pair_camera_denied), style = MaterialTheme.typography.bodyMedium)
+                Button(
+                    onClick = onOpenSettings,
+                    modifier = Modifier.fillMaxWidth().focusRing(),
+                ) {
+                    Text(stringResource(R.string.pair_open_settings))
+                }
+            }
+        }
     }
 }

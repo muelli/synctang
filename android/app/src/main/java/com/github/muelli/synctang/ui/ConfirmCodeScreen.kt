@@ -13,33 +13,32 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import com.github.muelli.synctang.R
 import com.github.muelli.synctang.UnlockUiState
-import com.github.muelli.synctang.UnlockViewModel
 import com.github.muelli.synctang.focusRing
 import com.github.muelli.synctang.onEscape
 import com.github.muelli.synctang.rememberAutoFocusRequester
 
 @Composable
-internal fun ConfirmCodeScreen(state: UnlockUiState.ConfirmCode, model: UnlockViewModel) {
+internal fun ConfirmCodeScreen(state: UnlockUiState.ConfirmCode, onConfirm: (String) -> Unit, onDecline: () -> Unit) {
     MachineHeading(state.machine)
     Text(stringResource(R.string.confirm_title), style = MaterialTheme.typography.headlineSmall)
     Text(stringResource(R.string.confirm_hint), style = MaterialTheme.typography.bodyMedium)
     Text(state.code, style = MaterialTheme.typography.displaySmall, fontFamily = FontFamily.Monospace)
     Labelled(stringResource(R.string.unlock_request_identity), state.peerId)
     Button(
-        onClick = { model.submitConfirmCode(state.code) },
+        onClick = { onConfirm(state.code) },
         modifier = Modifier
             .fillMaxWidth()
             .focusRequester(rememberAutoFocusRequester())
-            .onEscape { model.cancel() }
+            .onEscape(onDecline)
             .focusRing(),
     ) {
         Text(stringResource(R.string.confirm_action))
     }
     OutlinedButton(
-        onClick = { model.cancel() },
+        onClick = onDecline,
         modifier = Modifier
             .fillMaxWidth()
-            .onEscape { model.cancel() }
+            .onEscape(onDecline)
             .focusRing(),
     ) {
         Text(stringResource(R.string.unlock_decline))

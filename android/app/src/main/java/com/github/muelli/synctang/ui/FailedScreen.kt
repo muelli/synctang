@@ -14,12 +14,11 @@ import androidx.compose.ui.text.font.FontFamily
 import com.github.muelli.synctang.R
 import com.github.muelli.synctang.Retry
 import com.github.muelli.synctang.UnlockUiState
-import com.github.muelli.synctang.UnlockViewModel
 import com.github.muelli.synctang.focusRing
 import com.github.muelli.synctang.rememberAutoFocusRequester
 
 @Composable
-internal fun FailedScreen(state: UnlockUiState.Failed, model: UnlockViewModel) {
+internal fun FailedScreen(state: UnlockUiState.Failed, onRetry: () -> Unit, onScanAgain: () -> Unit) {
     state.machine?.let { MachineHeading(it) }
     Text(stringResource(R.string.error_title), style = MaterialTheme.typography.headlineSmall)
     SelectionContainer {
@@ -42,7 +41,7 @@ internal fun FailedScreen(state: UnlockUiState.Failed, model: UnlockViewModel) {
     // this phone.
     val scanAgain = state.retry == Retry.SCAN_AGAIN
     Button(
-        onClick = { if (scanAgain) model.startPairing() else model.refresh() },
+        onClick = if (scanAgain) onScanAgain else onRetry,
         modifier = Modifier
             .fillMaxWidth()
             .focusRequester(rememberAutoFocusRequester())

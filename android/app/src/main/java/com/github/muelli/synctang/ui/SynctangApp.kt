@@ -2,12 +2,7 @@
 package com.github.muelli.synctang.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
@@ -60,24 +55,17 @@ fun SynctangApp(gate: BiometricGate, model: UnlockViewModel = viewModel()) {
         // The Surface around this already paints the background.
         containerColor = Color.Transparent,
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
+        ScreenColumn(Modifier.padding(padding)) {
             when (val current = state) {
-                is UnlockUiState.NeedsPairing -> PairingScreen(current, model)
-                is UnlockUiState.Ready -> ReadyScreen(current, model)
+                is UnlockUiState.NeedsPairing -> PairingScreen(current, model::pair, model::keepCurrentMachine)
+                is UnlockUiState.Ready -> ReadyScreen(current, model::connect, model::startPairing)
                 is UnlockUiState.Connecting -> Busy(stringResource(R.string.unlock_connecting), onCancel = model::cancel)
                 is UnlockUiState.Pairing -> Busy(stringResource(R.string.pair_working), onCancel = model::cancel)
                 is UnlockUiState.Working -> Busy(stringResource(R.string.unlock_working))
-                is UnlockUiState.ConfirmCode -> ConfirmCodeScreen(current, model)
-                is UnlockUiState.Approve -> ApproveScreen(current, gate, model)
-                is UnlockUiState.Done -> DoneScreen(current, model)
-                is UnlockUiState.Failed -> FailedScreen(current, model)
+                is UnlockUiState.ConfirmCode -> ConfirmCodeScreen(current, model::submitConfirmCode, model::cancel)
+                is UnlockUiState.Approve -> ApproveScreen(current, { model.approve(gate) }, model::cancel)
+                is UnlockUiState.Done -> DoneScreen(current, model::refresh)
+                is UnlockUiState.Failed -> FailedScreen(current, model::refresh, model::startPairing)
             }
         }
     }

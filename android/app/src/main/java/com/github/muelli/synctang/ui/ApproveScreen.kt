@@ -10,16 +10,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
-import com.github.muelli.synctang.BiometricGate
 import com.github.muelli.synctang.R
 import com.github.muelli.synctang.UnlockUiState
-import com.github.muelli.synctang.UnlockViewModel
 import com.github.muelli.synctang.focusRing
 import com.github.muelli.synctang.onEscape
 import com.github.muelli.synctang.rememberAutoFocusRequester
 
 @Composable
-internal fun ApproveScreen(state: UnlockUiState.Approve, gate: BiometricGate, model: UnlockViewModel) {
+internal fun ApproveScreen(state: UnlockUiState.Approve, onApprove: () -> Unit, onDecline: () -> Unit) {
     Text(stringResource(R.string.unlock_request_title), style = MaterialTheme.typography.headlineSmall)
     MachineHeading(state.machine)
     // The verified identity is shown as well as the name, because the
@@ -35,20 +33,20 @@ internal fun ApproveScreen(state: UnlockUiState.Approve, gate: BiometricGate, mo
     // focus on Decline instead would mean every deliberate approval
     // starts with a Tab.
     Button(
-        onClick = { model.approve(gate) },
+        onClick = onApprove,
         modifier = Modifier
             .fillMaxWidth()
             .focusRequester(rememberAutoFocusRequester())
-            .onEscape { model.cancel() }
+            .onEscape(onDecline)
             .focusRing(),
     ) {
         Text(stringResource(R.string.unlock_approve))
     }
     OutlinedButton(
-        onClick = { model.cancel() },
+        onClick = onDecline,
         modifier = Modifier
             .fillMaxWidth()
-            .onEscape { model.cancel() }
+            .onEscape(onDecline)
             .focusRing(),
     ) {
         Text(stringResource(R.string.unlock_decline))
