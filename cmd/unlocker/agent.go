@@ -224,6 +224,9 @@ func runExchange(
 		return report(fmt.Errorf("unlocker: finishing recovery: %w", err))
 	}
 	defer mrcore.Wipe(P)
+	if err := checkSecretLength(P); err != nil {
+		return report(err)
+	}
 
 	// keyMaterial, not P itself, is what actually unlocked the keyslot
 	// (enrolRecipient adds the hex form, never the raw secret) and
@@ -242,6 +245,22 @@ func runExchange(
 	}
 
 	return report(nil)
+}
+
+// volumeSecretLen is the length of the volume secret P that enrolment
+// generates.
+const volumeSecretLen = 32
+
+// checkSecretLength refuses a recovered secret of the wrong length. The
+// authenticated decryption already vouches for the bytes, but a token
+// that decrypts to some other length was not written by this tool, and
+// MR-1's specification asks an application that expects a fixed length
+// to check it.
+func checkSecretLength(P []byte) error {
+	if len(P) != volumeSecretLen {
+		return fmt.Errorf("unlocker: recovered secret is %d bytes, expected %d; this token was not written by this tool", len(P), volumeSecretLen)
+	}
+	return nil
 }
 
 // confirmCodeMatches compares a relayed confirm code against the real

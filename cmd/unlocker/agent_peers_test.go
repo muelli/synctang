@@ -48,3 +48,17 @@ func TestAuthorizedPeersListsEveryRecipientThatHasOne(t *testing.T) {
 		t.Fatalf("authorizedPeersFor = %v", got)
 	}
 }
+
+// The spec requires an application that expects a fixed-length secret to
+// check the length of what it recovered. A short or long plaintext means
+// the token was not written by this tool, whatever the AEAD tag said.
+func TestCheckSecretLength(t *testing.T) {
+	if err := checkSecretLength(make([]byte, 32)); err != nil {
+		t.Fatalf("a 32-byte secret was refused: %v", err)
+	}
+	for _, n := range []int{0, 1, 31, 33, 64} {
+		if err := checkSecretLength(make([]byte, n)); err == nil {
+			t.Fatalf("a %d-byte secret was accepted", n)
+		}
+	}
+}

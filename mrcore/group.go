@@ -11,6 +11,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 
 	"filippo.io/nistec"
@@ -51,24 +52,26 @@ func P256() Group { return p256Group{} }
 type p256Group struct{}
 
 func (p256Group) RandomScalar() ([]byte, error) {
+	return randomScalarFrom(rand.Reader)
+}
+
+// randomScalarFrom draws a scalar uniformly from [1, n-1] by rejection
+// sampling: 32 bytes at a time, discarding any that are zero or not less
+// than the group order n. Reducing a draw modulo n instead would be
+// biased, and accepting anything non-zero would let values at or above n
+// through.
+func randomScalarFrom(r io.Reader) ([]byte, error) {
+	n := elliptic.P256().Params().N
 	buf := make([]byte, 32)
 	for {
-		if _, err := rand.Read(buf); err != nil {
+		if _, err := io.ReadFull(r, buf); err != nil {
 			return nil, fmt.Errorf("mrcore: random scalar: %w", err)
 		}
-		if !isAllZero(buf) {
+		v := new(big.Int).SetBytes(buf)
+		if v.Sign() > 0 && v.Cmp(n) < 0 {
 			return buf, nil
 		}
 	}
-}
-
-func isAllZero(b []byte) bool {
-	for _, v := range b {
-		if v != 0 {
-			return false
-		}
-	}
-	return true
 }
 
 func (p256Group) ScalarBaseMult(scalar []byte) ([]byte, error) {
