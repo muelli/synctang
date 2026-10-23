@@ -7,6 +7,8 @@
     <string name="pair_title">Pair with a machine</string>
     <string name="pair_scan_hint">Scan the QR code the machine is showing, or type its device ID.</string>
     <string name="pair_grant_camera">Allow the camera to scan a QR code</string>
+    <string name="pair_camera_denied">The camera is turned off for this app, and Android will not ask again. Allow it on the app\'s page in Settings to scan, or type the machine\'s device ID below.</string>
+    <string name="pair_open_settings">Open settings</string>
     <string name="pair_manual_label">Machine device ID</string>
     <string name="pair_manual_action">Pair</string>
     <string name="pair_invalid">That is not a machine device ID.</string>

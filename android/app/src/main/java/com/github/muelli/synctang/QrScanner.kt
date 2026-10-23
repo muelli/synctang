@@ -2,8 +2,13 @@
 package com.github.muelli.synctang
 
 import android.Manifest
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
@@ -12,9 +17,12 @@ import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -26,8 +34,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.BinaryBitmap
 import com.google.zxing.DecodeHintType
@@ -51,19 +63,54 @@ fun QrScanner(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    var granted by remember { mutableStateOf(context.hasCameraPermission()) }
-    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-        granted = it
-    }
-
-    if (!granted) {
-        Button(onClick = { ask.launch(Manifest.permission.CAMERA) }, modifier = modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.pair_grant_camera))
-        }
-        return
-    }
-
     val lifecycleOwner = LocalLifecycleOwner.current
+    var access by remember { mutableStateOf(initialCameraAccess(context.hasCameraPermission())) }
+    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        val rationale = context.findActivity()?.let {
+            ActivityCompat.shouldShowRequestPermissionRationale(it, Manifest.permission.CAMERA)
+        } ?: true
+        access = cameraAccessAfterRequest(ok, rationale)
+    }
+
+    // Someone sent to Settings comes back through onResume, having
+    // perhaps allowed the camera there.
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && context.hasCameraPermission()) {
+                access = CameraAccess.GRANTED
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    when (access) {
+        CameraAccess.GRANTED -> Unit
+        CameraAccess.ASK -> {
+            Column(modifier) {
+                Button(
+                    onClick = { ask.launch(Manifest.permission.CAMERA) },
+                    modifier = Modifier.fillMaxWidth().focusRing(),
+                ) {
+                    Text(stringResource(R.string.pair_grant_camera))
+                }
+            }
+            return
+        }
+        CameraAccess.OPEN_SETTINGS -> {
+            Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.pair_camera_denied), style = MaterialTheme.typography.bodyMedium)
+                Button(
+                    onClick = { context.startActivity(appSettingsIntent(context)) },
+                    modifier = Modifier.fillMaxWidth().focusRing(),
+                ) {
+                    Text(stringResource(R.string.pair_open_settings))
+                }
+            }
+            return
+        }
+    }
+
     val executor = remember { Executors.newSingleThreadExecutor() }
     // An accepted code ends scanning, since the pairing screen closes
     // on it. A rejected one re-arms the latch so the camera keeps
@@ -75,7 +122,9 @@ fun QrScanner(
         onDispose { executor.shutdown() }
     }
 
-    Box(modifier) {
+    // The preview is no use to a keyboard, so Tab skips it; the buttons
+    // shown instead of it above are reachable as usual.
+    Box(modifier.notKeyboardFocusable()) {
         AndroidView(
             modifier = Modifier.fillMaxWidth(),
             factory = { viewContext ->
@@ -150,6 +199,33 @@ class ScanLatch(private val now: () -> Long) {
     fun rejected() {
         inFlight = false
     }
+}
+
+/** Whether the scanner can show the camera, or what it must offer instead. */
+enum class CameraAccess { GRANTED, ASK, OPEN_SETTINGS }
+
+fun initialCameraAccess(hasPermission: Boolean): CameraAccess =
+    if (hasPermission) CameraAccess.GRANTED else CameraAccess.ASK
+
+/**
+ * A refusal Android would still show a rationale for can be asked
+ * again. One with no rationale left means the dialog will not appear
+ * again, so asking would do nothing; only the app's page in Settings
+ * can grant it now.
+ */
+fun cameraAccessAfterRequest(granted: Boolean, showRationale: Boolean): CameraAccess = when {
+    granted -> CameraAccess.GRANTED
+    showRationale -> CameraAccess.ASK
+    else -> CameraAccess.OPEN_SETTINGS
+}
+
+private fun appSettingsIntent(context: Context): Intent =
+    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 private fun Context.hasCameraPermission(): Boolean =

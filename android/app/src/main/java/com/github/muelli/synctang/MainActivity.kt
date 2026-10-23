@@ -117,8 +117,7 @@ private fun PairingScreen(identity: Identity, model: UnlockViewModel) {
         onScanned = { scanned -> model.pair(scanned).also { rejected = !it } },
         modifier = Modifier
             .fillMaxWidth()
-            .height(260.dp)
-            .notKeyboardFocusable(),
+            .height(260.dp),
     )
 
     // The manual field, not the scanner, is the keyboard path onto this
