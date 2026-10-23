@@ -3,8 +3,10 @@ package com.github.muelli.synctang
 
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
+import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
 import android.security.keystore.StrongBoxUnavailableException
+import android.security.keystore.UserNotAuthenticatedException
 import java.security.GeneralSecurityException
 import java.security.KeyFactory
 import java.security.KeyPairGenerator
@@ -193,9 +195,10 @@ class KeyHolderKey(
      * That the Keystore accepts such a point at all is the finding WP0
      * exists to have established.
      *
-     * Throws android.security.keystore.UserNotAuthenticatedException
-     * when the biometric window has expired, which the caller should
-     * treat as "ask again", not as a protocol failure.
+     * Throws [AuthenticationExpired] when the biometric window has
+     * expired, which the caller should treat as "ask again", not as a
+     * protocol failure, and [KeyInvalidated] when the key has been
+     * retired for good.
      */
     fun agree(peerX: ByteArray, peerY: ByteArray): ByteArray {
         require(peerX.size == COORD_LEN && peerY.size == COORD_LEN) {
@@ -211,9 +214,15 @@ class KeyHolderKey(
             .generatePublic(ECPublicKeySpec(peerPoint, ourPublic.params))
 
         val agreement = KeyAgreement.getInstance("ECDH")
-        agreement.init(privateKey())
-        agreement.doPhase(peerPublic, true)
-        val secret = agreement.generateSecret()
+        val secret = try {
+            agreement.init(privateKey())
+            agreement.doPhase(peerPublic, true)
+            agreement.generateSecret()
+        } catch (e: KeyPermanentlyInvalidatedException) {
+            throw KeyInvalidated(e)
+        } catch (e: UserNotAuthenticatedException) {
+            throw AuthenticationExpired(e)
+        }
         check(secret.size == COORD_LEN) {
             "expected a $COORD_LEN-byte x-coordinate, got ${secret.size} bytes"
         }
@@ -258,6 +267,22 @@ class KeyHolderKey(
  */
 class BiometricEnrolmentRequired(cause: Throwable) :
     Exception("no biometric is enrolled on this phone", cause)
+
+/**
+ * The key has been retired for good, which the Keystore does to a key
+ * created with setInvalidatedByBiometricEnrollment the moment a
+ * fingerprint or face is added to the phone. Nothing brings it back:
+ * the phone needs a new key, and every machine a new enrolment.
+ */
+class KeyInvalidated(cause: Throwable) :
+    Exception("this phone's key was invalidated by a change to its biometrics", cause)
+
+/**
+ * The biometric match is older than the key's authentication window,
+ * so the Keystore refused the ECDH. Approving again opens a new one.
+ */
+class AuthenticationExpired(cause: Throwable) :
+    Exception("the biometric authentication expired before the key was used", cause)
 
 /**
  * Whether this failure is the Keystore refusing to create an

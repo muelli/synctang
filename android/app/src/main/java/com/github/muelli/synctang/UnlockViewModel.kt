@@ -47,6 +47,7 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
         newSession = { machine -> GoSession(machine, store.identitySeed(), multicastLock) },
         newPairing = { GoPairing(store.identitySeed(), multicastLock) },
         agree = key::agree,
+        resetIdentity = ::resetIdentity,
         strings = object : Strings {
             override fun get(id: Int, vararg args: Any) = application.getString(id, *args)
         },
@@ -66,6 +67,18 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
             publicKeyHex = key.publicPoint().toHex(),
             backing = backing,
         )
+    }
+
+    /**
+     * Retires this phone's invalidated key and transport identity,
+     * returning the old Device ID so the person can revoke it on the
+     * machine. The next [identity] creates both afresh.
+     */
+    private fun resetIdentity(): String {
+        val old = Mobile.deviceIDForSeed(store.identitySeed())
+        key.delete()
+        store.startNewIdentity()
+        return old
     }
 
     fun refresh() = flow.refresh()
@@ -100,7 +113,9 @@ private class GoSession(
     // local-discovery leg races the relay for as long as connect()
     // runs, and hears nothing without it. Released either way, so a
     // machine that never answers does not leave it held.
-    override fun connect() = MulticastLease.holding(multicastLock) { session.connect() }
+    override fun connect() = classified(session::lastFailure, session::lastFailureDetail) {
+        MulticastLease.holding(multicastLock) { session.connect() }
+    }
     override fun cancel() = session.cancel()
     override fun close() = session.close()
     override fun decline(reason: String) = session.decline(reason)
@@ -109,11 +124,15 @@ private class GoSession(
     override fun confirmCodeChallenge(): String = session.confirmCodeChallenge()
     override fun hasRequest() = session.hasRequest()
     override fun requestKidHex() = session.requestKid().toHex()
-    override fun submitConfirmCode(code: String) = session.submitConfirmCode(code)
+    override fun submitConfirmCode(code: String) = classified(session::lastFailure, session::lastFailureDetail) {
+        session.submitConfirmCode(code)
+    }
 
     override fun answer(agree: (ByteArray, ByteArray) -> ByteArray) {
+        // Not classified as a whole: agree's own failures (an expired
+        // or invalidated key) must reach the flow as themselves.
         val xOnly = agree(session.requestPointAffineX(), session.requestPointAffineY())
-        session.answerXOnly(xOnly)
+        classified(session::lastFailure, session::lastFailureDetail) { session.answerXOnly(xOnly) }
     }
 
     private companion object {
@@ -132,16 +151,18 @@ private class GoPairing(
     // Local discovery needs the lock just as an unlock does: pairing
     // dials over the same two transports.
     override fun pair(machine: Machine, code: String, identity: Identity) =
-        MulticastLease.holding(multicastLock) {
-            pairer.pair(
-                machine.deviceId,
-                code,
-                seed,
-                identity.publicKeyHex,
-                android.os.Build.MODEL ?: "phone",
-                "",
-                PAIR_TIMEOUT_SECONDS,
-            )
+        classified(pairer::lastFailure, pairer::lastFailureDetail, FailureKind.PAIR_UNREACHABLE) {
+            MulticastLease.holding(multicastLock) {
+                pairer.pair(
+                    machine.deviceId,
+                    code,
+                    seed,
+                    identity.publicKeyHex,
+                    android.os.Build.MODEL ?: "phone",
+                    "",
+                    PAIR_TIMEOUT_SECONDS,
+                )
+            }
         }
 
     override fun cancel() = pairer.cancel()
@@ -155,14 +176,35 @@ private class GoPairing(
     }
 }
 
-/**
- * gomobile turns every Go error into a plain Exception whose message is
- * the Go error string, which is written for a log and not for a person.
- * Keeping it is still better than swallowing it: it is the only thing
- * that distinguishes "the machine is not waiting" from "the relay is
- * unreachable".
- */
 internal const val LOG_TAG = "synctang"
 
-internal fun Exception.friendlyMessage(): String =
-    message?.takeIf { it.isNotBlank() } ?: this::class.java.simpleName
+/**
+ * gomobile turns every Go error into a plain Exception carrying only
+ * its text, so the Go objects report the kind of their last failure
+ * separately; this reattaches it. [unreachable] is the kind to use for
+ * an unreachable machine, which means something different when pairing.
+ */
+private inline fun <T> classified(
+    lastFailure: () -> Long,
+    lastDetail: () -> String,
+    unreachable: FailureKind = FailureKind.UNREACHABLE,
+    call: () -> T,
+): T = try {
+    call()
+} catch (e: Exception) {
+    val kind = when (lastFailure()) {
+        Mobile.FailureCancelled -> FailureKind.CANCELLED
+        Mobile.FailureUnreachable -> unreachable
+        Mobile.FailureHungUp -> FailureKind.HUNG_UP
+        Mobile.FailureNoReply -> FailureKind.NO_REPLY
+        Mobile.FailureOutcomeUnknown -> FailureKind.OUTCOME_UNKNOWN
+        Mobile.FailureAnswerRejected -> FailureKind.ANSWER_REJECTED
+        Mobile.FailureBadPairingCode -> FailureKind.BAD_PAIRING_CODE
+        Mobile.FailurePairCodeMismatch -> FailureKind.PAIR_CODE_MISMATCH
+        Mobile.FailurePairDeclined -> FailureKind.PAIR_DECLINED
+        Mobile.FailurePairRefused -> FailureKind.PAIR_REFUSED
+        Mobile.FailureProtocol -> FailureKind.PROTOCOL
+        else -> FailureKind.OTHER
+    }
+    throw MachineFailure(kind, lastDetail(), e.message, e)
+}

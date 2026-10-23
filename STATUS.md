@@ -56,6 +56,14 @@ not here. See `TESTREPORT.md` for the acceptance table (A1-A11).
   on a screen where the machine is waiting declines as Refuse does.
   Once connected, each wait for the machine is bounded (60 s), so a
   machine that goes silent mid-exchange cannot hold the phone for ever.
+  Failures are explained in the app's own words rather than as Go error
+  text: the Go bridge names each one (`Session.LastFailure`,
+  `Pairer.LastFailure`) and the app maps the kind to a message, keeping
+  the machine's reason or the raw text as a detail line. A key
+  invalidated by a newly enrolled fingerprint now gets a fresh key and
+  transport identity and says which old Device ID to revoke `[V]` in
+  JVM tests; the Keystore exceptions it relies on have not been
+  provoked on a real device `[U]`.
   The flow's decisions live in `UnlockFlow`, tested on the JVM through
   fakes `[V]`; none of this has been run on a device or emulator yet
   `[U]`.

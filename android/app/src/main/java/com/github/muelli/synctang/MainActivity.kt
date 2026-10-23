@@ -438,6 +438,14 @@ private fun FailedScreen(state: UnlockUiState.Failed, model: UnlockViewModel) {
             color = MaterialTheme.colorScheme.error,
         )
     }
+    // The machine's own words, or the raw error behind a failure the
+    // app has no words for: of no use to most people, but the one thing
+    // worth quoting in a bug report.
+    state.detail?.let { detail ->
+        SelectionContainer {
+            Text(detail, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+        }
+    }
     // A pairing code is single-use, so retrying a failed pairing means
     // a fresh scan, not a dial against a machine that never enrolled
     // this phone.

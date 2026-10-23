@@ -44,6 +44,8 @@ class UnlockFlowTest {
     private var nextPairing: () -> FakePairing = { FakePairing() }
 
     private val identity = Identity("PHONE-ID", "04ab", KeyHolderKey.Backing.TEE_OR_SOFTWARE)
+    @Volatile private var agreeFails: Exception? = null
+    @Volatile private var identityResets = 0
 
     private val flow = UnlockFlow(
         scope = scope,
@@ -52,9 +54,15 @@ class UnlockFlowTest {
         identity = { identity },
         newSession = { nextSession().also { sessions += it } },
         newPairing = { nextPairing().also { pairings += it } },
-        agree = { _, _ -> ByteArray(32) },
+        agree = { _, _ -> agreeFails?.let { throw it } ?: ByteArray(32) },
+        resetIdentity = {
+            identityResets++
+            store.saved = null
+            "OLD-PHONE-ID"
+        },
         strings = object : Strings {
-            override fun get(id: Int, vararg args: Any) = "res:$id"
+            override fun get(id: Int, vararg args: Any) =
+                "res:$id" + if (args.isEmpty()) "" else args.joinToString(",", "(", ")")
         },
     )
 
@@ -329,12 +337,42 @@ class UnlockFlowTest {
         store.saved = machineA
         onMain { flow.refresh() }
         await<UnlockUiState.Ready>()
-        nextSession = { FakeSession(failWith = Exception("mobile: gave up dialling")) }
+        nextSession = {
+            FakeSession(failWith = MachineFailure(FailureKind.UNREACHABLE, "", "mobile: gave up dialling", null))
+        }
 
         onMain { flow.connect() }
         val failed = await<UnlockUiState.Failed>()
         assertEquals(Retry.REFRESH, failed.retry)
-        assertEquals("mobile: gave up dialling", failed.message)
+        assertEquals("res:${R.string.failure_unreachable}", failed.message)
+        assertNull(failed.detail)
+    }
+
+    @Test
+    fun anUnexpectedFailureStillShowsItsRawTextAsTheDetail() {
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        nextSession = { FakeSession(failWith = Exception("mobile: something new")) }
+
+        onMain { flow.connect() }
+        val failed = await<UnlockUiState.Failed>()
+        assertEquals("res:${R.string.failure_other}", failed.message)
+        assertEquals("mobile: something new", failed.detail)
+    }
+
+    @Test
+    fun aFailedPairingIsExplained() {
+        onMain { flow.refresh() }
+        await<UnlockUiState.NeedsPairing>()
+        nextPairing = {
+            FakePairing(failWith = MachineFailure(FailureKind.PAIR_CODE_MISMATCH, "", "raw", null))
+        }
+
+        onMain { flow.pair(payload(machineB)) }
+        val failed = await<UnlockUiState.Failed>()
+        assertEquals("res:${R.string.failure_pair_code_mismatch}", failed.message)
+        assertEquals(Retry.SCAN_AGAIN, failed.retry)
     }
 
     @Test
@@ -382,6 +420,43 @@ class UnlockFlowTest {
         assertEquals("res:${R.string.error_biometric_lockout}", failed.message)
         assertEquals(1, session.declines.size)
         assertTrue(session.closed)
+    }
+
+    /**
+     * Adding a fingerprint or face retires the key for good (it is
+     * created with setInvalidatedByBiometricEnrollment), and the
+     * machine's enrolment names that key. The phone then needs a new
+     * key and a new transport identity: the machine answers the first
+     * recipient whose transport identity matches, so pairing again
+     * under the old one would leave the dead key in front of the new.
+     */
+    @Test
+    fun anInvalidatedKeyDeclinesStartsAFreshIdentityAndSaysWhatToRevoke() {
+        val session = connectToARequest()
+        agreeFails = KeyInvalidated(RuntimeException("Key permanently invalidated"))
+
+        onMain { flow.approve { _, _ -> AuthOutcome.SUCCEEDED } }
+        val failed = await<UnlockUiState.Failed>()
+        assertEquals("res:${R.string.failure_key_invalidated}(OLD-PHONE-ID)", failed.message)
+        assertEquals(Retry.SCAN_AGAIN, failed.retry)
+        assertEquals(1, identityResets)
+        assertNull(store.saved)
+        assertEquals(1, session.declines.size)
+        assertFalse(session.answered)
+        assertTrue(session.closed)
+    }
+
+    @Test
+    fun anExpiredBiometricWindowDeclinesAndSaysToTryAgain() {
+        val session = connectToARequest()
+        agreeFails = AuthenticationExpired(RuntimeException("User not authenticated"))
+
+        onMain { flow.approve { _, _ -> AuthOutcome.SUCCEEDED } }
+        val failed = await<UnlockUiState.Failed>()
+        assertEquals("res:${R.string.failure_auth_expired}", failed.message)
+        assertEquals(Retry.REFRESH, failed.retry)
+        assertEquals(0, identityResets)
+        assertEquals(1, session.declines.size)
     }
 
     @Test

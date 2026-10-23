@@ -70,4 +70,18 @@
     <string name="error_scan_again">Scan again</string>
     <string name="error_connection_lost">The connection to the machine was lost.</string>
     <string name="error_nothing_to_approve">The machine connected but sent nothing to approve.</string>
+    <string name="failure_unreachable">Could not reach the machine. Check that it is waiting at its unlock prompt, that this phone is online or on the same network, and that this phone is enrolled on it.</string>
+    <string name="failure_pair_unreachable">Could not reach the machine. Check that it is still showing its pairing code, and that this phone is online or on the same network.</string>
+    <string name="failure_hung_up">The machine hung up. If it asked for a code, the code may not have matched, which can mean someone else is asking. Otherwise, try again.</string>
+    <string name="failure_no_reply">The machine stopped answering. Try again.</string>
+    <string name="failure_outcome_unknown">The answer was sent, but the machine did not confirm whether it unlocked. Look at the machine: it may have.</string>
+    <string name="failure_answer_rejected">The machine could not use this phone\'s answer, so it is still locked. This phone may no longer be enrolled on its disk.</string>
+    <string name="failure_bad_pairing_code">The pairing code in that QR code is damaged or incomplete. Scan it again.</string>
+    <string name="failure_pair_code_mismatch">The machine did not accept the pairing code. Each code works only once, so scan the one it is showing now.</string>
+    <string name="failure_pair_declined">The machine\'s operator declined the pairing.</string>
+    <string name="failure_pair_refused">The machine refused the pairing.</string>
+    <string name="failure_protocol">The machine sent something this phone will not act on, so nothing was answered.</string>
+    <string name="failure_other">Something went wrong.</string>
+    <string name="failure_auth_expired">The fingerprint or face check ran out before the answer was ready, so nothing was sent. Try again.</string>
+    <string name="failure_key_invalidated">This phone\'s key stopped working because a fingerprint or face was added to the phone, and the machine was not answered. The phone now has a new key: pair with the machine again. On the machine, revoke this phone\'s old device ID, %1$s, with unlocker enrol --remove.</string>
 </resources>

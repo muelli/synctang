@@ -59,6 +59,20 @@ class PairingStore(context: Context) : MachineStore {
         return Machine(id, prefs.getString(KEY_MACHINE_NAME, null).orEmpty())
     }
 
+    /**
+     * Drops this phone's transport identity and the paired machine, so
+     * that the next [identitySeed] is a fresh one. Only for a phone
+     * whose key has been invalidated, when the old identity is already
+     * of no use: every machine enrolled it alongside the dead key.
+     */
+    fun startNewIdentity() {
+        prefs.edit()
+            .remove(KEY_SEED)
+            .remove(KEY_MACHINE_ID)
+            .remove(KEY_MACHINE_NAME)
+            .commit()
+    }
+
     override fun saveMachine(machine: Machine) {
         prefs.edit()
             .putString(KEY_MACHINE_ID, machine.deviceId)

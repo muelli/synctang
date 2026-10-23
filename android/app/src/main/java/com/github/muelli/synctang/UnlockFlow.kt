@@ -77,7 +77,16 @@ sealed interface UnlockUiState {
 
     data class Done(val machine: Machine) : UnlockUiState
 
-    data class Failed(val machine: Machine?, val message: String, val retry: Retry = Retry.REFRESH) : UnlockUiState
+    /**
+     * [message] is in words for a person; [detail], when there is one,
+     * is the machine's own reason or the raw error text behind it.
+     */
+    data class Failed(
+        val machine: Machine?,
+        val message: String,
+        val retry: Retry = Retry.REFRESH,
+        val detail: String? = null,
+    ) : UnlockUiState
 }
 
 /**
@@ -213,6 +222,7 @@ class UnlockFlow(
     private val newSession: (Machine) -> MachineSession,
     private val newPairing: () -> PairingAttempt,
     private val agree: (ByteArray, ByteArray) -> ByteArray,
+    private val resetIdentity: () -> String,
     private val strings: Strings,
     private val log: (String, Throwable) -> Unit = { _, _ -> },
 ) {
@@ -293,7 +303,7 @@ class UnlockFlow(
             // biometric enrolled" error took a throwaway build added
             // just to print this.
             log("could not prepare this phone's identity", e)
-            UnlockUiState.Failed(null, e.friendlyMessage())
+            failed(null, e)
         }
 
     /**
@@ -347,7 +357,7 @@ class UnlockFlow(
                     _state.value = home(previous = previous, forcePairing = true)
                 } else {
                     log("pairing failed", e)
-                    _state.value = UnlockUiState.Failed(machine, e.friendlyMessage(), Retry.SCAN_AGAIN)
+                    _state.value = failed(machine, e, Retry.SCAN_AGAIN)
                 }
             } finally {
                 if (inFlight === attempt) inFlight = null
@@ -385,7 +395,7 @@ class UnlockFlow(
                 _state.value = if (attempt.cancelled) {
                     home(previous = null)
                 } else {
-                    UnlockUiState.Failed(machine, e.friendlyMessage())
+                    failed(machine, e)
                 }
             } finally {
                 if (inFlight === attempt) inFlight = null
@@ -408,7 +418,7 @@ class UnlockFlow(
                 _state.value = describe(machine)
             } catch (e: Exception) {
                 withContext(io) { closeSession() }
-                _state.value = UnlockUiState.Failed(machine, e.friendlyMessage())
+                _state.value = failed(machine, e)
             }
         }
     }
@@ -452,8 +462,26 @@ class UnlockFlow(
             try {
                 withContext(io) { active.answer(agree) }
                 _state.value = UnlockUiState.Done(machine)
+            } catch (e: KeyInvalidated) {
+                // Nothing was sent, and nothing this key does will ever
+                // work again: tell the machine no, and start afresh
+                // with a new key and a new transport identity. A new
+                // identity, because the machine answers the first
+                // recipient whose identity matches, so pairing again
+                // under the old one would leave the dead key in front.
+                log("the key was invalidated", e)
+                declineQuietly(active)
+                val oldDeviceId = withContext(io) { resetIdentity() }
+                _state.value = UnlockUiState.Failed(
+                    machine,
+                    strings.get(R.string.failure_key_invalidated, oldDeviceId),
+                    Retry.SCAN_AGAIN,
+                )
+            } catch (e: AuthenticationExpired) {
+                declineQuietly(active)
+                _state.value = failed(machine, e)
             } catch (e: Exception) {
-                _state.value = UnlockUiState.Failed(machine, e.friendlyMessage())
+                _state.value = failed(machine, e)
             } finally {
                 withContext(io) { closeSession() }
             }
@@ -485,6 +513,19 @@ class UnlockFlow(
             closeSession()
         }
         _state.value = home(previous = null)
+    }
+
+    private fun failed(machine: Machine?, e: Exception, retry: Retry = Retry.REFRESH): UnlockUiState.Failed {
+        val explained = explain(e)
+        return UnlockUiState.Failed(machine, strings.get(explained.message), retry, explained.detail)
+    }
+
+    private suspend fun declineQuietly(active: MachineSession) = withContext(io) {
+        try {
+            active.decline(DECLINED_BY_KEY_HOLDER)
+        } catch (e: Exception) {
+            // The machine may already have hung up.
+        }
     }
 
     private fun describe(machine: Machine): UnlockUiState {
