@@ -24,6 +24,9 @@
     <string name="pair_keeps_previous">%1$s stays paired until a new pairing works.</string>
     <string name="pair_keep_current">Keep using %1$s</string>
     <string name="pair_working">Pairing with the machine…</string>
+    <string name="pair_replaced">Now paired with %1$s instead of %2$s.</string>
+    <string name="pair_undo">Undo</string>
+    <string name="pair_undo_dismiss">Dismiss</string>
 
     <!-- Identity -->
     <string name="identity_device_id">This phone\'s device ID</string>

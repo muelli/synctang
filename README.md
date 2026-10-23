@@ -169,7 +169,8 @@ before the old one is revoked, so it can open the volume throughout:
 
 To pair the phone with a different machine, or with the same one again,
 use "Pair with a machine again" on the Unlock screen. The machine already
-paired stays paired until the new pairing has worked. To forget a machine
+paired stays paired until the new pairing has worked, and the Unlock
+screen then offers to undo the switch for a few seconds. To forget a machine
 on the phone altogether, clear the app's data in Android's settings, then
 revoke the phone on the machine.
 

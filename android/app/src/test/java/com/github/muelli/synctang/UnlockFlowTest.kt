@@ -174,6 +174,86 @@ class UnlockFlowTest {
         assertNull(store.saved)
     }
 
+    // Undoing a replacement
+
+    @Test
+    fun aPayloadWithoutACodeThatReplacesAMachineCanBeUndone() {
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        onMain { flow.startPairing() }
+        await<UnlockUiState.NeedsPairing>()
+
+        onMain { flow.pair(payload(machineB, code = null)) }
+        val replaced = await<UnlockUiState.Ready>()
+        assertEquals(machineB.deviceId, replaced.machine.deviceId)
+        assertEquals(machineA, replaced.replaced)
+
+        onMain { flow.undoReplace() }
+        awaitReady { it.machine == machineA && it.replaced == null }
+        assertEquals(machineA, store.saved)
+    }
+
+    @Test
+    fun dismissingTheUndoKeepsTheNewMachine() {
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+
+        onMain { flow.pair(payload(machineB, code = null)) }
+        awaitReady { it.replaced == machineA }
+        onMain { flow.dismissUndo() }
+        awaitReady { it.replaced == null }
+        assertEquals(machineB.deviceId, store.saved?.deviceId)
+    }
+
+    @Test
+    fun aSuccessfulPairingThatReplacesAMachineCanBeUndoneToo() {
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        onMain { flow.startPairing() }
+        await<UnlockUiState.NeedsPairing>()
+
+        onMain { flow.pair(payload(machineB)) }
+        pairings.awaitOne().finish()
+        awaitReady { it.replaced == machineA }
+        onMain { flow.undoReplace() }
+        awaitReady { it.machine == machineA && it.replaced == null }
+        assertEquals(machineA, store.saved)
+    }
+
+    @Test
+    fun pairingTheSameMachineAgainHasNothingToUndo() {
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+
+        onMain { flow.pair(payload(machineA, code = null)) }
+        Thread.sleep(100)
+        assertNull(await<UnlockUiState.Ready>().replaced)
+    }
+
+    @Test
+    fun aFirstPairingHasNothingToUndo() {
+        onMain { flow.refresh() }
+        await<UnlockUiState.NeedsPairing>()
+
+        onMain { flow.pair(payload(machineB, code = null)) }
+        assertNull(await<UnlockUiState.Ready>().replaced)
+    }
+
+    private fun awaitReady(condition: (UnlockUiState.Ready) -> Boolean): UnlockUiState.Ready {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (System.nanoTime() < deadline) {
+            val now = flow.state.value
+            if (now is UnlockUiState.Ready && condition(now)) return now
+            Thread.sleep(5)
+        }
+        fail("Ready never matched, still ${flow.state.value}")
+        throw AssertionError()
+    }
+
     // Cancel (defect 4)
 
     @Test

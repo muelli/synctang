@@ -50,9 +50,12 @@ not here. See `TESTREPORT.md` for the acceptance table (A1-A11).
   A pairing with a one-time code saves the machine only once the
   machine has enrolled the phone, so a failed one offers "Scan again"
   and leaves any existing pairing alone; Ready can pair again without
-  forgetting anything first. Connecting and pairing can be cancelled
+  forgetting anything first, and a pairing that replaces a different
+  machine is offered back by an Undo snackbar. Connecting and pairing can be cancelled
   (`Session.Cancel`, `Pairer.Cancel` interrupt the Go call), and back
   on a screen where the machine is waiting declines as Refuse does.
+  Once connected, each wait for the machine is bounded (60 s), so a
+  machine that goes silent mid-exchange cannot hold the phone for ever.
   The flow's decisions live in `UnlockFlow`, tested on the JVM through
   fakes `[V]`; none of this has been run on a device or emulator yet
   `[U]`.

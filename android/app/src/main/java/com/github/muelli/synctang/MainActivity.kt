@@ -22,11 +22,18 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -91,26 +99,90 @@ fun SynctangApp(gate: BiometricGate, model: UnlockViewModel = viewModel()) {
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        when (val current = state) {
-            is UnlockUiState.NeedsPairing -> PairingScreen(current, model)
-            is UnlockUiState.Ready -> ReadyScreen(current, model)
-            is UnlockUiState.Connecting -> Busy(stringResource(R.string.unlock_connecting), onCancel = model::cancel)
-            is UnlockUiState.Pairing -> Busy(stringResource(R.string.pair_working), onCancel = model::cancel)
-            is UnlockUiState.Working -> Busy(stringResource(R.string.unlock_working))
-            is UnlockUiState.ConfirmCode -> ConfirmCodeScreen(current, model)
-            is UnlockUiState.Approve -> ApproveScreen(current, gate, model)
-            is UnlockUiState.Done -> DoneScreen(current, model)
-            is UnlockUiState.Failed -> FailedScreen(current, model)
+    val snackbar = remember { SnackbarHostState() }
+    UndoReplace(state as? UnlockUiState.Ready, snackbar, model)
+
+    Scaffold(
+        snackbarHost = { UndoSnackbarHost(snackbar) },
+        // The Surface around this already paints the background.
+        containerColor = Color.Transparent,
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            when (val current = state) {
+                is UnlockUiState.NeedsPairing -> PairingScreen(current, model)
+                is UnlockUiState.Ready -> ReadyScreen(current, model)
+                is UnlockUiState.Connecting -> Busy(stringResource(R.string.unlock_connecting), onCancel = model::cancel)
+                is UnlockUiState.Pairing -> Busy(stringResource(R.string.pair_working), onCancel = model::cancel)
+                is UnlockUiState.Working -> Busy(stringResource(R.string.unlock_working))
+                is UnlockUiState.ConfirmCode -> ConfirmCodeScreen(current, model)
+                is UnlockUiState.Approve -> ApproveScreen(current, gate, model)
+                is UnlockUiState.Done -> DoneScreen(current, model)
+                is UnlockUiState.Failed -> FailedScreen(current, model)
+            }
         }
     }
 }
+
+/**
+ * A pairing that replaced a different machine is offered back, the
+ * way Android apps offer to undo anything done in one tap: a snackbar
+ * with Undo. A pairing without a one-time code cannot fail, so this is
+ * the only thing between a mistyped device ID and a working pairing
+ * lost.
+ */
+@Composable
+private fun UndoReplace(ready: UnlockUiState.Ready?, snackbar: SnackbarHostState, model: UnlockViewModel) {
+    val replaced = ready?.replaced
+    val message = replaced?.let {
+        stringResource(R.string.pair_replaced, ready.machine.label(), it.label())
+    }
+    val undo = stringResource(R.string.pair_undo)
+    LaunchedEffect(replaced) {
+        if (message == null) return@LaunchedEffect
+        val result = snackbar.showSnackbar(
+            message,
+            actionLabel = undo,
+            withDismissAction = true,
+            duration = SnackbarDuration.Long,
+        )
+        when (result) {
+            SnackbarResult.ActionPerformed -> model.undoReplace()
+            SnackbarResult.Dismissed -> model.dismissUndo()
+        }
+    }
+}
+
+@Composable
+private fun UndoSnackbarHost(state: SnackbarHostState) {
+    SnackbarHost(state) { data ->
+        Snackbar(
+            modifier = Modifier
+                .padding(12.dp)
+                .onEscape { data.dismiss() },
+            action = {
+                TextButton(onClick = { data.performAction() }, modifier = Modifier.focusRing()) {
+                    Text(data.visuals.actionLabel.orEmpty())
+                }
+            },
+            dismissAction = {
+                TextButton(onClick = { data.dismiss() }, modifier = Modifier.focusRing()) {
+                    Text(stringResource(R.string.pair_undo_dismiss))
+                }
+            },
+        ) {
+            Text(data.visuals.message)
+        }
+    }
+}
+
+private fun Machine.label(): String = name.ifBlank { deviceId }
 
 /**
  * A spinner, and a Cancel button when [onCancel] is given. A dial can

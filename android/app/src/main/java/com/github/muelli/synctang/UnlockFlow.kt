@@ -50,8 +50,12 @@ sealed interface UnlockUiState {
      */
     data class NeedsPairing(val identity: Identity, val previous: Machine? = null) : UnlockUiState
 
-    /** Paired and idle; the Unlock button is the only thing to do. */
-    data class Ready(val machine: Machine, val identity: Identity) : UnlockUiState
+    /**
+     * Paired and idle; the Unlock button is the only thing to do.
+     * [replaced] is the machine a pairing has just replaced, which the
+     * screen offers to go back to.
+     */
+    data class Ready(val machine: Machine, val identity: Identity, val replaced: Machine? = null) : UnlockUiState
 
     data class Connecting(val machine: Machine) : UnlockUiState
 
@@ -242,6 +246,35 @@ class UnlockFlow(
 
     fun keepCurrentMachine() = refresh()
 
+    /**
+     * Goes back to the machine a pairing has just replaced. Only the
+     * phone's side is undone: a machine that enrolled this phone keeps
+     * it enrolled until it is revoked there.
+     */
+    fun undoReplace() {
+        val ready = _state.value as? UnlockUiState.Ready ?: return
+        val replaced = ready.replaced ?: return
+        store.saveMachine(replaced)
+        refresh()
+    }
+
+    /** The offer to undo has gone unused; stop offering it. */
+    fun dismissUndo() {
+        val ready = _state.value as? UnlockUiState.Ready ?: return
+        _state.value = ready.copy(replaced = null)
+    }
+
+    /**
+     * Saves [machine] as the paired one and shows it, offering to undo
+     * if that replaced a different machine.
+     */
+    private suspend fun adopt(machine: Machine) {
+        val replaced = store.machine()?.takeIf { it.deviceId != machine.deviceId }
+        store.saveMachine(machine)
+        val next = home(previous = null)
+        _state.value = if (next is UnlockUiState.Ready) next.copy(replaced = replaced) else next
+    }
+
     private suspend fun home(previous: Machine?, forcePairing: Boolean = false): UnlockUiState =
         try {
             val identity = withContext(io) { identity() }
@@ -278,15 +311,14 @@ class UnlockFlow(
      *
      * Without a code all that has been scanned is a machine to
      * remember, which is what enrolment looked like before, so it is
-     * saved straight away and the enrol command is what remains.
+     * saved straight away and the enrol command is what remains. That
+     * cannot fail, so nothing protects the machine it replaces except
+     * the undo offered on the Unlock screen afterwards (see [adopt]).
      */
     fun pair(scanned: String): Boolean {
         when (val plan = planPairing(scanned)) {
             PairingPlan.Invalid -> return false
-            is PairingPlan.Remember -> {
-                store.saveMachine(plan.machine)
-                refresh()
-            }
+            is PairingPlan.Remember -> scope.launch { adopt(plan.machine) }
             is PairingPlan.Enrol -> enrol(plan.machine, plan.code)
         }
         return true
@@ -309,8 +341,7 @@ class UnlockFlow(
                 // Saved even if Cancel came too late to stop it: the
                 // machine has enrolled this phone, and saying otherwise
                 // would leave a working pairing unused.
-                store.saveMachine(machine)
-                _state.value = home(previous = null)
+                adopt(machine)
             } catch (e: Exception) {
                 if (attempt.cancelled) {
                     _state.value = home(previous = previous, forcePairing = true)
