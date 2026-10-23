@@ -47,6 +47,15 @@ not here. See `TESTREPORT.md` for the acceptance table (A1-A11).
   network with no Internet. Covered by a Go test that connects a
   `Session` to a machine reachable only by multicast, and by Kotlin
   tests for the lock's lifetime; not yet exercised on real hardware.
+  A pairing with a one-time code saves the machine only once the
+  machine has enrolled the phone, so a failed one offers "Scan again"
+  and leaves any existing pairing alone; Ready can pair again without
+  forgetting anything first. Connecting and pairing can be cancelled
+  (`Session.Cancel`, `Pairer.Cancel` interrupt the Go call), and back
+  on a screen where the machine is waiting declines as Refuse does.
+  The flow's decisions live in `UnlockFlow`, tested on the JVM through
+  fakes `[V]`; none of this has been run on a device or emulator yet
+  `[U]`.
   `-Psynctang.noBiometric=true` builds a debug-only variant whose key
   is not gated behind a biometric prompt, so the unlock flow can be
   driven end to end without a human; release builds cannot have it and

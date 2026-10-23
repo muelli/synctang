@@ -167,8 +167,11 @@ before the old one is revoked, so it can open the volume throughout:
     unlocker enrol --device /dev/sdXN --replace <transport id> --pubkey <new public key> \
       --existing-passphrase-file <(printf %s "$PASS")
 
-To forget a machine on the phone, clear the app's data in Android's
-settings, then revoke the phone on the machine.
+To pair the phone with a different machine, or with the same one again,
+use "Pair with a machine again" on the Unlock screen. The machine already
+paired stays paired until the new pairing has worked. To forget a machine
+on the phone altogether, clear the app's data in Android's settings, then
+revoke the phone on the machine.
 
 ## Licence
 
