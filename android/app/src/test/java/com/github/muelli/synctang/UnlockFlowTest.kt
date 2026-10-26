@@ -499,7 +499,6 @@ class UnlockFlowTest {
         assertEquals(BackAction.EXIT, backAction(UnlockUiState.Failed(null, "x", Retry.SCAN_AGAIN)))
         assertEquals(BackAction.CANCEL, backAction(UnlockUiState.Connecting(m)))
         assertEquals(BackAction.CANCEL, backAction(UnlockUiState.Pairing(m)))
-        assertEquals(BackAction.CANCEL, backAction(UnlockUiState.ConfirmCode(m, "peer", "123")))
         assertEquals(BackAction.CANCEL, backAction(UnlockUiState.Approve(m, "peer", "kid")))
         assertEquals(BackAction.IGNORE, backAction(UnlockUiState.Working(m)))
     }
@@ -562,10 +561,8 @@ private class FakeSession(
 
     override fun machineName() = "machine"
     override fun peerId() = "PEER"
-    override fun confirmCodeChallenge() = ""
     override fun hasRequest() = true
     override fun requestKidHex() = "ab"
-    override fun submitConfirmCode(code: String) = Unit
     override fun answer(agree: (ByteArray, ByteArray) -> ByteArray) {
         agree(ByteArray(32), ByteArray(32))
         answered = true

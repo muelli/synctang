@@ -49,49 +49,6 @@ func shortReplyTimeout(t *testing.T) {
 	t.Cleanup(func() { replyTimeout = saved })
 }
 
-// After the phone relays the confirm code, nothing about the exchange
-// waits on a human, so a machine that says nothing has gone wrong.
-// The phone used to wait for it for ever, behind a spinner the user
-// could not cancel.
-func TestSubmitConfirmCodeGivesUpOnASilentMachine(t *testing.T) {
-	shortReplyTimeout(t)
-	const (
-		phoneSeed   = "stall confirm phone seed"
-		machineSeed = "stall confirm machine seed"
-	)
-	machineID, err := DeviceIDForSeed(machineSeed)
-	if err != nil {
-		t.Fatalf("DeviceIDForSeed: %v", err)
-	}
-	addr := freePort(t)
-	stallingMachine(t, addr, phoneSeed, machineSeed, func(conn transport.Conn) {
-		_ = mrcore.WriteMessage(conn, mrcore.Hello{Name: "machine"})
-		_ = mrcore.WriteMessage(conn, mrcore.ConfirmCodeChallenge{Code: "123456"})
-		var resp mrcore.ConfirmCodeResponse
-		_ = mrcore.ReadMessage(conn, &resp)
-	})
-
-	s := NewSession(machineID, phoneSeed)
-	s.SetDirectAddr(addr)
-	s.SetTimeoutSeconds(30)
-	if err := s.Connect(); err != nil {
-		t.Fatalf("Connect: %v", err)
-	}
-	defer s.Close()
-
-	start := time.Now()
-	err = s.SubmitConfirmCode("123456")
-	if err == nil {
-		t.Fatal("SubmitConfirmCode reported success against a machine that never answered")
-	}
-	if elapsed := time.Since(start); elapsed > cancelPrompt {
-		t.Fatalf("SubmitConfirmCode took %s", elapsed)
-	}
-	if !strings.Contains(err.Error(), "did not answer") {
-		t.Errorf("error %q does not say the machine went quiet", err)
-	}
-}
-
 // The same for the verdict after the answer, where the error must also
 // keep saying what is known: the answer went out, the outcome did not
 // come back, so the machine may or may not have unlocked.
@@ -109,7 +66,6 @@ func TestAnswerXOnlyGivesUpOnAMachineThatNeverReportsTheOutcome(t *testing.T) {
 	addr := freePort(t)
 	stallingMachine(t, addr, phoneSeed, machineSeed, func(conn transport.Conn) {
 		_ = mrcore.WriteMessage(conn, mrcore.Hello{Name: "machine"})
-		_ = mrcore.WriteMessage(conn, mrcore.ConfirmCodeChallenge{Code: ""})
 		_ = mrcore.WriteMessage(conn, mrcore.RecoverRequest{
 			Kid: mustHex(t, v.Enrol.Kid),
 			X:   mustHex(t, v.Recover.X),

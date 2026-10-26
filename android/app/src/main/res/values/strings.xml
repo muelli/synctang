@@ -58,11 +58,6 @@
     <string name="done_title">Answered</string>
     <string name="unlock_again">Unlock something again</string>
 
-    <!-- Confirm code -->
-    <string name="confirm_title">Check the code on the machine</string>
-    <string name="confirm_hint">The machine is showing a code on its own screen. Only continue if it matches the one below; if it does not, someone else is asking.</string>
-    <string name="confirm_action">It matches, continue</string>
-
     <!-- Biometrics -->
     <string name="biometric_title">Unlock the machine</string>
     <string name="biometric_subtitle">Confirm it is you before answering %1$s.</string>
@@ -83,7 +78,7 @@
     <string name="error_nothing_to_approve">The machine connected but sent nothing to approve.</string>
     <string name="failure_unreachable">Could not reach the machine. Check that it is waiting at its unlock prompt, that this phone is online or on the same network, and that this phone is enrolled on it.</string>
     <string name="failure_pair_unreachable">Could not reach the machine. Check that it is still showing its pairing code, and that this phone is online or on the same network.</string>
-    <string name="failure_hung_up">The machine hung up. If it asked for a code, the code may not have matched, which can mean someone else is asking. Otherwise, try again.</string>
+    <string name="failure_hung_up">The machine hung up before it could be answered. Try again.</string>
     <string name="failure_no_reply">The machine stopped answering. Try again.</string>
     <string name="failure_outcome_unknown">The answer was sent, but the machine did not confirm whether it unlocked. Look at the machine: it may have.</string>
     <string name="failure_answer_rejected">The machine could not use this phone\'s answer, so it is still locked. This phone may no longer be enrolled on its disk.</string>

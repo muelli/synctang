@@ -100,7 +100,7 @@ func TestAgentRecoversAndAnswersAskPassword(t *testing.T) {
 	tr := transport.NewSyncthingRelay(machineCert)
 	agentErrCh := make(chan error, 1)
 	go func() {
-		agentErrCh <- runAgentOnce(ctx, device, machineCert, "test-machine", "", askDir,
+		agentErrCh <- runAgentOnce(ctx, device, machineCert, "test-machine", askDir,
 			transport.ListenOptions{DirectAddr: addr}, tr)
 	}()
 
@@ -117,14 +117,6 @@ func TestAgentRecoversAndAnswersAskPassword(t *testing.T) {
 	}
 	if hello.Name != "test-machine" {
 		t.Errorf("Hello.Name = %q, want %q", hello.Name, "test-machine")
-	}
-
-	var challenge mrcore.ConfirmCodeChallenge
-	if err := mrcore.ReadMessage(conn, &challenge); err != nil {
-		t.Fatalf("reading ConfirmCodeChallenge: %v", err)
-	}
-	if challenge.Code != "" {
-		t.Fatalf("ConfirmCodeChallenge.Code = %q, want empty: confirm-code is not active in this test", challenge.Code)
 	}
 
 	var req mrcore.RecoverRequest
@@ -258,7 +250,7 @@ func TestAgentRecoversOverLocalDiscovery(t *testing.T) {
 	tr := &transport.LocalDiscovery{Cert: machineCert, AnnounceInterval: 50 * time.Millisecond}
 	agentErrCh := make(chan error, 1)
 	go func() {
-		agentErrCh <- runAgentOnce(ctx, device, machineCert, "test-machine", "", askDir,
+		agentErrCh <- runAgentOnce(ctx, device, machineCert, "test-machine", askDir,
 			transport.ListenOptions{}, tr)
 	}()
 
@@ -272,11 +264,6 @@ func TestAgentRecoversOverLocalDiscovery(t *testing.T) {
 	var hello mrcore.Hello
 	if err := mrcore.ReadMessage(conn, &hello); err != nil {
 		t.Fatalf("reading Hello: %v", err)
-	}
-
-	var challenge mrcore.ConfirmCodeChallenge
-	if err := mrcore.ReadMessage(conn, &challenge); err != nil {
-		t.Fatalf("reading ConfirmCodeChallenge: %v", err)
 	}
 
 	var req mrcore.RecoverRequest
@@ -313,91 +300,6 @@ func TestAgentRecoversOverLocalDiscovery(t *testing.T) {
 	if _, err := runCommand(P, "cryptsetup", "open", "--test-passphrase",
 		"--key-file=-", device); err != nil {
 		t.Fatalf("the delivered secret does not open %s: %v", device, err)
-	}
-}
-
-// T3.3: a confirm code response that does not match the code the agent
-// generated must be rejected before any RecoverResponse is even trusted,
-// and no ask-password reply must ever be sent.
-func TestAgentRejectsWrongConfirmCode(t *testing.T) {
-	existingPassphrase := []byte("existing-test-passphrase")
-	device := formatLoopbackImage(t, existingPassphrase)
-
-	g := mrcore.P256()
-	s, err := g.RandomScalar()
-	if err != nil {
-		t.Fatalf("RandomScalar: %v", err)
-	}
-	S, err := g.ScalarBaseMult(s)
-	if err != nil {
-		t.Fatalf("ScalarBaseMult: %v", err)
-	}
-
-	keyholderCert, err := transport.LoadOrCreateCert(filepath.Join(t.TempDir(), "keyholder.pem"))
-	if err != nil {
-		t.Fatalf("keyholder LoadOrCreateCert: %v", err)
-	}
-	keyholderID := protocol.NewDeviceID(keyholderCert.Certificate[0]).String()
-
-	if err := enrolRecipient(device, existingPassphrase, S, "test-machine", "MACHINE-ID", keyholderID); err != nil {
-		t.Fatalf("enrolRecipient: %v", err)
-	}
-
-	machineCert, err := transport.LoadOrCreateCert(filepath.Join(t.TempDir(), "machine.pem"))
-	if err != nil {
-		t.Fatalf("machine LoadOrCreateCert: %v", err)
-	}
-	machineID := protocol.NewDeviceID(machineCert.Certificate[0]).String()
-
-	askDir := t.TempDir()
-	replyConn := writeAskRequest(t, askDir)
-
-	addr := freeTestAddr(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	const wantCode = "123456"
-	tr := transport.NewSyncthingRelay(machineCert)
-	agentErrCh := make(chan error, 1)
-	go func() {
-		agentErrCh <- runAgentOnce(ctx, device, machineCert, "test-machine", wantCode, askDir,
-			transport.ListenOptions{DirectAddr: addr}, tr)
-	}()
-
-	keyholderTr := transport.NewSyncthingRelay(keyholderCert)
-	conn, err := keyholderTr.Dial(ctx, transport.DialOptions{PeerID: machineID, DirectAddr: addr})
-	if err != nil {
-		t.Fatalf("keyholder Dial: %v", err)
-	}
-	defer conn.Close()
-
-	var hello mrcore.Hello
-	if err := mrcore.ReadMessage(conn, &hello); err != nil {
-		t.Fatalf("reading Hello: %v", err)
-	}
-
-	var challenge mrcore.ConfirmCodeChallenge
-	if err := mrcore.ReadMessage(conn, &challenge); err != nil {
-		t.Fatalf("reading ConfirmCodeChallenge: %v", err)
-	}
-	if challenge.Code != wantCode {
-		t.Fatalf("ConfirmCodeChallenge.Code = %q, want %q", challenge.Code, wantCode)
-	}
-
-	if err := mrcore.WriteMessage(conn, mrcore.ConfirmCodeResponse{Code: "000000"}); err != nil {
-		t.Fatalf("sending ConfirmCodeResponse: %v", err)
-	}
-
-	if err := <-agentErrCh; err == nil {
-		t.Fatal("runAgentOnce: expected an error for a wrong confirm code, got nil")
-	}
-
-	buf := make([]byte, 4096)
-	if err := replyConn.SetReadDeadline(time.Now().Add(500 * time.Millisecond)); err != nil {
-		t.Fatalf("SetReadDeadline: %v", err)
-	}
-	if _, _, err := replyConn.ReadFrom(buf); err == nil {
-		t.Fatal("ask-password socket received a reply despite the wrong confirm code")
 	}
 }
 
@@ -489,7 +391,7 @@ func TestAgentRecoversASecretContainingANulByte(t *testing.T) {
 	tr := transport.NewSyncthingRelay(machineCert)
 	agentErrCh := make(chan error, 1)
 	go func() {
-		agentErrCh <- runAgentOnce(ctx, device, machineCert, "test-machine", "", askDir,
+		agentErrCh <- runAgentOnce(ctx, device, machineCert, "test-machine", askDir,
 			transport.ListenOptions{DirectAddr: addr}, tr)
 	}()
 
@@ -503,10 +405,6 @@ func TestAgentRecoversASecretContainingANulByte(t *testing.T) {
 	var hello mrcore.Hello
 	if err := mrcore.ReadMessage(conn, &hello); err != nil {
 		t.Fatalf("reading Hello: %v", err)
-	}
-	var challenge mrcore.ConfirmCodeChallenge
-	if err := mrcore.ReadMessage(conn, &challenge); err != nil {
-		t.Fatalf("reading ConfirmCodeChallenge: %v", err)
 	}
 	var req mrcore.RecoverRequest
 	if err := mrcore.ReadMessage(conn, &req); err != nil {

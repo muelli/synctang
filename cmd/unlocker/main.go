@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"crypto/rand"
 	"crypto/tls"
 	"encoding/hex"
 	"flag"
@@ -17,7 +16,6 @@ import (
 	"github.com/muelli/synctang/mrcore"
 	"io"
 	"log/slog"
-	"math/big"
 	"os"
 	"os/signal"
 	"syscall"
@@ -226,18 +224,6 @@ func shouldWarnAboutNewIdentity(isNew bool, keyFile string) bool {
 	return isNew && keyFile == defaultMachineKeyFile
 }
 
-// generateConfirmCode picks a random 6-digit code, printed on this
-// machine's console and relayed back by the key holder before recovery
-// proceeds, so that whoever answers has proven they can see this
-// console, not merely reach it over the network.
-func generateConfirmCode() (string, error) {
-	n, err := rand.Int(rand.Reader, big.NewInt(1000000))
-	if err != nil {
-		return "", fmt.Errorf("generating confirm code: %w", err)
-	}
-	return fmt.Sprintf("%06d", n.Int64()), nil
-}
-
 // runAgentCLI is the "agent" subcommand: it runs the systemd password
 // agent, listening for a key holder to connect and answer one recovery
 // attempt at a time, until ctx (SIGTERM, which
@@ -247,7 +233,6 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	device := fs.String("device", "", "LUKS2 device to unlock (auto-discovered from /proc/partitions if omitted)")
 	name := fs.String("name", "", "this machine's name, shown to the key holder")
-	confirmCodeFlag := fs.Bool("confirm-code", false, "require the key holder to read back a code shown on this console")
 	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, "path to this machine's persistent transport identity")
 	askPasswordDir := fs.String("ask-password-dir", defaultAskPasswordDir, "systemd ask-password directory")
 	directAddr := fs.String("direct-addr", "", "listen on this address directly, bypassing relay and discovery (testing only)")
@@ -268,16 +253,6 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		fmt.Fprintf(stderr, "unlocker: %v\n", err)
 		return 1
-	}
-
-	var confirmCode string
-	if *confirmCodeFlag {
-		confirmCode, err = generateConfirmCode()
-		if err != nil {
-			fmt.Fprintf(stderr, "unlocker: %v\n", err)
-			return 1
-		}
-		fmt.Fprintf(stdout, "confirm code: %s\n", confirmCode)
 	}
 
 	fmt.Fprintf(stdout, "unlocker: waiting for a key holder, transport id %s\n", protocol.NewDeviceID(cert.Certificate[0]))
@@ -318,7 +293,7 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 		}
 
 		logger.Log(ctx, levelTrace, "starting a recovery attempt", "device", activeDevice)
-		err := runAgentOnce(ctx, activeDevice, cert, *name, confirmCode, *askPasswordDir,
+		err := runAgentOnce(ctx, activeDevice, cert, *name, *askPasswordDir,
 			transport.ListenOptions{DirectAddr: *directAddr}, tr)
 		switch {
 		case err == nil:

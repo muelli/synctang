@@ -5,7 +5,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"crypto/subtle"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -49,19 +48,10 @@ func authorizedPeersFor(tok mrcore.Token) ([]string, error) {
 
 // runAgentOnce performs one recovery attempt against device: it waits for
 // exactly one key holder to connect (via tr), runs the MR-1 recovery
-// exchange (with an optional confirm-code check first), verifies the
-// recovered secret actually opens device before trusting it, and answers
-// the matching systemd ask-password request with it.
-//
-// The wire protocol always sends a ConfirmCodeChallenge right after
-// Hello, whether or not confirmCode is set: an empty Code means "not
-// required". A key holder that recognises the empty code skips both its
-// own console prompt and sending a response back, and this function
-// mirrors that by only waiting for a ConfirmCodeResponse when confirmCode
-// is non-empty. This lets the two message types be told apart by their
-// fixed position in the exchange, without adding a discriminator field to
-// mrcore/wire.go.
-func runAgentOnce(ctx context.Context, device string, machineCert tls.Certificate, machineName string, confirmCode string, askPasswordDir string, listenOpts transport.ListenOptions, tr transport.Transport) error {
+// exchange, verifies the recovered secret actually opens device before
+// trusting it, and answers the matching systemd ask-password request
+// with it.
+func runAgentOnce(ctx context.Context, device string, machineCert tls.Certificate, machineName string, askPasswordDir string, listenOpts transport.ListenOptions, tr transport.Transport) error {
 	dump, err := runCommand(nil, "cryptsetup", "luksDump", device)
 	if err != nil {
 		return fmt.Errorf("unlocker: reading LUKS header: %w", err)
@@ -89,12 +79,11 @@ func runAgentOnce(ctx context.Context, device string, machineCert tls.Certificat
 	}
 	defer conn.Close()
 
-	return runExchange(ctx, conn, tok, device, machineName, confirmCode, askPasswordDir)
+	return runExchange(ctx, conn, tok, device, machineName, askPasswordDir)
 }
 
 // runExchange is everything that happens once a key holder is on the
-// other end of conn: greet it, put the confirm code to it if there is
-// one, ask it to answer a challenge, check what comes back actually
+// other end of conn: greet it, ask it to answer a challenge, check what comes back actually
 // opens the volume, hand that to systemd, and tell the key holder how
 // it went.
 //
@@ -106,7 +95,7 @@ func runExchange(
 	ctx context.Context,
 	conn transport.Conn,
 	tok mrcore.Token,
-	device, machineName, confirmCode, askPasswordDir string,
+	device, machineName, askPasswordDir string,
 ) error {
 	// Bound the exchange itself, not just the wait for a connection.
 	//
@@ -122,9 +111,7 @@ func runExchange(
 	// Closing the connection is what unblocks a read, there being no
 	// deadline on the Conn interface; the agent's outer loop then
 	// starts a fresh attempt. The budget is generous because the
-	// exchange legitimately waits for a human to approve on a phone,
-	// and in confirm-code mode to read a code off this console and
-	// type it in.
+	// exchange legitimately waits for a human to approve on a phone.
 	exchangeCtx, cancelExchange := context.WithTimeout(ctx, exchangeTimeout)
 	defer cancelExchange()
 	// Closing the connection is what unblocks a read; context.AfterFunc
@@ -145,19 +132,6 @@ func runExchange(
 
 	if err := mrcore.WriteMessage(conn, mrcore.Hello{Name: machineName}); err != nil {
 		return fmt.Errorf("unlocker: sending hello: %w", err)
-	}
-
-	if err := mrcore.WriteMessage(conn, mrcore.ConfirmCodeChallenge{Code: confirmCode}); err != nil {
-		return fmt.Errorf("unlocker: sending confirm code challenge: %w", err)
-	}
-	if confirmCode != "" {
-		var resp mrcore.ConfirmCodeResponse
-		if err := mrcore.ReadMessage(conn, &resp); err != nil {
-			return fmt.Errorf("unlocker: reading confirm code response: %w", err)
-		}
-		if !confirmCodeMatches(resp.Code, confirmCode) {
-			return fmt.Errorf("unlocker: wrong confirm code from %s", conn.PeerID())
-		}
 	}
 
 	e, X, err := mrcore.ChallengeStart(mrcore.P256(), matched.C)
@@ -263,30 +237,9 @@ func checkSecretLength(P []byte) error {
 	return nil
 }
 
-// confirmCodeMatches compares a relayed confirm code against the real
-// one without leaking, through how long it takes, how much of it was
-// right.
-//
-// The code exists for one situation: somebody has the key holder but
-// cannot see this machine's console, which is to say a stolen or
-// borrowed phone. That is exactly the attacker who gets to make
-// repeated attempts, since the same code is reused for every
-// connection during one agent run, and a plain string comparison
-// stops at the first differing byte. Six digits guessed blind is a
-// million tries; six digits guessed a character at a time is sixty.
-func confirmCodeMatches(got, want string) bool {
-	// Comparing lengths first only leaks the length, which is not
-	// secret: the code is always the same number of digits.
-	if len(got) != len(want) {
-		return false
-	}
-	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
-}
-
 // exchangeTimeout bounds one recovery exchange once a key holder has
 // connected. Long enough for somebody to pick up a phone, approve, and
-// authenticate, and in confirm-code mode to read six digits off a
-// console and type them; short enough that a key holder which has
+// authenticate; short enough that a key holder which has
 // silently gone away costs one attempt rather than the whole boot.
 // A var rather than a const so tests can shorten it: the behaviour
 // worth testing is that the agent gives up at all, and waiting three

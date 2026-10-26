@@ -25,8 +25,7 @@ const (
 	// unlock prompt, out of reach, or not have this phone enrolled:
 	// from this side those look the same.
 	FailureUnreachable = 3
-	// FailureHungUp: the machine closed the connection mid-exchange,
-	// which after a confirm code usually means the code was wrong.
+	// FailureHungUp: the machine closed the connection mid-exchange.
 	FailureHungUp = 4
 	// FailureNoReply: the machine stopped answering mid-exchange.
 	FailureNoReply = 5

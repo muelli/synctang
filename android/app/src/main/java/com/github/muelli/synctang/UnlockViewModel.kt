@@ -88,7 +88,6 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
     fun dismissUndo() = flow.dismissUndo()
     fun pair(scanned: String): Boolean = flow.pair(scanned)
     fun connect() = flow.connect()
-    fun submitConfirmCode(code: String) = flow.submitConfirmCode(code)
     fun approve(gate: BiometricGate) = flow.approve(gate)
     fun cancel() = flow.cancel()
 
@@ -121,12 +120,8 @@ private class GoSession(
     override fun decline(reason: String) = session.decline(reason)
     override fun machineName(): String = session.machineName()
     override fun peerId(): String = session.peerID()
-    override fun confirmCodeChallenge(): String = session.confirmCodeChallenge()
     override fun hasRequest() = session.hasRequest()
     override fun requestKidHex() = session.requestKid().toHex()
-    override fun submitConfirmCode(code: String) = classified(session::lastFailure, session::lastFailureDetail) {
-        session.submitConfirmCode(code)
-    }
 
     override fun answer(agree: (ByteArray, ByteArray) -> ByteArray) {
         // Not classified as a whole: agree's own failures (an expired

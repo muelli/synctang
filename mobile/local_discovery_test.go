@@ -85,10 +85,6 @@ func TestSessionConnectsOverLocalDiscoveryWithoutTheRelay(t *testing.T) {
 			machineErr <- err
 			return
 		}
-		if err := mrcore.WriteMessage(conn, mrcore.ConfirmCodeChallenge{Code: ""}); err != nil {
-			machineErr <- err
-			return
-		}
 		// A recovery request the phone will never be asked to answer:
 		// this test is about reachability, and Connect returns once it
 		// has read this far. The point still has to be a real one, since

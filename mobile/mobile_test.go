@@ -133,18 +133,10 @@ func TestAffineCoordinatesMatchVector(t *testing.T) {
 // exercise.
 func TestSessionRecoveryRoundTrip(t *testing.T) {
 	v := loadVectors(t)
-	runSession(t, v, false)
+	runSession(t, v)
 }
 
-// TestSessionConfirmCodeRoundTrip is the same flow with the machine
-// running with a confirm code, which the key holder must relay back
-// before it is shown any recovery request at all.
-func TestSessionConfirmCodeRoundTrip(t *testing.T) {
-	v := loadVectors(t)
-	runSession(t, v, true)
-}
-
-func runSession(t *testing.T, v vectors, withConfirmCode bool) {
+func runSession(t *testing.T, v vectors) {
 	t.Helper()
 
 	const (
@@ -152,7 +144,6 @@ func runSession(t *testing.T, v vectors, withConfirmCode bool) {
 		phoneSeed   = "test phone identity seed"
 		machineSeed = "test machine identity seed"
 		machineName = "workstation in the study"
-		confirmCode = "471 902"
 	)
 
 	phoneID, err := DeviceIDForSeed(phoneSeed)
@@ -188,33 +179,6 @@ func runSession(t *testing.T, v vectors, withConfirmCode bool) {
 			machineErr <- err
 			return
 		}
-		// Unconditional, exactly as cmd/unlocker/agent.go does it: the
-		// machine always sends a ConfirmCodeChallenge in this position
-		// and an empty Code means "not required". This used to be sent
-		// only when withConfirmCode was set, which made the fake
-		// machine the one thing in the project that did not follow the
-		// convention, and hid a bug that made the app unable to unlock
-		// any machine not running in confirm-code mode.
-		code := ""
-		if withConfirmCode {
-			code = confirmCode
-		}
-		if err := mrcore.WriteMessage(conn, mrcore.ConfirmCodeChallenge{Code: code}); err != nil {
-			machineErr <- err
-			return
-		}
-		if withConfirmCode {
-			var answer mrcore.ConfirmCodeResponse
-			if err := mrcore.ReadMessage(conn, &answer); err != nil {
-				machineErr <- err
-				return
-			}
-			if answer.Code != confirmCode {
-				machineErr <- errWrongCode
-				return
-			}
-		}
-
 		req := mrcore.RecoverRequest{
 			Kid: mustHex(t, v.Enrol.Kid),
 			X:   mustHex(t, v.Recover.X),
@@ -261,20 +225,6 @@ func runSession(t *testing.T, v vectors, withConfirmCode bool) {
 	}
 	if got := session.PeerID(); got != machineID {
 		t.Fatalf("PeerID = %q, want %q", got, machineID)
-	}
-
-	if withConfirmCode {
-		if got := session.ConfirmCodeChallenge(); got != confirmCode {
-			t.Fatalf("ConfirmCodeChallenge = %q, want %q", got, confirmCode)
-		}
-		if session.HasRequest() {
-			t.Fatal("a recovery request arrived before the confirm code was answered")
-		}
-		if err := session.SubmitConfirmCode(confirmCode); err != nil {
-			t.Fatalf("SubmitConfirmCode: %v", err)
-		}
-	} else if got := session.ConfirmCodeChallenge(); got != "" {
-		t.Fatalf("unexpected confirm code challenge %q", got)
 	}
 
 	if !session.HasRequest() {
@@ -372,7 +322,6 @@ func TestEnrolAndChallengeRoundTrip(t *testing.T) {
 }
 
 var (
-	errWrongCode         = errString("confirm code did not match")
 	errKeyHolderDeclined = errString("key holder declined")
 )
 
@@ -435,7 +384,6 @@ func TestSessionConnectRetriesUntilTheMachineAnswers(t *testing.T) {
 				continue
 			}
 			_ = mrcore.WriteMessage(conn, mrcore.Hello{Name: machineName})
-			_ = mrcore.WriteMessage(conn, mrcore.ConfirmCodeChallenge{Code: ""})
 			_ = mrcore.WriteMessage(conn, mrcore.RecoverRequest{
 				Kid: mustHex(t, v.Enrol.Kid),
 				X:   mustHex(t, v.Recover.X),
@@ -509,7 +457,6 @@ func TestAnswerXOnlyReportsAMachineThatCouldNotUseTheAnswer(t *testing.T) {
 		}
 		defer conn.Close()
 		_ = mrcore.WriteMessage(conn, mrcore.Hello{Name: "grumpy machine"})
-		_ = mrcore.WriteMessage(conn, mrcore.ConfirmCodeChallenge{Code: ""})
 		_ = mrcore.WriteMessage(conn, mrcore.RecoverRequest{
 			Kid: mustHex(t, v.Enrol.Kid),
 			X:   mustHex(t, v.Recover.X),

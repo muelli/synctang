@@ -62,13 +62,6 @@ sealed interface UnlockUiState {
     /** Enrolling this phone on [machine] over the network. */
     data class Pairing(val machine: Machine) : UnlockUiState
 
-    /**
-     * The machine is running with a confirm code. [code] is what it
-     * sent over the wire; the user must check it against what the
-     * machine is printing on its own console before relaying it back.
-     */
-    data class ConfirmCode(val machine: Machine, val peerId: String, val code: String) : UnlockUiState
-
     /** A recovery request has arrived and is waiting for approval. */
     data class Approve(val machine: Machine, val peerId: String, val kidHex: String) : UnlockUiState
 
@@ -130,10 +123,8 @@ interface MachineSession {
     fun decline(reason: String)
     fun machineName(): String
     fun peerId(): String
-    fun confirmCodeChallenge(): String
     fun hasRequest(): Boolean
     fun requestKidHex(): String
-    fun submitConfirmCode(code: String)
 
     /**
      * Answers the request with [agree] applied to the challenge
@@ -185,7 +176,7 @@ fun backAction(state: UnlockUiState): BackAction = when (state) {
         if (state.previous != null) BackAction.KEEP_CURRENT_MACHINE else BackAction.EXIT
     is UnlockUiState.Ready, is UnlockUiState.Done, is UnlockUiState.Failed -> BackAction.EXIT
     is UnlockUiState.Connecting, is UnlockUiState.Pairing,
-    is UnlockUiState.ConfirmCode, is UnlockUiState.Approve -> BackAction.CANCEL
+    is UnlockUiState.Approve -> BackAction.CANCEL
     is UnlockUiState.Working -> BackAction.IGNORE
 }
 
@@ -405,26 +396,6 @@ class UnlockFlow(
     }
 
     /**
-     * Relays the confirm code back to the machine. The machine decides
-     * whether it was right; a wrong one makes it hang up.
-     */
-    fun submitConfirmCode(code: String) {
-        val machine = store.machine() ?: return
-        val active = session ?: return
-        _state.value = UnlockUiState.Working(machine)
-
-        scope.launch {
-            try {
-                withContext(io) { active.submitConfirmCode(code) }
-                _state.value = describe(machine)
-            } catch (e: Exception) {
-                withContext(io) { closeSession() }
-                _state.value = failed(machine, e)
-            }
-        }
-    }
-
-    /**
      * Approves the request: prompt for a biometric, then do the ECDH in
      * the Keystore and send the answer.
      *
@@ -539,9 +510,7 @@ class UnlockFlow(
     private fun describe(machine: Machine): UnlockUiState {
         val active = session ?: return UnlockUiState.Failed(machine, strings.get(R.string.error_connection_lost))
         val named = machine.copy(name = active.machineName().ifBlank { machine.name })
-        val code = active.confirmCodeChallenge()
         return when {
-            code.isNotEmpty() -> UnlockUiState.ConfirmCode(named, active.peerId(), code)
             active.hasRequest() -> UnlockUiState.Approve(named, active.peerId(), active.requestKidHex())
             else -> UnlockUiState.Failed(named, strings.get(R.string.error_nothing_to_approve))
         }

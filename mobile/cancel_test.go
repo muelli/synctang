@@ -179,7 +179,6 @@ func TestSessionConnectionSurvivesTheEndOfConnect(t *testing.T) {
 		}
 		defer conn.Close()
 		_ = mrcore.WriteMessage(conn, mrcore.Hello{Name: "machine"})
-		_ = mrcore.WriteMessage(conn, mrcore.ConfirmCodeChallenge{Code: ""})
 		_ = mrcore.WriteMessage(conn, mrcore.RecoverRequest{
 			Kid: mustHex(t, v.Enrol.Kid),
 			X:   mustHex(t, v.Recover.X),

@@ -69,7 +69,7 @@ func hostileKeyHolder(t *testing.T, answer func(req mrcore.RecoverRequest) mrcor
 	tr := transport.NewSyncthingRelay(machineCert)
 	agentErrCh := make(chan error, 1)
 	go func() {
-		agentErrCh <- runAgentOnce(ctx, device, machineCert, "test-machine", "", askDir,
+		agentErrCh <- runAgentOnce(ctx, device, machineCert, "test-machine", askDir,
 			transport.ListenOptions{DirectAddr: addr}, tr)
 	}()
 
@@ -83,10 +83,6 @@ func hostileKeyHolder(t *testing.T, answer func(req mrcore.RecoverRequest) mrcor
 	var hello mrcore.Hello
 	if err := mrcore.ReadMessage(conn, &hello); err != nil {
 		t.Fatalf("reading hello: %v", err)
-	}
-	var challenge mrcore.ConfirmCodeChallenge
-	if err := mrcore.ReadMessage(conn, &challenge); err != nil {
-		t.Fatalf("reading confirm code challenge: %v", err)
 	}
 	var req mrcore.RecoverRequest
 	if err := mrcore.ReadMessage(conn, &req); err != nil {
@@ -238,7 +234,7 @@ func TestASilentKeyHolderDoesNotStrandTheMachine(t *testing.T) {
 	tr := transport.NewSyncthingRelay(machineCert)
 	agentErrCh := make(chan error, 1)
 	go func() {
-		agentErrCh <- runAgentOnce(ctx, device, machineCert, "test-machine", "", askDir,
+		agentErrCh <- runAgentOnce(ctx, device, machineCert, "test-machine", askDir,
 			transport.ListenOptions{DirectAddr: addr}, tr)
 	}()
 
@@ -258,22 +254,6 @@ func TestASilentKeyHolderDoesNotStrandTheMachine(t *testing.T) {
 		}
 	case <-time.After(30 * time.Second):
 		t.Fatal("the agent is still waiting on a silent key holder; the machine is stranded until it reboots")
-	}
-}
-
-// The confirm code defends against somebody holding the key holder
-// who cannot see the machine's console, and that same person is the
-// one who gets to keep guessing: the code is reused for every
-// connection during one agent run. So the comparison must not tell
-// them how much of a guess was right.
-func TestConfirmCodeComparison(t *testing.T) {
-	if !confirmCodeMatches("471902", "471902") {
-		t.Error("the right code was rejected")
-	}
-	for _, wrong := range []string{"", "4", "47190", "471903", "471902 ", "000000", "4719020"} {
-		if confirmCodeMatches(wrong, "471902") {
-			t.Errorf("%q accepted as the code", wrong)
-		}
 	}
 }
 

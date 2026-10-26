@@ -31,7 +31,6 @@ class AboutTest {
             UnlockUiState.Connecting(machine),
             UnlockUiState.Pairing(machine),
             UnlockUiState.Working(machine),
-            UnlockUiState.ConfirmCode(machine, "MACHINE", "123456"),
             UnlockUiState.Approve(machine, "MACHINE", "ab"),
             UnlockUiState.Done(machine),
             UnlockUiState.Failed(machine, "failed"),

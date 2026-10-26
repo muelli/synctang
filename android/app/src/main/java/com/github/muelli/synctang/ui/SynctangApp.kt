@@ -105,7 +105,6 @@ fun SynctangApp(gate: BiometricGate, model: UnlockViewModel = viewModel()) {
                 is UnlockUiState.Connecting -> Busy(stringResource(R.string.unlock_connecting), current.machine, model::cancel)
                 is UnlockUiState.Pairing -> Busy(stringResource(R.string.pair_working), current.machine, model::cancel)
                 is UnlockUiState.Working -> Busy(stringResource(R.string.unlock_working), current.machine)
-                is UnlockUiState.ConfirmCode -> ConfirmCodeScreen(current, model::submitConfirmCode, model::cancel)
                 is UnlockUiState.Approve -> ApproveScreen(current, { model.approve(gate) }, model::cancel)
                 is UnlockUiState.Done -> DoneScreen(current, model::refresh)
                 is UnlockUiState.Failed -> FailedScreen(current, model::refresh, model::startPairing)

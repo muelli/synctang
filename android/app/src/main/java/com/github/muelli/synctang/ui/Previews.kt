@@ -111,12 +111,6 @@ private fun ApproveMismatchPreview() = Frame {
     ApproveScreen(UnlockUiState.Approve(machine, PHONE_ID, KID), {}, {})
 }
 
-@Preview(name = "ConfirmCode", widthDp = 360, heightDp = 800)
-@Composable
-private fun ConfirmCodePreview() = Frame {
-    ConfirmCodeScreen(UnlockUiState.ConfirmCode(machine, DEVICE_ID, "482913"), {}, {})
-}
-
 @Preview(name = "Approve", widthDp = 360, heightDp = 800)
 @Composable
 private fun ApprovePreview() = Frame {

@@ -16,6 +16,7 @@ import (
 // It is chosen by the machine, so what reaches the screen must not carry
 // control or direction-changing characters, or be unboundedly long.
 func TestMachineNameIsMadeSafeToShow(t *testing.T) {
+	v := loadVectors(t)
 	const (
 		phoneSeed   = "test phone identity seed"
 		machineSeed = "test machine identity seed"
@@ -40,8 +41,11 @@ func TestMachineNameIsMadeSafeToShow(t *testing.T) {
 		}
 		defer conn.Close()
 		_ = mrcore.WriteMessage(conn, mrcore.Hello{Name: hostile})
-		_ = mrcore.WriteMessage(conn, mrcore.ConfirmCodeChallenge{Code: "123456"})
-		var resp mrcore.ConfirmCodeResponse
+		_ = mrcore.WriteMessage(conn, mrcore.RecoverRequest{
+			Kid: mustHex(t, v.Enrol.Kid),
+			X:   mustHex(t, v.Recover.X),
+		})
+		var resp mrcore.RecoverResponse
 		_ = mrcore.ReadMessage(conn, &resp)
 	}()
 

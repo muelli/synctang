@@ -8,7 +8,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/muelli/synctang/mrcore"
 	"github.com/muelli/synctang/mrcore/transport"
@@ -22,14 +21,7 @@ import (
 // owns wiping s: this may be called more than once against the same s
 // (see runUnlock's retry), so wiping it here after the first call would
 // corrupt every attempt after that.
-//
-// The machine always sends a ConfirmCodeChallenge right after Hello,
-// whether or not it was started with --confirm-code: an empty Code means
-// "not required", which this function recognises by skipping both the
-// console prompt for it and sending back a ConfirmCodeResponse at all.
-// That is how the two message types are told apart, by their fixed
-// position in the exchange rather than by a discriminator field in
-// mrcore/wire.go; cmd/unlocker's agent.go follows the same convention.
+
 // newDialTransport builds the Transport runUnlockOnce dials through.
 // An explicit directAddr bypasses discovery entirely (offline tests,
 // and manual same-network pairing), exactly as before; otherwise
@@ -66,21 +58,6 @@ func runUnlockOnce(ctx context.Context, s []byte, cert tls.Certificate, machineI
 		fmt.Fprintf(stdout, "Machine %q (%s) wants to unlock. Press Enter to approve, Ctrl-C to abort: ", mrcore.SafeLabel(hello.Name, 64), machineID)
 		if _, err := in.ReadString('\n'); err != nil && err != io.EOF {
 			return fmt.Errorf("reading approval: %w", err)
-		}
-	}
-
-	var challenge mrcore.ConfirmCodeChallenge
-	if err := mrcore.ReadMessage(conn, &challenge); err != nil {
-		return fmt.Errorf("reading confirm code challenge: %w", err)
-	}
-	if challenge.Code != "" {
-		fmt.Fprint(stdout, "The machine's console should be showing a code. Enter it: ")
-		line, err := in.ReadString('\n')
-		if err != nil && err != io.EOF {
-			return fmt.Errorf("reading confirm code: %w", err)
-		}
-		if err := mrcore.WriteMessage(conn, mrcore.ConfirmCodeResponse{Code: strings.TrimSpace(line)}); err != nil {
-			return fmt.Errorf("sending confirm code response: %w", err)
 		}
 	}
 

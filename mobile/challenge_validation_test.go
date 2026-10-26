@@ -62,7 +62,6 @@ func TestConnectRefusesAnOffCurveChallengePoint(t *testing.T) {
 		}
 		defer conn.Close()
 		_ = mrcore.WriteMessage(conn, mrcore.Hello{Name: "machine"})
-		_ = mrcore.WriteMessage(conn, mrcore.ConfirmCodeChallenge{})
 		_ = mrcore.WriteMessage(conn, mrcore.RecoverRequest{Kid: make([]byte, 32), X: offCurve})
 		var resp mrcore.RecoverResponse
 		_ = mrcore.ReadMessage(conn, &resp)

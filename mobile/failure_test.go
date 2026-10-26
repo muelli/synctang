@@ -74,35 +74,10 @@ func connectedSession(t *testing.T, name string, script func(transport.Conn)) *S
 	return s
 }
 
-func TestLastFailureOfAMachineThatHangsUpAfterTheConfirmCode(t *testing.T) {
-	s := connectedSession(t, "kind hangup", func(conn transport.Conn) {
-		_ = mrcore.WriteMessage(conn, mrcore.Hello{Name: "machine"})
-		_ = mrcore.WriteMessage(conn, mrcore.ConfirmCodeChallenge{Code: "123456"})
-		var resp mrcore.ConfirmCodeResponse
-		_ = mrcore.ReadMessage(conn, &resp)
-		conn.Close()
-	})
-	err := s.SubmitConfirmCode("654321")
-	assertFailure(t, err, s.LastFailure(), s.LastFailureDetail(), FailureHungUp, "")
-}
-
-func TestLastFailureOfAMachineThatGoesSilentAfterTheConfirmCode(t *testing.T) {
-	shortReplyTimeout(t)
-	s := connectedSession(t, "kind silent", func(conn transport.Conn) {
-		_ = mrcore.WriteMessage(conn, mrcore.Hello{Name: "machine"})
-		_ = mrcore.WriteMessage(conn, mrcore.ConfirmCodeChallenge{Code: "123456"})
-		var resp mrcore.ConfirmCodeResponse
-		_ = mrcore.ReadMessage(conn, &resp)
-	})
-	err := s.SubmitConfirmCode("123456")
-	assertFailure(t, err, s.LastFailure(), s.LastFailureDetail(), FailureNoReply, "")
-}
-
 func requestScript(t *testing.T, after func(transport.Conn)) func(transport.Conn) {
 	v := loadVectors(t)
 	return func(conn transport.Conn) {
 		_ = mrcore.WriteMessage(conn, mrcore.Hello{Name: "machine"})
-		_ = mrcore.WriteMessage(conn, mrcore.ConfirmCodeChallenge{Code: ""})
 		_ = mrcore.WriteMessage(conn, mrcore.RecoverRequest{
 			Kid: mustHex(t, v.Enrol.Kid),
 			X:   mustHex(t, v.Recover.X),

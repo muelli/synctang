@@ -30,7 +30,7 @@ type RecoverRequest struct {
 // backend, or Tang's server); XOnly from one that can only do ECDH
 // against a hardware-held key (Android Keystore, TPM2). Error is set
 // instead of either if the key holder declines (kid not recognised,
-// user declined the prompt, wrong confirm code).
+// user declined the prompt).
 type RecoverResponse struct {
 	Y     []byte `json:"Y,omitempty"`
 	XOnly []byte `json:"xOnly,omitempty"`
@@ -58,32 +58,14 @@ type RecoverResult struct {
 }
 
 // Hello is the very first message the machine sends after a key
-// holder dials in, before anything else (confirm-code or the recover
-// exchange itself): the name a human should see before approving
+// holder dials in, before the recover exchange itself: the name a
+// human should see before approving
 // anything (plan section 5: "the key holder shows the requester's
 // transport ID and a name"). The transport ID itself needs no
 // separate field here: it is already the cryptographically verified
 // Conn.PeerID(), not merely asserted by this message.
 type Hello struct {
 	Name string `json:"name"`
-}
-
-// ConfirmCodeChallenge is always sent after Hello and before
-// RecoverRequest. Code is empty unless the machine is running with
-// --confirm-code, in which case the key holder must relay Code back
-// exactly, proving whoever is answering can see the
-// machine's own console, not merely reach it over the network. The
-// same code is reused for every connection attempt during one agent
-// run, so a human only has to read it off the console once.
-type ConfirmCodeChallenge struct {
-	Code string `json:"code"`
-}
-
-// ConfirmCodeResponse answers a ConfirmCodeChallenge. The machine
-// must reject a response whose Code does not match exactly, before
-// ever sending a RecoverRequest.
-type ConfirmCodeResponse struct {
-	Code string `json:"code"`
 }
 
 // WriteMessage writes v to w as a 4-byte big-endian length prefix

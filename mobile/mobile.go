@@ -230,7 +230,6 @@ type Session struct {
 
 	conn        transport.Conn
 	machineName string
-	confirmCode string
 	kid         []byte
 	x           []byte
 	answered    bool
@@ -268,13 +267,8 @@ func (s *Session) SetTimeoutSeconds(n int) {
 }
 
 // Connect dials the machine, verifies its identity, and reads as far
-// as the protocol allows without user input: the machine's Hello, and
-// then either a confirm-code challenge (in which case the caller must
-// show the code, collect the user's reading of it, and call
-// SubmitConfirmCode) or the recovery request itself.
-//
-// After Connect returns without error, ConfirmCodeChallenge tells the
-// caller which of the two happened.
+// as the protocol allows without user input: the machine's Hello and
+// the recovery request that follows it.
 func (s *Session) Connect() (err error) {
 	defer func() { s.failure.record(err) }()
 	s.mu.Lock()
@@ -337,8 +331,8 @@ func (s *Session) Connect() (err error) {
 }
 
 // replyTimeout bounds each wait for the machine once Connect has
-// returned: for the recovery request after the confirm code, and for
-// the verdict after the answer. Neither waits on a human, so a machine
+// returned: for the verdict after the answer. It does not wait on a
+// human, so a machine
 // that stays silent this long has gone wrong, and without a bound the
 // phone waited for it for ever. Generous, because the verdict comes
 // only after the machine has run cryptsetup, whose key derivation can
@@ -401,8 +395,8 @@ func newDialTransport(cert tls.Certificate, directAddr string) transport.Transpo
 	}}
 }
 
-// connectOnceLocked is one attempt: dial, read Hello, read whatever
-// follows it. Any failure leaves the session with no connection, so
+// connectOnceLocked is one attempt: dial, read Hello, read the
+// recovery request. Any failure leaves the session with no connection, so
 // the next attempt starts clean.
 func (s *Session) connectOnceLocked(ctx context.Context, cert tls.Certificate) error {
 	tr := newDialTransport(cert, s.directAddr)
@@ -430,46 +424,11 @@ func (s *Session) connectOnceLocked(ctx context.Context, cert tls.Certificate) e
 	}
 	s.machineName = mrcore.SafeLabel(hello.Name, machineNameMaxRunes)
 
-	return s.readChallengeLocked()
-}
-
-// readChallengeLocked reads the ConfirmCodeChallenge that always
-// follows Hello, and, when no code is required, goes straight on to
-// the recovery request behind it.
-//
-// The machine sends a ConfirmCodeChallenge in this position whether or
-// not it was started with --confirm-code; an empty Code means "not
-// required". That is the project's convention, stated in
-// cmd/keyholder/unlock.go and implemented in cmd/unlocker/agent.go:
-// the messages are told apart by their fixed position in the exchange,
-// because the MR-1 framing carries no type tag.
-//
-// This used to guess instead, by looking at which fields the decoded
-// JSON happened to name, and an empty ConfirmCodeChallenge names
-// neither a code nor a point. So against any machine not running in
-// confirm-code mode, which is the default and the ordinary case, the
-// app failed with "machine sent neither a confirm code nor a recovery
-// request" and could never unlock anything. Found on real hardware
-// against a real machine; every test passed, because the fake machine
-// in mobile_test.go was the one thing in the project that did not
-// follow the convention either.
-func (s *Session) readChallengeLocked() error {
-	var challenge mrcore.ConfirmCodeChallenge
-	if err := mrcore.ReadMessage(s.conn, &challenge); err != nil {
-		s.closeLocked()
-		return fmt.Errorf("mobile: reading confirm code challenge: %w", err)
-	}
-	if challenge.Code != "" {
-		s.confirmCode = challenge.Code
-		return nil
-	}
-	s.confirmCode = ""
 	return s.readRecoverRequestLocked()
 }
 
 // readRecoverRequestLocked reads the recovery request, which follows
-// either the empty confirm-code challenge or the key holder's answer
-// to a real one.
+// Hello.
 func (s *Session) readRecoverRequestLocked() error {
 	var req mrcore.RecoverRequest
 	if err := mrcore.ReadMessage(s.conn, &req); err != nil {
@@ -514,46 +473,6 @@ func (s *Session) PeerID() string {
 	return s.conn.PeerID()
 }
 
-// ConfirmCodeChallenge returns the code the machine is showing on its
-// own console, or the empty string when the machine did not ask for
-// one. A non-empty value means the caller must read the code off the
-// machine, have the user confirm it matches, and call
-// SubmitConfirmCode before any recovery request arrives.
-func (s *Session) ConfirmCodeChallenge() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.confirmCode
-}
-
-// SubmitConfirmCode answers the machine's confirm-code challenge and
-// then reads the recovery request that follows. The machine, not this
-// code, decides whether the answer was right: a wrong code makes the
-// machine hang up, which surfaces here as a read error.
-func (s *Session) SubmitConfirmCode(code string) (err error) {
-	defer func() { s.failure.record(err) }()
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.conn == nil {
-		return errors.New("mobile: not connected")
-	}
-	if s.confirmCode == "" {
-		return errors.New("mobile: machine did not ask for a confirm code")
-	}
-	err = s.withReplyTimeoutLocked(func() error {
-		if err := mrcore.WriteMessage(s.conn, mrcore.ConfirmCodeResponse{Code: code}); err != nil {
-			s.closeLocked()
-			return withKind(FailureHungUp, fmt.Errorf("mobile: sending confirm code: %w", err))
-		}
-		s.confirmCode = ""
-		return s.readRecoverRequestLocked()
-	})
-	if errors.Is(err, errNoReply) {
-		return withKind(FailureNoReply, fmt.Errorf("mobile: after the confirm code, %w", err))
-	}
-	return err
-}
-
 // RequestKid identifies which enrolled key holder the machine is
 // asking for, so an app holding more than one key knows which one to
 // use. It is sha256 of that key holder's long-term public point.
@@ -587,9 +506,8 @@ func (s *Session) RequestPointAffineY() ([]byte, error) {
 	return AffineY(s.RequestPoint())
 }
 
-// HasRequest reports whether a recovery request has been received, so
-// the caller can tell "still waiting on a confirm code" from "ready to
-// answer" without comparing byte slices in Kotlin.
+// HasRequest reports whether a recovery request has been received,
+// without the caller comparing byte slices in Kotlin.
 func (s *Session) HasRequest() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -677,8 +595,8 @@ func (s *Session) Decline(reason string) error {
 // network failure that did not happen.
 var errCancelled = withKind(FailureCancelled, errors.New("mobile: cancelled"))
 
-// LastFailure is the kind of failure the most recent Connect,
-// SubmitConfirmCode or AnswerXOnly ended in (one of the Failure
+// LastFailure is the kind of failure the most recent Connect or
+// AnswerXOnly ended in (one of the Failure
 // constants), or FailureNone if it succeeded. An error crossing into
 // Kotlin keeps only its text, hence this alongside it.
 func (s *Session) LastFailure() int {
