@@ -52,7 +52,7 @@ func TestRunEnrolEndToEnd(t *testing.T) {
 		"--existing-passphrase-file", passphraseFile,
 		"--name", "cli-test-machine",
 		"--transport-id", "CLI-TEST-ID",
-		"--recipient-transport-id", "CLI-TEST-RECIPIENT-ID",
+		"--recipient-transport-id", testCLIRecipID,
 		"--machine-key-file", filepath.Join(t.TempDir(), "machine.pem"),
 	}, &stdout, &stderr)
 	if code != 0 {
@@ -81,8 +81,8 @@ func TestRunEnrolEndToEnd(t *testing.T) {
 	if err := json.Unmarshal(exported, &tok); err != nil {
 		t.Fatalf("unmarshal exported token: %v", err)
 	}
-	if id, ok := tok.Recipients[0].TransportDeviceID(); !ok || id != "CLI-TEST-RECIPIENT-ID" {
-		t.Fatalf("recipient transport id = (%q, %v), want (%q, true)", id, ok, "CLI-TEST-RECIPIENT-ID")
+	if id, ok := tok.Recipients[0].TransportDeviceID(); !ok || id != testCLIRecipID {
+		t.Fatalf("recipient transport id = (%q, %v), want (%q, true)", id, ok, testCLIRecipID)
 	}
 }
 
@@ -110,8 +110,8 @@ func TestRunEnrolRemoveEndToEnd(t *testing.T) {
 		pubkey []byte
 		id     string
 	}{
-		{S1, "KH-1"},
-		{S2, "KH-2"},
+		{S1, testKH1},
+		{S2, testKH2},
 	} {
 		var stdout, stderr bytes.Buffer
 		code := run([]string{
@@ -132,12 +132,12 @@ func TestRunEnrolRemoveEndToEnd(t *testing.T) {
 		"enrol",
 		"--device", device,
 		"--existing-passphrase-file", passphraseFile,
-		"--remove", "KH-1",
+		"--remove", testKH1,
 	}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("run enrol --remove: exit %d, stderr %q", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "revoked recipient KH-1") {
+	if !strings.Contains(stdout.String(), "revoked recipient "+testKH1) {
 		t.Errorf("expected confirmation of the revocation, got stdout %q", stdout.String())
 	}
 
@@ -158,8 +158,8 @@ func TestRunEnrolRemoveEndToEnd(t *testing.T) {
 	if len(tok.Recipients) != 1 {
 		t.Fatalf("expected 1 recipient after --remove, got %d", len(tok.Recipients))
 	}
-	if id, ok := tok.Recipients[0].TransportDeviceID(); !ok || id != "KH-2" {
-		t.Fatalf("surviving recipient = (%q, %v), want (%q, true)", id, ok, "KH-2")
+	if id, ok := tok.Recipients[0].TransportDeviceID(); !ok || id != testKH2 {
+		t.Fatalf("surviving recipient = (%q, %v), want (%q, true)", id, ok, testKH2)
 	}
 }
 
@@ -194,7 +194,7 @@ func TestRunEnrolReplaceEndToEnd(t *testing.T) {
 		"--device", device,
 		"--pubkey", hex.EncodeToString(SOld),
 		"--existing-passphrase-file", passphraseFile,
-		"--recipient-transport-id", "KH-1",
+		"--recipient-transport-id", testKH1,
 		"--machine-key-file", filepath.Join(t.TempDir(), "machine.pem"),
 	}, &stdout, &stderr); code != 0 {
 		t.Fatalf("run enrol: exit %d, stderr %q", code, stderr.String())
@@ -209,12 +209,12 @@ func TestRunEnrolReplaceEndToEnd(t *testing.T) {
 		"--device", device,
 		"--pubkey", hex.EncodeToString(SNew),
 		"--existing-passphrase-file", passphraseFile,
-		"--replace", "KH-1",
+		"--replace", testKH1,
 	}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("run enrol --replace: exit %d, stderr %q", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "rotated recipient KH-1") {
+	if !strings.Contains(stdout.String(), "rotated recipient "+testKH1) {
 		t.Errorf("expected confirmation of the rotation, got stdout %q", stdout.String())
 	}
 
@@ -222,8 +222,8 @@ func TestRunEnrolReplaceEndToEnd(t *testing.T) {
 	if len(tok.Recipients) != 1 {
 		t.Fatalf("expected 1 recipient after --replace, got %d", len(tok.Recipients))
 	}
-	if id, ok := tok.Recipients[0].TransportDeviceID(); !ok || id != "KH-1" {
-		t.Fatalf("rotated recipient = (%q, %v), want (%q, true)", id, ok, "KH-1")
+	if id, ok := tok.Recipients[0].TransportDeviceID(); !ok || id != testKH1 {
+		t.Fatalf("rotated recipient = (%q, %v), want (%q, true)", id, ok, testKH1)
 	}
 	if opensDeviceForTest(t, device, pOld) {
 		t.Error("the rotated-away key still opens the device")
@@ -242,8 +242,8 @@ func TestRunEnrolRejectsRemoveAndReplaceTogether(t *testing.T) {
 		"enrol",
 		"--device", "/nonexistent",
 		"--existing-passphrase-file", "/nonexistent",
-		"--remove", "KH-1",
-		"--replace", "KH-1",
+		"--remove", testKH1,
+		"--replace", testKH1,
 	}, &stdout, &stderr)
 	if code != 2 {
 		t.Fatalf("exit = %d, want 2; stderr %q", code, stderr.String())

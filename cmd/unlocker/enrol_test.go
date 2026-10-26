@@ -163,10 +163,10 @@ func TestRemoveRecipientRevokesOnlyThatOne(t *testing.T) {
 	s2, _ := g.RandomScalar()
 	S2, _ := g.ScalarBaseMult(s2)
 
-	if err := enrolRecipient(device, existingPassphrase, S1, "test-machine", "MACHINE-ID", "KH-1"); err != nil {
+	if err := enrolRecipient(device, existingPassphrase, S1, "test-machine", "MACHINE-ID", testKH1); err != nil {
 		t.Fatalf("enrolRecipient 1: %v", err)
 	}
-	if err := enrolRecipient(device, existingPassphrase, S2, "test-machine", "MACHINE-ID", "KH-2"); err != nil {
+	if err := enrolRecipient(device, existingPassphrase, S2, "test-machine", "MACHINE-ID", testKH2); err != nil {
 		t.Fatalf("enrolRecipient 2: %v", err)
 	}
 
@@ -176,14 +176,14 @@ func TestRemoveRecipientRevokesOnlyThatOne(t *testing.T) {
 	}
 	var rec1 mrcore.Recipient
 	for _, rec := range beforeTok.Recipients {
-		if id, _ := rec.TransportDeviceID(); id == "KH-1" {
+		if id, _ := rec.TransportDeviceID(); id == testKH1 {
 			rec1 = rec
 		}
 	}
 
 	p1 := recoverPForTest(t, g, rec1, s1)
 
-	if err := removeRecipient(device, existingPassphrase, "KH-1"); err != nil {
+	if err := removeRecipient(device, existingPassphrase, testKH1); err != nil {
 		t.Fatalf("removeRecipient: %v", err)
 	}
 
@@ -201,7 +201,7 @@ func TestRemoveRecipientRevokesOnlyThatOne(t *testing.T) {
 		t.Fatalf("expected 1 recipient after removal, got %d", len(afterTok.Recipients))
 	}
 	gotID, ok := afterTok.Recipients[0].TransportDeviceID()
-	if !ok || gotID != "KH-2" {
+	if !ok || gotID != testKH2 {
 		t.Fatalf("expected the surviving recipient to be KH-2, got (%q, %v)", gotID, ok)
 	}
 
@@ -230,7 +230,7 @@ func TestRemoveRecipientUnknownIDFails(t *testing.T) {
 	g := mrcore.P256()
 	s, _ := g.RandomScalar()
 	S, _ := g.ScalarBaseMult(s)
-	if err := enrolRecipient(device, existingPassphrase, S, "test-machine", "MACHINE-ID", "KH-1"); err != nil {
+	if err := enrolRecipient(device, existingPassphrase, S, "test-machine", "MACHINE-ID", testKH1); err != nil {
 		t.Fatalf("enrolRecipient: %v", err)
 	}
 
@@ -295,7 +295,7 @@ func TestEnrolRecordsRecipientTransportID(t *testing.T) {
 	s, _ := g.RandomScalar()
 	S, _ := g.ScalarBaseMult(s)
 
-	const wantID = "KEYHOLDER-DEVICE-ID"
+	const wantID = testKeyholderID
 	if err := enrolRecipient(device, existingPassphrase, S, "test-machine", "MACHINE-ID", wantID); err != nil {
 		t.Fatalf("enrolRecipient: %v", err)
 	}

@@ -29,14 +29,14 @@ func TestReplaceRecipientRotatesAKeyInOneStep(t *testing.T) {
 	sNew, _ := g.RandomScalar()
 	SNew, _ := g.ScalarBaseMult(sNew)
 
-	if err := enrolRecipient(device, existingPassphrase, SOld, "test-machine", "MACHINE-ID", "KH-1"); err != nil {
+	if err := enrolRecipient(device, existingPassphrase, SOld, "test-machine", "MACHINE-ID", testKH1); err != nil {
 		t.Fatalf("enrolRecipient: %v", err)
 	}
 
 	beforeTok := exportTokenForTest(t, device)
 	pOld := recoverPForTest(t, g, beforeTok.Recipients[0], sOld)
 
-	if err := replaceRecipient(device, existingPassphrase, SNew, "KH-1", "KH-1"); err != nil {
+	if err := replaceRecipient(device, existingPassphrase, SNew, testKH1, testKH1); err != nil {
 		t.Fatalf("replaceRecipient: %v", err)
 	}
 
@@ -44,7 +44,7 @@ func TestReplaceRecipientRotatesAKeyInOneStep(t *testing.T) {
 	if len(afterTok.Recipients) != 1 {
 		t.Fatalf("expected exactly 1 recipient after rotation, got %d", len(afterTok.Recipients))
 	}
-	if gotID, ok := afterTok.Recipients[0].TransportDeviceID(); !ok || gotID != "KH-1" {
+	if gotID, ok := afterTok.Recipients[0].TransportDeviceID(); !ok || gotID != testKH1 {
 		t.Fatalf("expected the rotated recipient to keep transport id KH-1, got (%q, %v)", gotID, ok)
 	}
 
@@ -78,14 +78,14 @@ func TestReplaceRecipientLeavesOtherKeyHoldersAlone(t *testing.T) {
 	s1b, _ := g.RandomScalar()
 	S1b, _ := g.ScalarBaseMult(s1b)
 
-	if err := enrolRecipient(device, existingPassphrase, S1, "test-machine", "MACHINE-ID", "KH-1"); err != nil {
+	if err := enrolRecipient(device, existingPassphrase, S1, "test-machine", "MACHINE-ID", testKH1); err != nil {
 		t.Fatalf("enrolRecipient 1: %v", err)
 	}
-	if err := enrolRecipient(device, existingPassphrase, S2, "test-machine", "MACHINE-ID", "KH-2"); err != nil {
+	if err := enrolRecipient(device, existingPassphrase, S2, "test-machine", "MACHINE-ID", testKH2); err != nil {
 		t.Fatalf("enrolRecipient 2: %v", err)
 	}
 
-	if err := replaceRecipient(device, existingPassphrase, S1b, "KH-1", "KH-1"); err != nil {
+	if err := replaceRecipient(device, existingPassphrase, S1b, testKH1, testKH1); err != nil {
 		t.Fatalf("replaceRecipient: %v", err)
 	}
 
@@ -97,7 +97,7 @@ func TestReplaceRecipientLeavesOtherKeyHoldersAlone(t *testing.T) {
 	var rec2 mrcore.Recipient
 	found := false
 	for _, rec := range afterTok.Recipients {
-		if id, _ := rec.TransportDeviceID(); id == "KH-2" {
+		if id, _ := rec.TransportDeviceID(); id == testKH2 {
 			rec2, found = rec, true
 		}
 	}
@@ -124,11 +124,11 @@ func TestReplaceRecipientRefusesAnUnknownIDBeforeChangingAnything(t *testing.T) 
 	sNew, _ := g.RandomScalar()
 	SNew, _ := g.ScalarBaseMult(sNew)
 
-	if err := enrolRecipient(device, existingPassphrase, S1, "test-machine", "MACHINE-ID", "KH-1"); err != nil {
+	if err := enrolRecipient(device, existingPassphrase, S1, "test-machine", "MACHINE-ID", testKH1); err != nil {
 		t.Fatalf("enrolRecipient: %v", err)
 	}
 
-	err := replaceRecipient(device, existingPassphrase, SNew, "KH-TYPO", "KH-1")
+	err := replaceRecipient(device, existingPassphrase, SNew, "KH-TYPO", testKH1)
 	if err == nil {
 		t.Fatal("replaceRecipient accepted an unknown transport id")
 	}
