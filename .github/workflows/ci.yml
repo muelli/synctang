@@ -70,6 +70,15 @@ jobs:
       - uses: actions/checkout@v4
       - run: ./scripts/check-em-dash.sh
 
+  reuse:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v4
+      # Pinned to the version REUSE.toml was written against, so a new
+      # release of the tool cannot turn this job red by itself.
+      - run: python3 -m venv /tmp/reuse && /tmp/reuse/bin/pip install --quiet reuse==6.2.0
+      - run: /tmp/reuse/bin/reuse lint
+
   android:
     runs-on: ubuntu-26.04
     defaults:

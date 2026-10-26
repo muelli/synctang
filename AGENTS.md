@@ -3,9 +3,13 @@
 ## Conventions
 
 - Licence: AGPL-3.0-or-later, everywhere, including code meant for
-  reuse. SPDX header (`// SPDX-License-Identifier: AGPL-3.0-or-later`,
-  or the `#` and `<!-- -->` forms) on every tracked source, doc and
-  config file. Every dependency tracked in
+  reuse. Every tracked source, doc and config file starts with an SPDX
+  header: the `SPDX-License-Identifier` tag with the value
+  AGPL-3.0-or-later, in the comment syntax of the file type (copy the
+  first line of a neighbouring file). Files that cannot carry one are
+  covered by `REUSE.toml`; the Gradle wrapper is Apache-2.0 and is the
+  only exception. `reuse lint` must pass (CI runs it; install with
+  `pip install reuse`). Every dependency tracked in
   `THIRD_PARTY.md`.
 - No em-dashes anywhere (`scripts/check-em-dash.sh`, run in CI); British
   spelling, serial commas. Note the checker greps via `git grep`, so it
