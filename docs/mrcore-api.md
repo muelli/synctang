@@ -18,7 +18,7 @@ but not run, `[U]` unknown.
 | Protocol operations | `Enrol`, `ChallengeStart`, `FinishFullPoint`, `FinishXOnly`, `ValidateChallengePoint`, `Wipe`, `SafeLabel` (added since this list was measured: makes text chosen by the other side safe to print) |
 | Group abstraction | `Group` (interface of seven methods), `P256()` |
 | Token | `Token`, `MachineInfo`, `Recipient`, `Recipient.TransportDeviceID`, `Token.MarshalJSON`, `Token.UnmarshalJSON` |
-| Recovery wire | `Hello`, `ConfirmCodeChallenge`, `ConfirmCodeResponse`, `RecoverRequest`, `RecoverResponse`, `RecoverResult`, `WriteMessage`, `ReadMessage` |
+| Recovery wire | `Hello`, `RecoverRequest`, `RecoverResponse`, `RecoverResult`, `WriteMessage`, `ReadMessage` |
 | Pairing | `NewPairingSecret`, `DecodePairingSecret`, `PairProof`, `PairChallenge`, `PairRequest`, `PairResult` |
 
 ## 2. Who uses what

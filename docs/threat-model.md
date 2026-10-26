@@ -43,21 +43,12 @@ What the key holder does to help, cheapest first:
   chosen by the machine and proves nothing; the Device ID is the verified
   one. `[V]` `keyholder unlock` waits for the human to press Enter (or
   pass `--yes`) before answering.
-- **Confirm-code mode** (`unlocker agent --confirm-code`, or
-  `rd.unlocker.confirm_code=1`): the machine prints a six-digit code on
-  its own console and the key holder must relay it back before the
-  machine sends its recovery request. This shows the person standing at
-  the console that the request comes from the machine in front of them,
-  which exposes an impersonator whose console they cannot see. **It does
-  not stop someone holding a copy of the disk.** The machine decides
-  whether to ask, an empty code means "not required", and both key
-  holders skip the step when it is empty, so an impersonator just does not
-  ask `[I]`. The laptop key holder makes you type the code; the phone
-  app currently shows the code it received and sends it back on one tap,
-  so on the phone it checks nothing `[I]`. There is also no limit on
-  wrong attempts (about 11 to 12 days to guess six digits at one every two
-  seconds). `[V]` the message exchange itself,
-  `mrcore.ConfirmCodeChallenge`/`ConfirmCodeResponse`.
+- There is no confirm code. An earlier version had the machine print a
+  code on its console and send the same code to the key holder, to be
+  handed back before recovery. Any key holder could hand it back without
+  seeing the console, and a copy of the disk could simply not ask, so it
+  protected nothing and was removed before any release `[I]`. The second
+  factor that would help is a threshold (below).
 - On Android the key is created so the Keystore refuses to use it unless
   a strong biometric matched within the last 15 seconds. That is a time
   window, not a binding to the request you saw: code running inside the
@@ -98,16 +89,20 @@ make a dialler wait: every TLS handshake is bounded to ten seconds, so a
 peer that connects and says nothing holds a listener, or a dial, for that
 long and no longer `[V]` (`TestServerHandshakeGivesUpOnASilentPeer`).
 
-**Threshold.** Not built. Recipients are already first-class (several
-key holders can share one LUKS2 token), so Shamir-sharing `P` across
-them, one share per recipient, is straightforward future work rather
-than a redesign.
+**Threshold.** Not built, and parked for a later round. Requiring the
+answers of two key holders (say, the phone and the laptop) is the
+second factor that would remove "one approval is enough". Recipients
+already share one LUKS2 token, but each has its own `P` and keyslot
+today (`docs/mr1-spec.md`, section 14), so a threshold needs one `P`
+split into shares, one per recipient, a token format that records how
+many are needed, and an agent that collects that many answers in one
+boot `[I]`. The key holders' side of the exchange would not change.
 
 **What this project does not defend against**: an attacker who controls
 both the disk and a key holder's approval, which includes a human who is
 coerced, careless, or simply approves the attacker's copy of the machine
-by mistake (see the disk-thief section above: one approval is enough, and
-the confirm code does not change that); compromise of the Syncthing relay operator's
+by mistake (see the disk-thief section above: one approval is enough);
+compromise of the Syncthing relay operator's
 infrastructure at a scale that lets them run their own TLS endpoint
 convincingly (certificate pinning by Device ID is what stops an ordinary
 man-in-the-middle, not a compromised CA, since there is no CA in this

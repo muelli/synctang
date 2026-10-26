@@ -35,11 +35,6 @@ has the disk, or an image of it, *pose as the machine*:
   rebooting that machine yourself. After any suspected exposure of the
   disk or a backup, change the LUKS passphrase and enrol your key holders
   again.
-- `--confirm-code` makes the machine print a code on its console that the
-  key holder reads back. It shows you that a request comes from the machine
-  you are standing at. It does not stop someone with a copy of the disk,
-  who simply does not ask for a code, and the phone app currently echoes
-  the code back instead of making you type it.
 - Everything crosses TLS 1.3 with the peer pinned by Device ID; rendezvous
   servers and relays see two Device IDs and a traffic volume, nothing else.
 
@@ -133,17 +128,13 @@ the app, or on the laptop:
     keyholder unlock <machine transport id>
 
 The key holder shows the machine's name, waits for Enter (or `--yes`),
-sends the confirm code back if the machine asked for one, and answers
-once. The machine checks the recovered secret actually opens the volume
+and answers once. The machine checks the recovered secret actually opens the volume
 before handing it to systemd, and tells the key holder how it went.
 
 Kernel command line options:
 
 - `rd.unlocker=0` does not start the agent; the escape hatch for when the
   network path is what is broken.
-- `rd.unlocker.confirm_code=1` starts it in confirm-code mode (see the
-  threat model above for what that does and does not give you). Off by
-  default because it needs a human at the console; opt in per machine.
 
 Off the local network the phone needs Internet access; on the same
 network it does not. Both sides try local discovery (a multicast on the

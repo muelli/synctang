@@ -433,39 +433,29 @@ the authenticated channel.
 | # | Direction | Message | Body fields |
 |---|---|---|---|
 | 1 | M to K | `Hello` | `name` (string): the machine's name, to be shown to a human before they approve. |
-| 2 | M to K | `ConfirmCodeChallenge` | `code` (string). Empty when the machine does not require a confirm code. |
-| 3 | K to M | `ConfirmCodeResponse` | `code` (string). Sent only if message 2's `code` was non-empty. |
-| 4 | M to K | `RecoverRequest` | `kid` (b64), `X` (b64, 65 bytes). |
-| 5 | K to M | `RecoverResponse` | exactly one of `Y` (b64, 65 bytes), `xOnly` (b64, 32 bytes), `error` (string). |
-| 6 | M to K | `RecoverResult` | `ok` (boolean), `error` (string, omitted when empty). |
+| 2 | M to K | `RecoverRequest` | `kid` (b64), `X` (b64, 65 bytes). |
+| 3 | K to M | `RecoverResponse` | exactly one of `Y` (b64, 65 bytes), `xOnly` (b64, 32 bytes), `error` (string). |
+| 4 | M to K | `RecoverResult` | `ok` (boolean), `error` (string, omitted when empty). |
 
 Fields documented as omitted when empty are omitted from the JSON, not
 sent as `null` or `""` `[V]` (probe: `{"xOnly":"..."}`, `{"ok":true}`);
-`code` and `name` are always present, `code` possibly as `""`.
+`name` is always present.
 
 Rules, from the reference machine (`cmd/unlocker/agent.go`) and key
 holder (`cmd/keyholder/unlock.go`) `[I]` (read, and the machine and key
 holder exercised together by the project's test suite, which this
 document did not run separately):
 
-- The machine sends message 2 always, whether or not a code is
-  required. The key holder always reads it. If `code` is non-empty the
-  key holder obtains the code from a human who can see the machine's
-  console and sends it back as message 3; the machine compares in
-  constant time and aborts the exchange, sending nothing further, if it
-  does not match exactly. The code is therefore a proof of console
-  access, not a cryptographic secret, and it is the same code for every
-  connection during one run of the machine's agent.
 - The key holder shows `Hello.name` and the machine's verified transport
-  identity to a human and waits for approval before message 5 (it may
+  identity to a human and waits for approval before message 3 (it may
   ask for approval before or after reading message 2; only the order of
   messages on the wire is fixed).
-- In message 5, exactly one of the three fields is set. The reference
+- In message 3, exactly one of the three fields is set. The reference
   machine tests `error` first (declined), then `Y`, then `xOnly`; if
   both `Y` and `xOnly` were set it would use `Y`, and a response with
   none of the three is a failure. A conforming key holder sets exactly
   one.
-- Message 6 is sent after every message 5 that was not an error,
+- Message 4 is sent after every message 3 that was not an error,
   whether recovery succeeded (`ok` true) or failed (`ok` false, `error`
   saying why, for example a secret that did not open the volume). It is
   not sent if the key holder declined, nor if the exchange failed
@@ -583,24 +573,19 @@ Message 1, `Hello`, 24 bytes:
     00000018 7b226e616d65223a227374756479206465736b746f70227d
     {"name":"study desktop"}
 
-Message 2, no confirm code, 11 bytes:
-
-    0000000b 7b22636f6465223a22227d
-    {"code":""}
-
-Message 4, `RecoverRequest`, 149 bytes (`00000095`), body:
+Message 2, `RecoverRequest`, 149 bytes (`00000095`), body:
 
     {"kid":"BsrR9fQLytB2RwC9XXvDaRU9mhkQNLPNPeHbVJhLtEw=","X":"BCLb5JZS50/cY77lDoOQFoWmTsQI9/4rVokzvwgwcHfs8+y5N4m8y3WAFmvNAwK7XjC6bPUOjE9YUzmo65sBEXU="}
 
-Message 5, x-only form, 56 bytes (`00000038`), body:
+Message 3, x-only form, 56 bytes (`00000038`), body:
 
     {"xOnly":"TN7v/b8iHO7uCpLr8pFtYOfoQwK/O2RJekTB6t5bV50="}
 
-Message 5, full-point form, 96 bytes (`00000060`), body:
+Message 3, full-point form, 96 bytes (`00000060`), body:
 
     {"Y":"BEze7/2/Ihzu7gqS6/KRbWDn6EMCvztkSXpEwereW1edrP/EMoryCALHmqlYq/VVbJKxROZ32992WoNoS5c9lqU="}
 
-Message 6, success, 11 bytes:
+Message 4, success, 11 bytes:
 
     0000000b 7b226f6b223a747275657d
     {"ok":true}
@@ -642,8 +627,8 @@ fails. It does not authenticate the machine to the key holder either;
 the human approval step and the transport identity do that. The
 reference transport is TLS 1.3 with peers pinned by the hash of their
 certificates (Syncthing Device IDs), self-signed, with no certificate
-authority. `Hello`, the confirm code and the result are not
-authenticated by MR-1 and rely on that channel.
+authority. `Hello` and the result are not authenticated by MR-1 and
+rely on that channel.
 
 12.2 **The key holder is a private-key oracle for points the machine
 chooses.** It computes `s.X` for `X` supplied by the peer. It MUST
@@ -715,32 +700,16 @@ paths. The reference implementation does so on a best-effort basis; Go
 offers no guarantee that a write to memory is not optimised away `[I]`
 (its own comment on `Wipe` says so).
 
-12.9 **Confirm code.** It is a secret the machine shows on its own
-console and the key holder must hand back before the machine sends its
-recovery request. What it can show is narrow. It shows the owner, who is
-standing at the console, that the request comes from the machine in front
-of them, which exposes a machine impersonator (section 12.3) whose
-console they cannot see. It does NOT protect against a party holding a
-copy of the disk: the machine decides whether to ask, an empty `code`
-means "not required", and both reference key holders skip the step when
-it is empty, so an impersonator simply does not ask `[I]` (read in
-`cmd/keyholder/unlock.go` and `mobile/mobile.go`, not run). A
-key holder that wants the protection MUST remember at pairing time that
-this machine requires a code and refuse an exchange that offers none;
-the reference key holders do not yet `[I]`.
-
-The reference phone application also shows the received code on screen
-and sends it back on one tap, so the user never types it; for the phone
-the code is currently a display of what the machine said and proves
-nothing `[I]`. The reference laptop key holder asks the user to type it.
-
-The comparison is constant time and the same code is reused across
-attempts in one run. The protocol puts no limit on the number of
-attempts, and the reference machine accepts one attempt per connection
-indefinitely, so six digits guessed by an authorised peer take roughly
-11 to 12 days at one attempt every two seconds `[I]`. A six-digit code is
-the reference implementation's choice (`docs/threat-model.md`), not
-enforced by the wire format.
+12.9 **No confirm code.** An earlier version had the machine print a
+code on its console and send that same code to the key holder, which
+had to hand it back before the machine sent its recovery request. It
+proved nothing: the code travelled to the key holder in the clear (over
+the authenticated channel), so any key holder could return it without
+anyone seeing the console, and a party with a copy of the disk could
+simply not ask. It was removed before any release. A second factor
+worth having would need more than one key holder's answer to recover
+`P` (a threshold), which section 12.6 and `docs/threat-model.md` list as
+not built.
 
 12.10 **Denial of service.** The 64 KiB message cap bounds memory per
 message. Nothing in the protocol bounds the number of connections or
@@ -772,8 +741,7 @@ a point that is not 65 bytes (section 4.1 binds emitters only); which
 token fields are optional on read (the reference decoder's treatment of
 absent fields was not examined `[U]`); the handling of a declared
 frame length of 0 (an empty body is not valid JSON, so the reference
-reader fails at decoding); and the length and character set of the
-confirm-code (the reference machine uses six decimal digits). An
+reader fails at decoding). An
 independent implementation SHOULD NOT rely on any of these.
 
 ## 13. Differences from Tang (McCallum-Relyea)
@@ -817,38 +785,25 @@ This specification follows the code (`mrcore/*.go`, and the callers in
 differs as follows. Each item is `[I]`, established by reading both texts
 against the code; none of them is a cryptographic disagreement.
 
-1. **Number of messages.** The document says the recovery exchange is
-   two JSON messages and describes `Hello` and a confirm-code pair as
-   additions. The code has six message types in the exchange
-   (`Hello`, `ConfirmCodeChallenge`, `ConfirmCodeResponse`,
-   `RecoverRequest`, `RecoverResponse`, `RecoverResult`), of which the
-   response is sent only when a code is in use. The document does not mention `RecoverResult` at
-   all.
-2. **The confirm-code challenge is always sent.** The document, and the
-   comment on `ConfirmCodeChallenge` in `mrcore/wire.go`, say the pair is
-   exchanged "when `--confirm-code` is active". In the code the machine
-   always sends `ConfirmCodeChallenge`, with an empty `code` when no
-   code is required, and the key holder always reads it; only the
-   response is conditional.
-3. **"Any one of them can recover P."** The document says several
+1. **"Any one of them can recover P."** The document says several
    recipients can share one token and that any one of them can recover
    `P`. In the code each `Enrol` call draws its own `P` and the
    application adds a separate keyslot for it, so recipients share a
    token, not a secret; recovering through a recipient yields that
    recipient's own `P`. (`docs/threat-model.md` likewise describes
    sharing `P` across recipients as unbuilt future work.)
-4. **Where hexadecimal belongs (wording only).** The document already
+2. **Where hexadecimal belongs (wording only).** The document already
    says the keyslot gets the hex form and cites `luksKeyMaterial`, but
    its enrolment step 1 reads as though the protocol hex-encodes `P`. In
    the code `mrcore.Enrol` returns raw `P`; the hexadecimal form is
    applied by the LUKS application (`luksKeyMaterial` in `cmd/unlocker`).
-5. **Gaps rather than conflicts.** The document does not state the JSON
+3. **Gaps rather than conflicts.** The document does not state the JSON
    encoding of byte fields (standard padded base64), the message-size
    limit (65536 bytes), that `X` and `Y` are validated, that
    `RecoverResponse` fields are mutually exclusive, the token's `version`,
    `keyslots` and `machine` fields, the 12-byte nonce check,
    that the sign candidates are tried even first and odd second, or that
    the GCM associated data is empty. This specification states each.
-6. **Test vector file comment.** `testdata/mr1.json` says "every value is
+4. **Test vector file comment.** `testdata/mr1.json` says "every value is
    hex-encoded". That is true of the file; the token and the wire use
    base64 (section 4.5).

@@ -34,9 +34,9 @@ not here. See `TESTREPORT.md` for the acceptance table (A1-A11).
   its own instrumented tests on an emulator, CI builds and tests it,
   and is keyboard-navigable for Android's desktop mode. Run on real
   hardware for the first time on 2026-09-20, which immediately found
-  three bugs no test had: it could not unlock a machine that was not
-  in confirm-code mode (it guessed message types by field presence
-  rather than reading them positionally), it gave up after a single
+  three bugs no test had: it misread the order of the machine's
+  messages (it guessed their types by field presence rather than
+  reading them positionally), it gave up after a single
   attempt where the laptop client retries, and it reported success on
   sending its answer rather than on the volume actually opening. All
   three are fixed: the last by `mrcore.RecoverResult`, the machine's
@@ -167,17 +167,16 @@ reproducibility are untested and not claimed.
   Keystore, empty `PeerID` dials and empty recipient lists failing open,
   unfiltered peer strings, recipient transport ids not canonicalised,
   non-uniform scalars, no length check on the recovered secret, and the
-  documents that overstated the confirm code. Open:
-  - The confirm code does not defend against a copy of the disk, and the
-    phone app echoes it instead of asking the user to type it. Fixing it
-    means a design decision: remember at pairing time that a machine
-    requires a code, make the phone take typed input, or drop the
-    claim for good.
+  documents that overstated the confirm code, and the confirm code
+  itself, removed because the machine sent it to the key holder it was
+  meant to test. Open:
   - A disk image plus one approval recovers the volume secret. The fix is
     sealing the machine identity in a TPM (not built).
   - The Android key is usable for a 15 second window after any strong
     biometric, not bound to the request.
-  - No limit on wrong confirm codes.
+  - `[U]` A threshold (two key holders must both answer) is the second
+    factor that would remove "one approval is enough". Parked for a
+    later round; see `docs/threat-model.md`.
   - `PairProof` does not cover the public key being enrolled. Not
     changed because it alters the pairing exchange and a phone and a
     machine on different versions would stop pairing; it needs a
