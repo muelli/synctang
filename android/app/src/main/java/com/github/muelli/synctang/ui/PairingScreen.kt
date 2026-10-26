@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -71,6 +72,7 @@ internal fun PairingScreen(
         modifier = Modifier
             .fillMaxWidth()
             .focusRequester(field)
+            .testTag(PAIR_MANUAL_FIELD)
             .tabMovesFocus()
             .focusRing(),
     )
@@ -107,3 +109,6 @@ internal fun PairingScreen(
         Text(stringResource(R.string.pair_by_hand))
     }
 }
+
+/** The manual field's test tag; scripts/screenshots.sh taps it by this name. */
+internal const val PAIR_MANUAL_FIELD = "pair_manual_field"

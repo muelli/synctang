@@ -74,6 +74,26 @@ demo network -e wifi show -e level 4 -e mobile hide
 demo battery -e level 100 -e plugged false
 demo notifications -e visible false
 
+# tap_id <tag>: taps the centre of the element the app exposes under
+# that Compose test tag (see testTagsAsResourceId in SynctangApp), so
+# that a layout change cannot make the tap land on something else.
+tap_id() {
+	local bounds=""
+	for _ in $(seq 1 10); do
+		"$ADB" shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || true
+		bounds=$("$ADB" exec-out cat /sdcard/ui.xml |
+			grep -o "resource-id=\"$1\"[^>]*bounds=\"[^\"]*\"" |
+			grep -o 'bounds="[^"]*"' | head -1)
+		[ -n "$bounds" ] && break
+		sleep 3
+	done
+	[ -n "$bounds" ] || { echo "nothing on screen with resource-id $1" >&2; exit 1; }
+	# bounds="[x1,y1][x2,y2]"
+	local x1 y1 x2 y2
+	read -r x1 y1 x2 y2 <<<"$(echo "$bounds" | tr -c '0-9' ' ')"
+	"$ADB" shell input tap $(((x1 + x2) / 2)) $(((y1 + y2) / 2))
+}
+
 shoot() { # shoot <n> <description>
 	sleep 4
 	"$ADB" exec-out screencap -p > "$OUT/$1.png"
@@ -90,7 +110,7 @@ shoot 1 "pairing screen: scan a machine's QR code"
 # The manual field takes the same payload the QR code carries. Without a
 # psk= it only records which machine to dial, which needs no network and
 # no machine, and is enough to reach the unlock screen.
-"$ADB" shell input tap 540 1500
+tap_id pair_manual_field
 "$ADB" shell input text 'synctang://pair?machine=YIEAQU3-4EQIMH3-INVK5OV-QEPJZSW-GPKQF5R-UUGZZR2-KBIPPXD-BLGZ2AG%sname=study%sworkstation'
 "$ADB" shell input keyevent KEYCODE_ENTER
 shoot 2 "unlock screen: paired, waiting for the machine"

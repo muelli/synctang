@@ -28,11 +28,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.muelli.synctang.BackAction
@@ -45,6 +48,7 @@ import com.github.muelli.synctang.focusRing
 import com.github.muelli.synctang.onEscape
 import com.github.muelli.synctang.rememberAutoFocusRequester
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun SynctangApp(gate: BiometricGate, model: UnlockViewModel = viewModel()) {
     val state by model.state.collectAsState()
@@ -74,6 +78,10 @@ fun SynctangApp(gate: BiometricGate, model: UnlockViewModel = viewModel()) {
     UndoReplace(state as? UnlockUiState.Ready, snackbar, model)
 
     Scaffold(
+        // Test tags become resource IDs, so that adb and UI Automator
+        // can find an element by name rather than by where it happens
+        // to be on the screen.
+        modifier = Modifier.semantics { testTagsAsResourceId = true },
         topBar = {
             AppBar(
                 aboutOpen = about != null,
