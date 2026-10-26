@@ -63,6 +63,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
       - run: find dracut scripts -name '*.sh' -print0 | xargs -0 -r shellcheck
+      - run: ./scripts/test-ci-boot-emulator.sh
 
   em-dash-check:
     runs-on: ubuntu-26.04

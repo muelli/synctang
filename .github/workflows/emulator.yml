@@ -13,9 +13,12 @@ name: emulator
 #
 # Not covered, because no emulator can: StrongBox and the biometric prompt.
 # Those stay a manual test on a real phone.
+#
+# Not run on pushes to main yet: the first run hung for an hour and was
+# cancelled, which turned main red. Run it by hand from the Actions tab, or
+# on a pull request, until it has passed once; then add the push trigger
+# back.
 on:
-  push:
-    branches: [main]
   pull_request:
     paths:
       - "android/**"
@@ -27,7 +30,7 @@ on:
 jobs:
   instrumented:
     runs-on: ubuntu-26.04
-    timeout-minutes: 60
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: android
@@ -93,28 +96,11 @@ jobs:
           ./gradlew assembleDebug assembleDebugAndroidTest -Psynctang.goMobileTarget=android/amd64
 
       - name: Boot the emulator
+        # Every wait is bounded and a failure prints the emulator's log:
+        # see scripts/ci-boot-emulator.sh. The step limit is a backstop.
+        timeout-minutes: 20
         working-directory: .
-        run: |
-          AVDMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -name avdmanager -type f | head -1)
-          echo no | "$AVDMANAGER" create avd -n ci -k "system-images;android-34;google_apis;x86_64" -d pixel_6 --force
-          # No window, no audio, no snapshot: a clean boot every time.
-          # Software rendering is fine with KVM and CPUs that nothing else
-          # is using, which is what the runner gives us.
-          nohup "$ANDROID_HOME/emulator/emulator" -avd ci -no-window -gpu swiftshader_indirect \
-            -no-snapshot -no-audio -no-boot-anim -accel on -memory 4096 -cores 3 \
-            > /tmp/emulator.log 2>&1 &
-          adb wait-for-device
-          for _ in $(seq 1 90); do
-            [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ] && break
-            sleep 5
-          done
-          [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ] || { echo "emulator did not finish booting" >&2; tail -30 /tmp/emulator.log >&2; exit 1; }
-          # Animations make Compose tests flaky and the system slower.
-          for k in window_animation_scale transition_animation_scale animator_duration_scale; do
-            adb shell settings put global "$k" 0
-          done
-          # A stalled system dialog over the app breaks UI tests.
-          adb shell settings put global hide_error_dialogs 1
+        run: ./scripts/ci-boot-emulator.sh ci
 
       - name: Run the instrumented tests
         run: |
