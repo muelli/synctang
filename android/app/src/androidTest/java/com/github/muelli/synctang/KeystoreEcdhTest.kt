@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 package com.github.muelli.synctang
 
+import android.content.pm.PackageManager
+import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import mobile.Mobile
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -47,6 +51,23 @@ class KeystoreEcdhTest {
     @After
     fun tearDown() {
         key.delete()
+    }
+
+    // On a phone that advertises StrongBox the key has to be in it: that is
+    // the claim the app makes in its About screen and the reason the key is
+    // created the way it is. On an emulator, or a phone without it, there is
+    // nothing to check and the test is skipped rather than passed. The
+    // backing is logged either way, so a run shows what it actually got.
+    @Test
+    fun theKeyIsInStrongBoxOnAPhoneThatHasOne() {
+        val backing = key.backing()
+        Log.i("synctang-test", "key backing: $backing")
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        assumeTrue(
+            "this device does not advertise StrongBox, so there is nothing to check",
+            context.packageManager.hasSystemFeature(PackageManager.FEATURE_STRONGBOX_KEYSTORE),
+        )
+        assertEquals(KeyHolderKey.Backing.STRONGBOX, backing)
     }
 
     @Test
