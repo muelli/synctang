@@ -261,6 +261,10 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 	defer cancel()
 
 	tr := newAgentTransport(cert, logger, *directAddr)
+	// The last reason discovery failed, so a person at the console is told
+	// once why nothing is happening (several devices and no way to tell them
+	// apart, say) instead of never, or on every retry.
+	var lastDiscoveryFailure string
 	for ctx.Err() == nil {
 		// Checked on every pass, not once at startup: this hook runs
 		// from dracut's initqueue "settled", which fires once udev has
@@ -280,9 +284,13 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 			// was not yet visible in /proc/partitions the first time
 			// around (this hook runs on udev "settled", not after the
 			// network or every device enumeration is guaranteed done).
-			found, err := findMr1Device()
+			found, err := discoverAskingDevice(*askPasswordDir)
 			if err != nil {
 				logger.Log(ctx, levelTrace, "device discovery failed, will retry", "error", err)
+				if msg := err.Error(); msg != lastDiscoveryFailure {
+					lastDiscoveryFailure = msg
+					logger.Warn("cannot choose which device to unlock yet", "error", err)
+				}
 				select {
 				case <-ctx.Done():
 				case <-time.After(agentRetryInterval):

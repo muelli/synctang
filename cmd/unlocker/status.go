@@ -39,7 +39,7 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 
 	activeDevice := *device
 	if activeDevice == "" {
-		found, err := findMr1Device()
+		found, err := discoverAskingDevice(defaultAskPasswordDir)
 		if err != nil {
 			fmt.Fprintf(stderr, "unlocker: %v\n", err)
 			return 1

@@ -191,9 +191,16 @@ reproducibility are untested and not claimed.
     `machine.pem` root-only after rebuilding them, and warns loudly where a
     filesystem ignores `chmod`. dracut already builds them under `umask 077`,
     so this is a safety net. Not observed on a running system `[U]`.
+  - Done 2026-10-28: device auto-discovery no longer takes the first block
+    device with an `mr-1` token. With one candidate nothing changes; with
+    several it picks the one a pending password request names (matching the
+    request's `Id=` to the device after resolving symlinks), refuses with a
+    message listing the candidates when nothing singles one out, and answers
+    the request that belongs to the device it unlocked. That the Id has the
+    form `cryptsetup:<device path>` is `[I]`, from systemd's source and not
+    observed on a running system here; the logic is tested with fake ids.
   - Scanning any QR code replaces the paired machine before pairing
-    succeeds (Android); device auto-discovery takes the first block device
-    with an `mr-1` token rather than the one being asked about.
+    succeeds (Android).
 - `[U]` Whether `go-tpm`'s ECDH support is reachable for the
   `keyholder` TPM2 backend; may remain a stub with tests skipped.
 - `[U]` Two fixes for `syncthing-socket` (`ensureResolver` accepting a

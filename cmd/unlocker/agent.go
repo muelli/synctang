@@ -214,7 +214,7 @@ func runExchange(
 		return report(fmt.Errorf("unlocker: recovered secret does not open %s: %w", device, err))
 	}
 
-	if err := answerAskPassword(askPasswordDir, keyMaterial); err != nil {
+	if err := answerAskPasswordFor(askPasswordDir, device, keyMaterial); err != nil {
 		return report(fmt.Errorf("unlocker: answering ask-password request: %w", err))
 	}
 
@@ -367,17 +367,18 @@ func monotonicNowUsec() (uint64, error) {
 	return uint64(seconds * 1e6), nil
 }
 
-// findCryptsetupAskRequest scans dir for the first pending cryptsetup
-// password request: a file named ask.* whose Id starts with "cryptsetup"
-// and which has not already expired. The NotAfter check is skipped
-// entirely when it is zero (never expires), which is also all a fake
-// test directory needs to exercise.
-func findCryptsetupAskRequest(dir string) (askRequest, error) {
+// pendingCryptsetupRequests lists the pending cryptsetup password requests in
+// dir, in directory order: files named ask.* whose Id starts with
+// "cryptsetup" and which have not already expired. The NotAfter check is
+// skipped entirely when it is zero (never expires), which is also all a
+// fake test directory needs to exercise.
+func pendingCryptsetupRequests(dir string) ([]askRequest, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return askRequest{}, fmt.Errorf("reading %s: %w", dir, err)
+		return nil, fmt.Errorf("reading %s: %w", dir, err)
 	}
 
+	var reqs []askRequest
 	for _, entry := range entries {
 		if !strings.HasPrefix(entry.Name(), "ask.") {
 			continue
@@ -400,21 +401,58 @@ func findCryptsetupAskRequest(dir string) (askRequest, error) {
 				continue
 			}
 		}
-		return req, nil
+		reqs = append(reqs, req)
 	}
-	return askRequest{}, fmt.Errorf("no pending cryptsetup password request in %s", dir)
+	if len(reqs) == 0 {
+		return nil, fmt.Errorf("no pending cryptsetup password request in %s", dir)
+	}
+	return reqs, nil
+}
+
+// findCryptsetupAskRequest returns the first pending cryptsetup request.
+func findCryptsetupAskRequest(dir string) (askRequest, error) {
+	reqs, err := pendingCryptsetupRequests(dir)
+	if err != nil {
+		return askRequest{}, err
+	}
+	return reqs[0], nil
+}
+
+// selectAskRequest picks the request to answer for device: the one whose Id
+// names it, so that the secret recovered for one volume is never handed to
+// another volume's prompt. If none names it (the request has an id this does
+// not understand, or the device was given as a different path) the first is
+// taken, as it always was.
+func selectAskRequest(reqs []askRequest, device string, resolve func(string) string) (askRequest, bool) {
+	if len(reqs) == 0 {
+		return askRequest{}, false
+	}
+	want := resolve(device)
+	for _, r := range reqs {
+		if path := askIDDevice(r.id); path != "" && resolve(path) == want {
+			return r, true
+		}
+	}
+	return reqs[0], true
 }
 
 // answerAskPassword finds the pending cryptsetup request in dir and
-// replies with p, prefixed with "+" per systemd's password agent
-// protocol. The reply is a connect-and-send on an unbound datagram
-// socket: nothing is bound locally, so no stray socket file is left
-// behind in what may be an initramfs.
+// replies with p; see answerAskPasswordFor.
 func answerAskPassword(dir string, p []byte) error {
-	req, err := findCryptsetupAskRequest(dir)
+	return answerAskPasswordFor(dir, "", p)
+}
+
+// answerAskPasswordFor replies with p, prefixed with "+" per systemd's
+// password agent protocol, to the pending request for device (or the first
+// pending one when device is empty or none names it). The reply is a
+// connect-and-send on an unbound datagram socket: nothing is bound locally,
+// so no stray socket file is left behind in what may be an initramfs.
+func answerAskPasswordFor(dir, device string, p []byte) error {
+	reqs, err := pendingCryptsetupRequests(dir)
 	if err != nil {
 		return err
 	}
+	req, _ := selectAskRequest(reqs, device, resolvePath)
 
 	conn, err := net.Dial("unixgram", req.socket)
 	if err != nil {
