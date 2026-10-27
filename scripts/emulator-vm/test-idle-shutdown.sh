@@ -95,6 +95,32 @@ expect "30 minutes after boot with no first run recorded stays on" no
 run 4000 fresh "$quiet"
 expect "a VM never used stops 60 minutes after boot" yes
 
+# OpenSSH 9.8 and later (Ubuntu 26.04 has 10.2) names the per-session process
+# "sshd-session", not "sshd". Seen on a real instance: a script that only knew
+# the old name saw no session at all and would have powered the VM off in the
+# middle of a build.
+real_quiet='sshd: /usr/sbin/sshd -D -o AuthorizedKeysCommand /usr/share/ec2-instance-connect/eic_run_authorized_keys %u %f -o AuthorizedKeysCommandUser ec2-instance-connect [listener] 0 of 10-100 startups
+sshd-session: ubuntu [priv]'
+
+run 7200 120 "$real_quiet
+sshd-session: ubuntu@notty"
+expect "sshd-session: a running ssh command keeps it on" no
+
+run 7200 120 "$real_quiet
+sshd-session: ubuntu@pts/0"
+expect "sshd-session: a terminal used 10 minutes ago keeps it on" no
+
+run 7200 120 "$real_quiet
+sshd-session: ubuntu@pts/1"
+expect "sshd-session: a terminal untouched for 2 hours does not" yes
+
+run 7200 120 "$real_quiet
+sshd-session: ubuntu"
+expect "sshd-session: a bare port-forward tunnel does not keep it on" yes
+
+run 7200 120 "$real_quiet"
+expect "sshd-session: only the listener and a [priv] monitor is idle" yes
+
 # An active session resets the idle clock.
 run 7200 120 "$quiet
 sshd: ubuntu@notty"

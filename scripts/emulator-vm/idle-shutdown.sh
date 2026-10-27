@@ -17,6 +17,11 @@
 # A bare port forward (ssh -N, the phone's adb tunnel) is deliberately not
 # use: leaving one open must not keep the VM running.
 #
+# OpenSSH 9.8 and later (Ubuntu 26.04 has 10.2) names the per-session process
+# "sshd-session" where older versions say "sshd"; both are recognised. A
+# script that knew only the old name, as the first version here did, sees no
+# session at all on such a system and powers it off in the middle of a build.
+#
 # Independently of all that, it powers off once it has been running for
 # MAX_RUNTIME_HOURS, so a session that is never closed cannot run for ever.
 #
@@ -59,11 +64,11 @@ fi
 reason=""
 while IFS= read -r line; do
 	case "$line" in
-	"sshd: "*"@notty"*)
+	"sshd: "*"@notty"* | "sshd-session: "*"@notty"*)
 		reason="an ssh command is running ($line)"
 		break
 		;;
-	"sshd: "*"@pts/"*)
+	"sshd: "*"@pts/"* | "sshd-session: "*"@pts/"*)
 		tty=${line##*@}
 		tty=${tty%% *}
 		last=$($mtime_cmd "/dev/$tty" 2>/dev/null || echo 0)

@@ -54,11 +54,26 @@ also powers off once it has been running for `EMU_MAX_RUNTIME_HOURS`
 (default 10), so a session that is never closed cannot run for ever.
 
 The decisions are tested with a fake clock and fake process list:
-`test-idle-shutdown.sh` (thirteen cases, including that mutating the script
-makes the right ones fail). What is **not** tested is the real thing on a
-real instance: that `sshd` names its processes as the script expects
-(`user@notty`, `user@pts/N`, and a bare `sshd: user` for a tunnel), which is
-`[I]` from how OpenSSH normally behaves and has not been seen here.
+`test-idle-shutdown.sh` (eighteen cases, and breaking the script makes the
+right ones fail). It was also tested on a real instance (2026-10-28), which
+found a bug the fake tests could not: OpenSSH 9.8 and later, including the
+10.2 in Ubuntu 26.04, names a session process `sshd-session: user@notty` or
+`sshd-session: user@pts/N`, not `sshd:`, so the first version saw no session
+at all and would have powered the VM off in the middle of a build `[V]`. Both
+names are recognised now, with the real process titles in the tests.
+
+Verified on a real instance `[V]`:
+
+- a running ssh command is reported as use (`sshd-session: ubuntu@notty`);
+- a bare tunnel shows up as `sshd-session: ubuntu` (no `@`) and does **not**
+  count, and the instance powered itself off with a tunnel still attached;
+- with nothing connected the instance went from `running` to `stopped`
+  (not terminated) within seconds of the timer firing, and `up` started it
+  again, with a new public address, the disk and the image intact.
+
+Not verified: an interactive session with a terminal (`@pts/N`) was seen to be
+named as expected but its idle-timeout was not waited out on the real
+instance.
 
 ## What it costs
 
@@ -117,10 +132,18 @@ That dry run also found a bug the stand-in missed: the CLI's text output
 separates values with tabs, and the script built a zone filter from spaces.
 The stand-in now answers with tabs as well, so the test would have caught it.
 
-**Not** checked by the above, because it needs a live instance:
+Checked on a real instance (2026-10-28) `[V]`:
 
-- the first-boot setup on a real Ubuntu 26.04 instance, and that the
-  emulator then boots with KVM inside the container. The container could not
-  reach `/dev/kvm` on the machine it was tested on, because that machine's
-  podman uses `runc` and the node is `root:kvm 0660`; the VM works around
-  that with a udev rule, which is `[I]` and untested.
+- the first-boot setup completes on Ubuntu 26.04 in about fourteen minutes
+  (most of it the SDK downloads) and builds the image (9 GB);
+- the container opens `/dev/kvm` and the emulator's own check says KVM is
+  installed and usable. The container could not do this on the machine it was
+  first tested on, because that machine's podman uses `runc` and the node is
+  `root:kvm 0660`; on the VM the runtime is `crun` and the udev rule makes the
+  node world accessible.
+
+**Not** checked yet:
+
+- that the emulator then boots to Android inside the container, and that the
+  instrumented tests pass on it (the next thing to try);
+- the phone tunnel with a real phone.
