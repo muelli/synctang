@@ -64,6 +64,8 @@ jobs:
       - run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
       - run: find dracut scripts -name '*.sh' -print0 | xargs -0 -r shellcheck
       - run: ./scripts/test-ci-boot-emulator.sh
+      - run: ./scripts/emulator-vm/test-idle-shutdown.sh
+      - run: ./scripts/emulator-vm/test-emu-ctl.sh
 
   em-dash-check:
     runs-on: ubuntu-26.04

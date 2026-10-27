@@ -51,6 +51,19 @@ brief's explicit permission to do so.
 |---|---|---|
 | `dracut/90unlocker/{module-setup,unlocker-start,unlocker-stop}.sh` | `syncthing-socket`'s `contrib/dracut-luks/90syncthing-socket/` (commit checked out at `/tmp/syncthing-socket` on 2026-09-18) | Renamed the binary, PID file, kernel command-line flag (`rd.syncthing_socket=0` to `rd.unlocker=0`), and hook filenames; dropped the `/etc/syncthing-socket/luks.conf` override (this project's token is the only configuration source); comments and licence header adjusted to this project's SPDX convention. Same AGPL-3.0 licence, both AGPL-3.0-or-later compatible per the row above. |
 
+## Build and test environment (not shipped)
+
+Tools the emulator workflow, `scripts/screenshots.sh` and `scripts/emulator-vm/`
+run. None is linked into a distributed artefact.
+
+| Dependency | Licence | Compatible? | Evidence |
+|---|---|---|---|
+| Android SDK components: command-line tools 23.0 (`commandlinetools-linux-16111833`), platform-tools, emulator, `platforms;android-34`, `build-tools;34.0.0`, NDK 27.2.12479018, and `system-images;android-34;google_apis;x86_64` | The Android Software Development Kit License Agreement (`android-sdk-license`), proprietary `[V]` | Yes as tools, on the terms of the agreement: it licenses the SDK "solely to develop applications for compatible implementations of Android" (clause 3.1), which is all this project does with it, and forbids redistributing it (clause 3.4) `[V]`. So the container image built by `scripts/emulator-vm/Containerfile` is never published. Nothing from it is shipped; the app is compiled against the platform API, as F-Droid builds it. Whether that compilation raises any further question for an AGPL application was not examined `[U]` | Read the licence text in the `package.xml` of the emulator, platform-tools, NDK and system-image packages on 2026-10-27: all name `android-sdk-license`, and clauses 3.1 and 3.4 are quoted above. The command-line tools archive is pinned by SHA-256 in the Containerfile, checked against the SHA-1 Google publishes in `repository2-3.xml`. |
+| podman 5.7 (rootless, on the emulator VM and locally) | Apache-2.0 `[V]` | Yes, invoked as a separate program `[V]` | Read `/usr/share/doc/podman/copyright` on 2026-10-27. |
+| crun (installed on the emulator VM as podman's runtime) | not checked `[U]` | Invoked as a separate program; nothing from it is shipped | Not installed here, so its licence was not read. |
+| AWS CLI v2 (`scripts/emulator-vm/emu-ctl.sh`) | Apache-2.0 `[I]` | Yes, invoked as a separate program | From the project's published licence; no top-level licence file was found in the installed copy to read. |
+| Ubuntu 26.04 base image and packages in the Containerfile and on the VM (`openjdk-21-jdk-headless`, `golang-go`, `git`, `curl`, `unzip` and their libraries) | Various open-source licences, in each package's `copyright` file `[I]` | Yes as tools; nothing from them is shipped | The package names and versions were confirmed to exist for 26.04 by running `apt-cache policy` in the `ubuntu:26.04` image on 2026-10-27; their licences were not read one by one. |
+
 ## Pending
 
 - Full transitive dependency audit of `syncthing-socket`'s `go.mod` (pion/webrtc,

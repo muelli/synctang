@@ -54,6 +54,11 @@
   diagnosed further). Run the ones that need no device by name, for
   example `go test ./cmd/unlocker -run 'TestAuthorizedPeers|TestCanonical|TestPairGivesUp'`,
   and say plainly which tests did not run.
+- **The Android emulator needs KVM and CPUs nothing else is using.** On a
+  shared or small machine it freezes and throws ANR dialogs (seen: a
+  4-core host shared with other sessions, load 7 to 9, input crawling).
+  `scripts/emulator-vm/` makes an AWS instance for it that stops itself
+  after an hour idle; its README says what was and was not verified.
 - **Device IDs are compared in canonical form** (dashed, upper case). A
   transport id typed any other way never matches what the transport
   reports; use `canonicalDeviceID` in `cmd/unlocker` on anything a person
