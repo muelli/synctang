@@ -64,7 +64,8 @@ override_dh_auto_install:
 	install -D -m 0755 keyholder debian/tmp/usr/bin/keyholder
 	install -d debian/tmp/usr/lib/dracut/modules.d/90unlocker
 	install -m 0755 dracut/90unlocker/module-setup.sh dracut/90unlocker/unlocker-start.sh \
-		dracut/90unlocker/unlocker-stop.sh debian/tmp/usr/lib/dracut/modules.d/90unlocker/
+		dracut/90unlocker/unlocker-stop.sh dracut/90unlocker/secure-initrd.sh \
+		debian/tmp/usr/lib/dracut/modules.d/90unlocker/
 
 override_dh_auto_clean:
 	rm -f unlocker keyholder

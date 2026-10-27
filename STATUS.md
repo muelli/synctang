@@ -184,11 +184,13 @@ reproducibility are untested and not claimed.
     the proof's author altering the key, so this makes the proof
     self-contained rather than closing a hole `[V]` (the unit tests, and
     one that sends a different key from the one the proof covers).
-  - Whether the initrd that carries `machine.pem` is `0600` on a target
-    distribution; scanning any QR code replaces the paired machine before
-    pairing succeeds (Android); device auto-discovery takes the first
-    block device with an `mr-1` token rather than the one being asked
-    about.
+  - Done 2026-10-28: `synctang-dracut` now makes initrd images that carry
+    `machine.pem` root-only after rebuilding them, and warns loudly where a
+    filesystem ignores `chmod`. dracut already builds them under `umask 077`,
+    so this is a safety net. Not observed on a running system `[U]`.
+  - Scanning any QR code replaces the paired machine before pairing
+    succeeds (Android); device auto-discovery takes the first block device
+    with an `mr-1` token rather than the one being asked about.
 - `[U]` Whether `go-tpm`'s ECDH support is reachable for the
   `keyholder` TPM2 backend; may remain a stub with tests skipped.
 - `[U]` Two fixes for `syncthing-socket` (`ensureResolver` accepting a

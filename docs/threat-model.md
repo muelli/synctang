@@ -31,10 +31,15 @@ that is stronger than being able to ask:
   the disk alone cannot impersonate the machine) is the change that would
   remove this. It is real additional work and is not built. `[I]` not
   implemented.
-- The machine's identity is also inside the initrd image under `/boot`.
-  Whether that file is readable by other local users depends on how
-  dracut creates it on your distribution; check `ls -l /boot/initrd*`
-  and keep it `0600`. `[U]` not checked on any target system.
+- The machine's identity is also inside the initrd image under `/boot`, so
+  anyone who can read that image can pose as the machine. dracut 110 (the
+  version in Ubuntu 26.04) builds images under `umask 077` `[V]` (read in
+  its source; the resulting file mode was not observed on a running
+  system). As a safety net, installing `synctang-dracut` runs
+  `secure-initrd.sh`, which restricts any image under `/boot` that holds the
+  identity to root only and fails loudly where it cannot, because a FAT
+  boot partition ignores `chmod` unless mounted with a restrictive umask
+  `[V]` (`scripts/test-secure-initrd.sh`, against a temporary directory).
 
 What the key holder does to help, cheapest first:
 

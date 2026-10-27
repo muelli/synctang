@@ -15,6 +15,10 @@ case "$1" in
 		# initrd-building counterpart, not of this package.
 		if command -v dracut > /dev/null 2>&1; then
 			dracut --force --regenerate-all || true
+			# The images now carry the machine identity. dracut builds them
+			# owner-only; this checks, and says so loudly if a filesystem
+			# will not hold that. "|| true" for the same reason as above.
+			/usr/lib/dracut/modules.d/90unlocker/secure-initrd.sh || true
 		fi
 		;;
 
