@@ -62,7 +62,17 @@ done
 ( cd android && ./gradlew :app:assembleDebug \
 	-Psynctang.goMobileTarget=android/amd64 -Psynctang.noBiometric=true )
 
-"$ADB" install -r -g android/app/build/outputs/apk/debug/app-debug.apk
+# No -g: granting the camera makes the pairing screen show the emulator's
+# built-in test scene (coloured blocks) full screen, which is not what the
+# app looks like on a phone. Without it the screen shows the camera-permission
+# button, which is what a first-time user sees.
+"$ADB" install -r android/app/build/outputs/apk/debug/app-debug.apk
+
+# Animations off: they slow the emulator and make captures of a moving
+# indicator look broken.
+for k in window_animation_scale transition_animation_scale animator_duration_scale; do
+	"$ADB" shell settings put global "$k" 0
+done
 
 # A clean status bar, per SystemUI's demo mode: a real clock and a
 # half-full battery date the screenshots and distract from the app.
@@ -94,6 +104,24 @@ tap_id() {
 	"$ADB" shell input tap $(((x1 + x2) / 2)) $(((y1 + y2) / 2))
 }
 
+# tap_text <text>: like tap_id, for an element that is found by its visible
+# text. Used for the Pair button, which has no tag of its own.
+tap_text() {
+	local bounds=""
+	for _ in $(seq 1 10); do
+		"$ADB" shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || true
+		bounds=$("$ADB" exec-out cat /sdcard/ui.xml |
+			grep -o "text=\"$1\"[^>]*bounds=\"[^\"]*\"" |
+			grep -o 'bounds="[^"]*"' | head -1)
+		[ -n "$bounds" ] && break
+		sleep 3
+	done
+	[ -n "$bounds" ] || { echo "nothing on screen with the text $1" >&2; exit 1; }
+	local x1 y1 x2 y2
+	read -r x1 y1 x2 y2 <<<"$(echo "$bounds" | tr -c '0-9' ' ')"
+	"$ADB" shell input tap $(((x1 + x2) / 2)) $(((y1 + y2) / 2))
+}
+
 shoot() { # shoot <n> <description>
 	sleep 4
 	"$ADB" exec-out screencap -p > "$OUT/$1.png"
@@ -105,14 +133,25 @@ shoot() { # shoot <n> <description>
 "$ADB" shell am force-stop "$APPID"
 "$ADB" shell am start -n "$APPID/.MainActivity" >/dev/null
 sleep 40
+# The manual field takes focus on launch, which is right for a hardware
+# keyboard and brings the soft keyboard up over half the screen on a phone.
+# Back dismisses it without leaving the app.
+"$ADB" shell input keyevent KEYCODE_BACK
 shoot 1 "pairing screen: scan a machine's QR code"
 
+# adb's `input text` types %s as a space, and the device shell would take a
+# bare & for a background operator, hence \& between the two fields; typing a
+# space there instead (as this once did) is not a pairing payload at all and
+# produced "That is not a machine device ID" instead of the paired screen.
 # The manual field takes the same payload the QR code carries. Without a
 # psk= it only records which machine to dial, which needs no network and
 # no machine, and is enough to reach the unlock screen.
 tap_id pair_manual_field
-"$ADB" shell input text 'synctang://pair?machine=YIEAQU3-4EQIMH3-INVK5OV-QEPJZSW-GPKQF5R-UUGZZR2-KBIPPXD-BLGZ2AG%sname=study%sworkstation'
-"$ADB" shell input keyevent KEYCODE_ENTER
+"$ADB" shell input text 'synctang://pair?machine=YIEAQU3-4EQIMH3-INVK5OV-QEPJZSW-GPKQF5R-UUGZZR2-KBIPPXD-BLGZ2AG\&name=study%sworkstation'
+# Enter does not submit: the field is multi-line, so it adds a newline. Dismiss
+# the keyboard, which hides the Pair button, and tap the button itself.
+"$ADB" shell input keyevent KEYCODE_BACK
+tap_text Pair
 shoot 2 "unlock screen: paired, waiting for the machine"
 
 echo

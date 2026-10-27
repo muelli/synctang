@@ -142,8 +142,20 @@ Checked on a real instance (2026-10-28) `[V]`:
   `root:kvm 0660`; on the VM the runtime is `crun` and the udev rule makes the
   node world accessible.
 
+- the emulator boots to Android inside the container in about 36 seconds
+  (against about 190 on the shared machine it was first tried on), and the
+  14 instrumented tests pass on it (Keystore ECDH against the Go side, the
+  MR-1 test vectors, the keyboard-navigation tests);
+- `scripts/screenshots.sh` runs end to end in the container in about two
+  minutes, and produced the F-Droid listing screenshots. It also had two
+  bugs that were never visible before, because it had never run to completion
+  anywhere: it installed with every permission granted, so the pairing screen
+  was filled by the emulator's camera test scene, and its pairing payload had
+  a space where the `&` belongs, so it never reached the paired screen.
+
 **Not** checked yet:
 
-- that the emulator then boots to Android inside the container, and that the
-  instrumented tests pass on it (the next thing to try);
-- the phone tunnel with a real phone.
+- the phone tunnel with a real phone;
+- the emulator workflow on GitHub (`emulator.yml`): the first run there hung
+  for an hour and its cause is still unknown; run it by hand from the
+  Actions tab and send the log.
