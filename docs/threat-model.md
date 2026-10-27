@@ -55,11 +55,17 @@ What the key holder does to help, cheapest first:
   protected nothing and was removed before any release `[I]`. The second
   factor that would help is a threshold (below).
 - On Android the key is created so the Keystore refuses to use it unless
-  a strong biometric matched within the last 15 seconds. That is a time
-  window, not a binding to the request you saw: code running inside the
-  app, on a phone where it can run, could use the key during the window
-  after any fingerprint unlock of the phone `[I]` (platform behaviour read
-  from documentation, not tested).
+  a strong biometric matched within the last 5 seconds (it was 15 until
+  2026-10-28; a key created before that keeps its 15, because replacing it
+  would change the public key and break every machine the phone is
+  enrolled on). That is a time window, not a binding to the request you
+  saw: code running inside the app, on a phone where it can run, could use
+  the key during the window after any fingerprint unlock of the phone `[I]`
+  (platform behaviour read from documentation, not tested). Only local work
+  happens between the prompt and the key use, so a few seconds is enough.
+  A binding to the request itself needs `BiometricPrompt.CryptoObject` to
+  accept a `KeyAgreement`, which exists from API 36.1 (androidx.biometric
+  1.4.0-alpha07); not used yet.
 
 **Key holder compromise.** On the laptop, a plain key file is the weak
 point; a TPM2 ECDH backend (behind a build tag) is the intended fix.

@@ -34,9 +34,13 @@ import javax.crypto.KeyAgreement
  * ### How the biometric gate actually works
  *
  * There is no BiometricPrompt.CryptoObject constructor taking a
- * KeyAgreement. Checked against android.jar for API 34: CryptoObject
- * accepts Signature, Cipher, Mac, IdentityCredential and
- * PresentationSession, and nothing else. So the per-operation
+ * KeyAgreement in the API this app compiles and runs against. Checked
+ * against android.jar for API 34: CryptoObject accepts Signature,
+ * Cipher, Mac, IdentityCredential and PresentationSession, and nothing
+ * else. (A KeyAgreement constructor was added in API 36.1, and in
+ * androidx.biometric 1.4.0-alpha07; with minSdk 31 it could only be
+ * used where present, falling back to this window elsewhere. Not done
+ * yet.) So the per-operation
  * (auth-per-use) binding available to a Cipher key is simply not
  * reachable for a PURPOSE_AGREE_KEY key, and a key created with
  * setUserAuthenticationParameters(0, ...) would be permanently
@@ -248,11 +252,24 @@ class KeyHolderKey(
         const val DEFAULT_ALIAS = "synctang-key-holder"
 
         /**
-         * How long a biometric authentication stays good for. Long
-         * enough to survive the round trip through the prompt and the
-         * network write, short enough that it cannot be banked.
+         * How long a biometric authentication stays good for. Between
+         * the prompt returning and the key being used there is only local
+         * work (the Go bridge handing over the challenge point and the
+         * ECDH itself); the network write comes after the key has been
+         * used. So this only has to cover a slow phone's local work, and
+         * is kept to a few seconds because, while it is open, anything
+         * running inside the app can use the key without a prompt, and
+         * any fingerprint unlock of the phone opens it, not only this
+         * app's prompt.
+         *
+         * It is fixed when the key is created. A key created before this
+         * was shortened (it was 15) keeps its old window: replacing it
+         * would change the public key and break every machine the phone
+         * is enrolled on, so the app does not do that on its own. A new
+         * install, or a key recreated after the biometrics changed, gets
+         * this value.
          */
-        const val AUTH_VALIDITY_SECONDS = 15
+        const val AUTH_VALIDITY_SECONDS = 5
 
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
         private const val CURVE = "secp256r1"

@@ -172,8 +172,11 @@ reproducibility are untested and not claimed.
   meant to test. Open:
   - A disk image plus one approval recovers the volume secret. The fix is
     sealing the machine identity in a TPM (not built).
-  - The Android key is usable for a 15 second window after any strong
-    biometric, not bound to the request.
+  - The Android key is usable for a window after any strong biometric, not
+    bound to the request. Shortened from 15 to 5 seconds on 2026-10-28 for
+    keys created from then on; an existing key keeps its 15 (replacing it
+    means re-enrolling every machine). A per-use binding needs API 36.1's
+    `CryptoObject(KeyAgreement)`, not used yet.
   - `[U]` A threshold (two key holders must both answer) is the second
     factor that would remove "one approval is enough". Parked for a
     later round; see `docs/threat-model.md`.
