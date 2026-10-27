@@ -124,6 +124,11 @@ class KeyHolderKey(
             generator.initialize(spec(strongBox = true))
             generator.generateKeyPair()
         } catch (e: StrongBoxUnavailableException) {
+            // Logged, because the reason matters and was invisible: a phone
+            // can advertise StrongBox and still refuse to hold this kind of
+            // key (an ECDH key, PURPOSE_AGREE_KEY, is newer than the first
+            // generations of the chip). The message carries no key material.
+            android.util.Log.w(LOG_TAG, "StrongBox refused the key, falling back to the TEE", e)
             // No secure element on this phone. Clean up any partial
             // entry before retrying, so a half-created alias cannot be
             // mistaken for a usable key later.
