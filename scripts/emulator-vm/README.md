@@ -105,11 +105,20 @@ Checked here, by running it:
   script on purpose);
 - `idle-shutdown.sh` (above) and `shellcheck` on all of it.
 
-**Not** checked, because it needs an AWS account and a live instance:
+Checked against AWS itself (`up --dry-run`, 2026-10-28, account of the
+`code-poweruser` profile, `eu-central-1`):
 
-- that EC2 accepts the launch (`up --dry-run` is how to find out cheaply);
-- that the instance type is offered in your region with nested
-  virtualization (the script checks and falls back along `EMU_INSTANCE_TYPES`);
+- EC2 accepts the launch request, including the nested-virtualization option,
+  the disk, the metadata options, the tags and the first-boot script;
+- `c8i.2xlarge` is offered in `eu-central-1` with nested virtualization, in
+  all three zones; the default VPC's default subnets are used.
+
+That dry run also found a bug the stand-in missed: the CLI's text output
+separates values with tabs, and the script built a zone filter from spaces.
+The stand-in now answers with tabs as well, so the test would have caught it.
+
+**Not** checked by the above, because it needs a live instance:
+
 - the first-boot setup on a real Ubuntu 26.04 instance, and that the
   emulator then boots with KVM inside the container. The container could not
   reach `/dev/kvm` on the machine it was tested on, because that machine's

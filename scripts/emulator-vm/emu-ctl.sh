@@ -104,9 +104,10 @@ pick_network() { # prints "<vpc-id> <subnet-id>"
 	azs=$(aws_ ec2 describe-instance-type-offerings --location-type availability-zone \
 		--filters "Name=instance-type,Values=$type" --query 'InstanceTypeOfferings[].Location' --output text)
 	[ -n "$azs" ] || die "$type is not offered in any availability zone of $REGION"
-	# shellcheck disable=SC2086 # azs is a whitespace-separated list on purpose
+	# The CLI's text output separates values with tabs, not spaces.
+	azs=$(tr -s '[:space:]' ',' <<<"$azs" | sed 's/^,//; s/,$//')
 	subnet=$(aws_ ec2 describe-subnets \
-		--filters "Name=vpc-id,Values=$vpc" "Name=default-for-az,Values=true" "Name=availability-zone,Values=${azs// /,}" \
+		--filters "Name=vpc-id,Values=$vpc" "Name=default-for-az,Values=true" "Name=availability-zone,Values=$azs" \
 		--query 'Subnets[0].SubnetId' --output text)
 	[ -n "$subnet" ] && [ "$subnet" != None ] || die "no default subnet in $vpc for the zones that offer $type; set EMU_SUBNET_ID"
 	echo "$vpc $subnet"

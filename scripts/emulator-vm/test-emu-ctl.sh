@@ -57,7 +57,7 @@ case "$sub" in
 	elif [[ $args == *InstanceType* ]]; then echo "c7i.2xlarge"
 	fi ;;
 "ec2 describe-instance-type-offerings")
-	if [[ $args == *"--location-type availability-zone"* ]]; then echo "eu-central-1a eu-central-1b"
+	if [[ $args == *"--location-type availability-zone"* ]]; then printf '%s\t%s\t%s\n' eu-central-1a eu-central-1c eu-central-1b
 	else
 		for t in $FAKE_OFFERED; do [[ $args == *"Values=$t "* ]] && { echo "$t"; exit 0; }; done
 		echo None
@@ -66,11 +66,14 @@ case "$sub" in
 	for t in $FAKE_NESTED; do [[ $args == *"--instance-types $t "* ]] && { echo "nested-virtualization amx-bf16"; exit 0; }; done
 	echo "" ;;
 "ec2 describe-vpcs") echo "vpc-1" ;;
-"ec2 describe-subnets") echo "subnet-1" ;;
+"ec2 describe-subnets")
+	# Real EC2 matches the zone filter against whole zone names; a value
+	# that still contains a tab or a space matches nothing.
+	if [[ $args == *"Values=eu-central-1a,eu-central-1c,eu-central-1b "* ]]; then echo "subnet-1"; else echo None; fi ;;
 "ssm get-parameter") echo "ami-1" ;;
 "ec2 describe-key-pairs") exit 255 ;;
 "ec2 describe-security-groups")
-	if [[ $args == *"--group-ids"* ]]; then echo "198.51.100.1/32 192.0.2.7/32 203.0.113.99/32"
+	if [[ $args == *"--group-ids"* ]]; then printf '%s\t%s\t%s\n' 198.51.100.1/32 192.0.2.7/32 203.0.113.99/32
 	elif [ -e "$FAKE_DIR/sg-created" ]; then echo "sg-1"
 	else echo None; fi ;;
 "ec2 create-security-group") touch "$FAKE_DIR/sg-created"; echo "sg-1" ;;
