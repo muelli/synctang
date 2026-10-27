@@ -95,6 +95,23 @@ jobs:
           export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
           ./gradlew assembleDebug assembleDebugAndroidTest -Psynctang.goMobileTarget=android/amd64
 
+      - name: Show what the boot will have to work with
+        # Printed so that a failed boot comes with the facts that usually
+        # explain it, without needing a second run to find out.
+        if: always()
+        timeout-minutes: 3
+        working-directory: .
+        run: |
+          id
+          ls -l /dev/kvm || true
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME/cmdline-tools" || true
+          ls "$ANDROID_HOME/system-images/android-34/google_apis" || true
+          "$ANDROID_HOME/emulator/emulator" -version 2>&1 | head -5 || true
+          java -version 2>&1 | head -2
+          free -m
+          df -h / | tail -1
+
       - name: Boot the emulator
         # Every wait is bounded and a failure prints the emulator's log:
         # see scripts/ci-boot-emulator.sh. The step limit is a backstop.
@@ -109,10 +126,15 @@ jobs:
 
       - name: Collect logs
         if: always()
+        timeout-minutes: 5
         working-directory: .
         run: |
           mkdir -p /tmp/emulator-artifacts
-          adb logcat -d > /tmp/emulator-artifacts/logcat.txt 2>&1 || true
+          # Bounded: with no device attached, which is exactly when these
+          # logs matter most (the boot failed), adb logcat waits for one
+          # for ever, and the first run of this workflow sat here until the
+          # job's own limit.
+          timeout 60 adb logcat -d > /tmp/emulator-artifacts/logcat.txt 2>&1 || true
           cp /tmp/emulator.log /tmp/emulator-artifacts/emulator.log 2>/dev/null || true
 
       - uses: actions/upload-artifact@v4
