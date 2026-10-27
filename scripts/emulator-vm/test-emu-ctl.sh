@@ -7,7 +7,9 @@
 # checks the arguments the way the CLI checks them before it sends anything
 # (shorthand syntax, JSON, JMESPath queries, option names). A malformed
 # argument shows up here instead of on the first real run. Skipped, with a
-# note, if the real aws CLI is not installed.
+# note, if the real aws CLI is not installed or SKIP_REAL_AWS_CHECK is set;
+# CI sets it, so that an older aws CLI that does not know a newer option
+# cannot fail the build for a reason unrelated to the script.
 # The helpers below are called through check, which shellcheck cannot see.
 # shellcheck disable=SC2329
 set -euo pipefail
@@ -18,6 +20,7 @@ trap 'rm -rf "$work"' EXIT
 fail=0
 
 real_aws=$(command -v aws || true)
+[ -z "${SKIP_REAL_AWS_CHECK:-}" ] || real_aws=""
 ssh-keygen -q -t ed25519 -N '' -f "$work/id_ed25519" >/dev/null
 
 cat > "$work/aws" <<'SH'
@@ -173,5 +176,5 @@ check "terminates the instance" called "terminate-instances --instance-ids i-0ab
 check "deletes the key pair" called "delete-key-pair --key-name synctang-emulator-key"
 check "every call is accepted by the real aws CLI's argument checks" no_validation_errors
 
-if [ -z "$real_aws" ]; then echo "note: the real aws CLI is not installed, so its argument checks were skipped"; fi
+if [ -z "$real_aws" ]; then echo "note: the real aws CLI's argument checks were skipped (not installed, or SKIP_REAL_AWS_CHECK is set)"; fi
 exit "$fail"

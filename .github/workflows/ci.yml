@@ -65,7 +65,7 @@ jobs:
       - run: find dracut scripts -name '*.sh' -print0 | xargs -0 -r shellcheck
       - run: ./scripts/test-ci-boot-emulator.sh
       - run: ./scripts/emulator-vm/test-idle-shutdown.sh
-      - run: ./scripts/emulator-vm/test-emu-ctl.sh
+      - run: SKIP_REAL_AWS_CHECK=1 ./scripts/emulator-vm/test-emu-ctl.sh
 
   em-dash-check:
     runs-on: ubuntu-26.04
