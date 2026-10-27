@@ -102,7 +102,7 @@ func dialAndPair(t *testing.T, f *pairFixture, addr string, secret []byte) (mrco
 	req := mrcore.PairRequest{
 		PubKey: f.holderS,
 		Name:   "test phone",
-		Proof:  mrcore.PairProof(secret, f.machineID, f.holderID, challenge.Nonce),
+		Proof:  mrcore.PairProof(secret, f.machineID, f.holderID, f.holderS, challenge.Nonce),
 	}
 	if err := mrcore.WriteMessage(conn, req); err != nil {
 		return mrcore.PairResult{}, err

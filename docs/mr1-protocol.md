@@ -118,8 +118,14 @@ conversation over the network rather than a one-way transfer.
 Everything the code is good for is bounded: it lasts five minutes by
 default (`--timeout`), it enrols one key holder, it is proved over a
 TLS channel whose far end the phone has already pinned to the Device ID
-from the same QR code, and the proof is bound to both identities and to
-a fresh nonce, so it is worth nothing replayed or on a second phone.
+from the same QR code, and the proof is bound to both identities, to a
+fresh nonce and to the public key being enrolled, so it is worth nothing
+replayed, on a second phone, or for enrolling any key but the one it was
+made for. The proof is an HMAC-SHA-256 keyed with the one-time secret over
+length-prefixed parts, the first of which is the label `synctang-pair-v2`;
+a machine and a phone from before the key was bound used `v1` and cannot
+pair with each other (the machine reports that the pairing code did not
+match).
 Anybody who photographs the code can still *ask*, which is why you are
 shown who is asking and have to agree (`--yes` skips the question, for
 automation).

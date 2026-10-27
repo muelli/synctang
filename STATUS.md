@@ -177,11 +177,13 @@ reproducibility are untested and not claimed.
   - `[U]` A threshold (two key holders must both answer) is the second
     factor that would remove "one approval is enough". Parked for a
     later round; see `docs/threat-model.md`.
-  - `PairProof` does not cover the public key being enrolled. Not
-    changed because it alters the pairing exchange and a phone and a
-    machine on different versions would stop pairing; it needs a
-    versioned bump, and there is no attack today because the pinned
-    channel already stops anyone but the proof's author altering it.
+  - Done 2026-10-28: `PairProof` now covers the public key being enrolled,
+    under the label `synctang-pair-v2`. A machine and a phone from before
+    the change cannot pair with each other; both need updating. There was
+    no attack before, because the pinned channel already stopped anyone but
+    the proof's author altering the key, so this makes the proof
+    self-contained rather than closing a hole `[V]` (the unit tests, and
+    one that sends a different key from the one the proof covers).
   - Whether the initrd that carries `machine.pem` is `0600` on a target
     distribution; scanning any QR code replaces the paired machine before
     pairing succeeds (Android); device auto-discovery takes the first

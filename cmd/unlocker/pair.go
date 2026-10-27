@@ -106,7 +106,7 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 	// anything this message claimed, so the proof is bound to who the
 	// peer actually is and the enrolment records that same identity.
 	peerID := conn.PeerID()
-	expected := mrcore.PairProof(opts.secret, machineID, peerID, nonce)
+	expected := mrcore.PairProof(opts.secret, machineID, peerID, req.PubKey, nonce)
 	if !hmac.Equal(expected, req.Proof) {
 		logger.Warn("refused a pairing attempt with a bad proof", "peer", peerID)
 		return refusePairing(conn, mrcore.PairRefusedCodeMismatch)

@@ -56,7 +56,7 @@ func fakeMachine(t *testing.T, addr, machineSeed string, secret []byte, accept b
 			return
 		}
 
-		expected := mrcore.PairProof(secret, machineID, conn.PeerID(), nonce)
+		expected := mrcore.PairProof(secret, machineID, conn.PeerID(), req.PubKey, nonce)
 		ok := accept && string(expected) == string(req.Proof)
 		result := mrcore.PairResult{OK: ok}
 		if !ok {

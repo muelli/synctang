@@ -35,7 +35,7 @@ const pairingSecretLen = 16
 // pairProofLabel is mixed into every proof so a value computed here
 // can never collide with an HMAC computed for some other purpose with
 // the same secret.
-const pairProofLabel = "synctang-pair-v1"
+const pairProofLabel = "synctang-pair-v2"
 
 // pairingEncoding is base32 without padding: unambiguous when read off
 // a screen, safe in a URL query without escaping, and accepted in any
@@ -69,21 +69,24 @@ func DecodePairingSecret(encoded string) ([]byte, error) {
 // PairProof is what the key holder sends to show it holds the secret
 // from the machine's QR code.
 //
-// Bound to both Device IDs and to a nonce the machine chose for this
-// connection, so a proof is worth nothing anywhere else: not replayed
-// on a later connection (the nonce differs), not reused by a second
-// phone that photographed the same code (the peer ID differs), and not
-// replayed against another machine that happened to show the same code
-// (the machine ID differs).
+// Bound to both Device IDs, to a nonce the machine chose for this
+// connection, and to the public key being enrolled, so a proof is worth
+// nothing anywhere else: not replayed on a later connection (the nonce
+// differs), not reused by a second phone that photographed the same code
+// (the peer ID differs), not replayed against another machine that
+// happened to show the same code (the machine ID differs), and not
+// usable to enrol a different key from the one it was made for (the
+// public key differs). Binding the key is what makes the proof vouch for
+// the one thing the machine is about to write to disk.
 //
 // Both Device IDs are the cryptographically verified ones from the
 // completed TLS handshake, never anything a peer merely claimed in a
 // message, so an attacker cannot choose what its own proof is bound to.
-func PairProof(secret []byte, machineID, peerID string, nonce []byte) []byte {
+func PairProof(secret []byte, machineID, peerID string, pubKey, nonce []byte) []byte {
 	mac := hmac.New(sha256.New, secret)
 	// Length-prefixed rather than concatenated, so that no two
-	// different triples can produce the same input to the MAC.
-	for _, part := range [][]byte{[]byte(pairProofLabel), []byte(machineID), []byte(peerID), nonce} {
+	// different tuples can produce the same input to the MAC.
+	for _, part := range [][]byte{[]byte(pairProofLabel), []byte(machineID), []byte(peerID), pubKey, nonce} {
 		var lenBuf [8]byte
 		for i := 0; i < 8; i++ {
 			lenBuf[7-i] = byte(len(part) >> (8 * i))

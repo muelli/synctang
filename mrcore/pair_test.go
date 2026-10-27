@@ -16,9 +16,10 @@ func TestPairProofDependsOnTheSecret(t *testing.T) {
 		phone   = "PHONE-ID"
 	)
 	nonce := []byte("a fixed nonce for this test 1234")
+	pub := []byte("a public key")
 
-	a := PairProof([]byte("secret one"), machine, phone, nonce)
-	b := PairProof([]byte("secret two"), machine, phone, nonce)
+	a := PairProof([]byte("secret one"), machine, phone, pub, nonce)
+	b := PairProof([]byte("secret two"), machine, phone, pub, nonce)
 
 	if len(a) == 0 {
 		t.Fatal("PairProof returned nothing")
@@ -33,15 +34,17 @@ func TestPairProofDependsOnTheSecret(t *testing.T) {
 // matters because the pairing secret travels by QR code, which can be
 // photographed: a proof lifted from one exchange must not authorise a
 // different phone.
-func TestPairProofIsBoundToBothIdentitiesAndTheNonce(t *testing.T) {
+func TestPairProofIsBoundToBothIdentitiesTheKeyAndTheNonce(t *testing.T) {
 	secret := []byte("the pairing secret")
 	nonce := []byte("a fixed nonce for this test 1234")
-	base := PairProof(secret, "MACHINE-ID", "PHONE-ID", nonce)
+	pub := []byte("the key being enrolled")
+	base := PairProof(secret, "MACHINE-ID", "PHONE-ID", pub, nonce)
 
 	cases := map[string][]byte{
-		"a different phone":   PairProof(secret, "MACHINE-ID", "OTHER-PHONE", nonce),
-		"a different machine": PairProof(secret, "OTHER-MACHINE", "PHONE-ID", nonce),
-		"a different nonce":   PairProof(secret, "MACHINE-ID", "PHONE-ID", []byte("another nonce 56789012345678901")),
+		"a different phone":      PairProof(secret, "MACHINE-ID", "OTHER-PHONE", pub, nonce),
+		"a different machine":    PairProof(secret, "OTHER-MACHINE", "PHONE-ID", pub, nonce),
+		"a different nonce":      PairProof(secret, "MACHINE-ID", "PHONE-ID", pub, []byte("another nonce 56789012345678901")),
+		"a different public key": PairProof(secret, "MACHINE-ID", "PHONE-ID", []byte("another key"), nonce),
 	}
 	for what, proof := range cases {
 		if string(proof) == string(base) {
@@ -50,12 +53,24 @@ func TestPairProofIsBoundToBothIdentitiesAndTheNonce(t *testing.T) {
 	}
 }
 
+// The key being enrolled is part of what the proof vouches for, so it
+// must not be possible to move bytes between it and the nonce (or any
+// other part) and keep the same proof: each part is length-prefixed.
+func TestPairProofKeepsThePublicKeyAndTheNonceApart(t *testing.T) {
+	secret := []byte("the pairing secret")
+	a := PairProof(secret, "M", "P", []byte("ab"), []byte("c"))
+	b := PairProof(secret, "M", "P", []byte("a"), []byte("bc"))
+	if string(a) == string(b) {
+		t.Fatal("shifting a byte from the nonce into the public key kept the proof")
+	}
+}
+
 // The same inputs must produce the same proof, or the phone and the
 // machine can never agree.
 func TestPairProofIsDeterministic(t *testing.T) {
 	secret := []byte("the pairing secret")
 	nonce := []byte("a fixed nonce for this test 1234")
-	if string(PairProof(secret, "M", "P", nonce)) != string(PairProof(secret, "M", "P", nonce)) {
+	if string(PairProof(secret, "M", "P", []byte("k"), nonce)) != string(PairProof(secret, "M", "P", []byte("k"), nonce)) {
 		t.Fatal("PairProof is not deterministic")
 	}
 }

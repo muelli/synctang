@@ -180,7 +180,7 @@ func pairOnce(ctx context.Context, cert tls.Certificate, machineID, selfID strin
 		return fmt.Errorf("mobile: reading the pairing challenge: %w", err)
 	}
 
-	proof := mrcore.PairProof(secret, machineID, selfID, challenge.Nonce)
+	proof := mrcore.PairProof(secret, machineID, selfID, publicKey, challenge.Nonce)
 	req := mrcore.PairRequest{PubKey: publicKey, Name: name, Proof: proof}
 	if err := mrcore.WriteMessage(conn, req); err != nil {
 		return fmt.Errorf("mobile: sending the pairing request: %w", err)
