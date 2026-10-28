@@ -77,6 +77,38 @@ the probe's luck as much as the machine's behaviour; the machine
 refused every stranger that did reach it, which is the property under
 test.
 
+## A phone unlocks the VM over the public relay, 2026-10-28
+
+The machine VM of the section above, now with QEMU's NAT networking (Internet,
+no multicast), unlocked by the Pixel 3a XL on the LAN. `[V]`
+
+- The machine could only be reached through the public relay and discovery
+  servers (`Joined relay relay://...` in its console). The phone found it,
+  connected, was shown the request and answered; the machine's journal has
+  `unlocker: password agent started` (14.4 s), `recovery attempt succeeded`
+  (54.3 s) and `Finished systemd-cryptsetup@synctang_test_crypt` (57.9 s), and
+  the root is the LUKS volume. Nobody typed a passphrase after the reboot. The
+  phone said "Answered", and had logged no Keystore errors.
+- The phone's key is in software on this phone (see `docs/threat-model.md`);
+  the app stopped at its refusal screen until that was allowed.
+- Three earlier attempts failed, and why is what this run is worth:
+  1. The fingerprint was recognised and the key use then spent six seconds in
+     Keystore `BACKEND_BUSY` until the five-second authentication expired
+     ("matching auth token is expired"), twice, 08:43 and 09:07. A probe on the
+     phone found the cause: a key-agreement key created with StrongBox
+     requested, which the app always did first, comes back in software and
+     every use hangs (3 of 3); the same key made without the request answers in
+     14 to 21 ms (3 of 3). The app now makes the key again without the request
+     when the first attempt did not land in StrongBox (`0254400`). The test
+     that hung on the phone (`KeystoreEcdhTest`) passes in 0.3 s. Replacing the
+     key means pairing again: the phone was reinstalled and its new key
+     enrolled in place of the old.
+  2. The fingerprint sensor rejected three attempts and locked itself for 30
+     seconds. Not the app.
+  3. An Approve screen left open for 17 minutes: the machine's session had
+     ended after about a minute and a half (`reading recover response: EOF`),
+     and the app did not notice and still offered Approve. Open `[U]`.
+
 ## Deviations from the plan
 
 - Loopback LUKS2 tests (`cmd/unlocker`) do not need root or a privileged
