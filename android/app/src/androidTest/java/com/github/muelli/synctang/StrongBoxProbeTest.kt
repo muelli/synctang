@@ -128,6 +128,46 @@ class StrongBoxProbeTest {
     @Test
     fun a3_teeControl() = describe("tee control, no auth", "probe-tee-noauth", false, false)
 
+    // A control for the whole probe: an ordinary signing key, which every
+    // Keymaster generation supports in hardware. If these land in the TEE and
+    // StrongBox while the key-agreement keys above land in software, the
+    // phone's hardware is fine and the fallback is specific to key agreement.
+    private fun describeSigning(label: String, alias: String, strongBox: Boolean) {
+        aliases += alias
+        val started = System.nanoTime()
+        try {
+            val gen = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore")
+            gen.initialize(
+                KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN)
+                    .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
+                    .setDigests(KeyProperties.DIGEST_SHA256)
+                    .setAttestationChallenge(byteArrayOf(1, 2, 3, 4))
+                    .setIsStrongBoxBacked(strongBox)
+                    .build(),
+            )
+            gen.generateKeyPair()
+        } catch (e: Throwable) {
+            Log.i(tag, "$label: generation FAILED after ${(System.nanoTime() - started) / 1_000_000} ms: ${chain(e)}")
+            return
+        }
+        val millis = (System.nanoTime() - started) / 1_000_000
+        val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        val private = ks.getKey(alias, null) as PrivateKey
+        val info = KeyFactory.getInstance(private.algorithm, "AndroidKeyStore").getKeySpec(private, KeyInfo::class.java)
+        val leaf = ks.getCertificateChain(alias)?.firstOrNull() as? X509Certificate
+        Log.i(
+            tag,
+            "$label: generated in $millis ms; KeyInfo.securityLevel=${info.securityLevel} " +
+                "insideSecureHardware=${info.isInsideSecureHardware}; attestation: ${if (leaf == null) "none" else levels(leaf)}",
+        )
+    }
+
+    @Test
+    fun a4_signingKeyTee() = describeSigning("SIGNING key, TEE", "probe-sign-tee", false)
+
+    @Test
+    fun a5_signingKeyStrongBox() = describeSigning("SIGNING key, StrongBox requested", "probe-sign-sb", true)
+
     /** Last, and bounded: the step that hung. The key agreement runs on its own thread. */
     @Test
     fun z9_useTheStrongBoxKey() {
