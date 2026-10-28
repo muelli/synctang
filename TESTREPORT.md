@@ -201,6 +201,26 @@ Found on the way, open `[U]`:
 - `unlocker status` run while `unlocker pair` was writing the header failed once
   with `Failed to get token 0 for export` and worked a moment later.
 
+## The fixes for what the QR run found, checked on the phone and the VM, 2026-10-28
+
+Packages 0.0.201 (installed over 0.0.191 with `apt`, which rebuilt the initrd)
+and a new debug app on the Pixel 3a XL. `[V]` unless marked.
+
+- **By-hand fallback.** `unlocker pair` now prints, under the QR code, the link
+  the code carries and says to paste it into the app's device ID field. Pasting
+  that link into the field and pressing Pair made the phone answer; the VM named
+  the key holder, enrolled it at keyslot 2 on `y`, and the app showed `Paired
+  with synctang-local`. The app's hint and field label now say "pairing link or
+  machine device ID".
+- **Approve screen.** Left untouched, it gave up after 90 seconds: the phone
+  logged `the approval window ran out`, the VM logged `key holder declined: key
+  holder did not answer in time`, and the screen said the machine stopped
+  waiting, with Try again. The machine went back to waiting on the relay at once.
+- **Empty machine name** and **`unlocker status` racing a writer**: covered by
+  tests (the agent greets with the token's name when `--name` is not passed;
+  reading the token is retried up to four times, 200 ms apart) and not
+  provoked on the VM `[I]`.
+
 ## Deviations from the plan
 
 - Loopback LUKS2 tests (`cmd/unlocker`) do not need root or a privileged
