@@ -103,14 +103,25 @@ func TestPairingURLCarriesWhatTheAppNeeds(t *testing.T) {
 	}
 }
 
-// Whatever cannot be scanned has to be usable by hand, so the printed
-// instructions must contain both values on their own.
-func TestPairingInstructionsStandAloneWithoutTheQRCode(t *testing.T) {
+// Whatever cannot be scanned has to be usable by hand. The app has one field,
+// which takes a device ID or the whole pairing link, and ignores a code typed
+// anywhere else, so what the instructions give a person is the link, exactly as
+// the QR code carries it. They used to say "enter these two values", a device
+// ID and a code, and following that saved the machine without enrolling the
+// phone.
+func TestPairingInstructionsGiveTheLinkWhereTheQRCodeCannotBeScanned(t *testing.T) {
 	text := pairingInstructions("MACHINE-ID", "study workstation", "ORSXG5BRGIZQ", 5*time.Minute)
 
-	for _, want := range []string{"MACHINE-ID", "ORSXG5BRGIZQ", "5m0s"} {
-		if !strings.Contains(text, want) {
-			t.Errorf("instructions do not mention %q:\n%s", want, text)
+	link := pairingURL("MACHINE-ID", "study workstation", "ORSXG5BRGIZQ")
+	if !strings.Contains(text, link) {
+		t.Errorf("instructions do not contain the link the QR code carries (%s):\n%s", link, text)
+	}
+	if !strings.Contains(text, "5m0s") {
+		t.Errorf("instructions do not say how long the code lasts:\n%s", text)
+	}
+	for _, misleading := range []string{"these two values", "Pairing code:", "Machine device ID:"} {
+		if strings.Contains(text, misleading) {
+			t.Errorf("instructions still tell a person to enter values separately (%q):\n%s", misleading, text)
 		}
 	}
 }

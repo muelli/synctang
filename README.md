@@ -91,8 +91,10 @@ phone proves it holds the code and sends its public key, and the machine
 shows you which key holder answered before it writes anything. The code
 lasts five minutes (`--timeout`), enrols one key holder, and is useless
 replayed or on a second phone. `--yes` skips the confirmation. If the QR
-code will not scan (a serial console, say), the same two values are
-printed as text to type into the app. `NO_COLOR` gives a plain ASCII code.
+code will not scan (a serial console, say), the link it carries is
+printed as text to paste into the app's device ID field. (A device ID
+typed on its own only remembers the machine; the link, with its one-time
+code, is what enrols the phone.) `NO_COLOR` gives a plain ASCII code.
 
 ### Enrol a laptop key holder
 

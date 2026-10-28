@@ -303,9 +303,9 @@ func pairingURL(machineID, name, encodedSecret string) string {
 func pairingInstructions(machineID, name, encodedSecret string, window time.Duration) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Scan this with the synctang app to pair it with %s.\n\n", cmp.Or(name, "this machine"))
-	b.WriteString("Or enter these two values in the app by hand:\n\n")
-	fmt.Fprintf(&b, "  Machine device ID:  %s\n", machineID)
-	fmt.Fprintf(&b, "  Pairing code:       %s\n\n", encodedSecret)
+	b.WriteString("If the camera cannot scan it, paste this link into the app's\n")
+	b.WriteString("device ID field instead (the QR code carries exactly this):\n\n")
+	fmt.Fprintf(&b, "  %s\n\n", pairingURL(machineID, name, encodedSecret))
 	fmt.Fprintf(&b, "The pairing code is good once, for the next %s.\n", window)
 	b.WriteString("Anyone who can read it off this screen, or off a photograph of\n")
 	b.WriteString("it, can ask to be enrolled, so you will be shown which key\n")

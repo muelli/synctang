@@ -26,6 +26,26 @@ class PairingPayloadTest {
         assertEquals("study desktop", machine?.name)
     }
 
+    // What "unlocker pair" prints under its QR code, for a camera that cannot
+    // scan: the link the code carries, pasted into the device ID field. This one
+    // is verbatim from a real run. A device ID typed on its own carries no code,
+    // so it only remembers the machine; the link is what enrols the phone.
+    @Test
+    fun aPastedPairingLinkCarriesTheMachineItsNameAndTheOneTimeCode() {
+        val link = "synctang://pair?machine=H5APP3N-YIQZANN-4LPEVJF-K56O4RF-JH3AWOJ-THBBOI6-BHKBC7J-QGRKIAX" +
+            "&name=synctang-local&psk=KMAXCD654UPFOAB2ICWOPBDUUQ"
+        val machine = PairingPayload.parse(link)
+        assertEquals("H5APP3N-YIQZANN-4LPEVJF-K56O4RF-JH3AWOJ-THBBOI6-BHKBC7J-QGRKIAX", machine?.deviceId)
+        assertEquals("synctang-local", machine?.name)
+        assertEquals("KMAXCD654UPFOAB2ICWOPBDUUQ", PairingPayload.pairingCode(link))
+        assertTrue(planPairing(link) is PairingPlan.Enrol)
+    }
+
+    @Test
+    fun aDeviceIdTypedOnItsOwnOnlyRemembersTheMachine() {
+        assertTrue(planPairing(id) is PairingPlan.Remember)
+    }
+
     @Test
     fun acceptsABareDeviceId() {
         assertEquals(id, PairingPayload.parse(id)?.deviceId)
