@@ -166,6 +166,41 @@ no multicast), unlocked by the Pixel 3a XL on the LAN. `[V]`
      ended after about a minute and a half (`reading recover response: EOF`),
      and the app did not notice and still offered Approve. Open `[U]`.
 
+## QR pairing from the VM to the phone, 2026-10-28
+
+The same machine VM, paired with the phone by `unlocker pair` instead of by
+copying a command. `[V]`
+
+- On the VM, as root: `unlocker pair --device /dev/vda3 --name synctang-local
+  --timeout 25m --existing-passphrase-file <(printf %s "$PASS")`. It printed
+  the colour QR code, the machine's device ID and a one-time pairing code. The
+  QR decodes (checked with an independent decoder, OpenCV) to
+  `synctang://pair?machine=<id>&name=synctang-local&psk=<code>`.
+- The phone's camera read the code (shown on the screen of the machine the
+  person was sitting at). The VM then named the key holder that had answered,
+  by transport id and the start of its public key, and asked `enrol it on this
+  volume? [y/N]`; after `y` it printed `paired.` and `unlocker status` listed
+  the phone at keyslot 2. The app showed `Paired with synctang-local`, the name
+  coming from the code.
+- After a reboot the phone unlocked the machine (fingerprint, one miss then a
+  match): the VM's journal has `unlocker: password agent started` (23.3 s),
+  `recovery attempt succeeded` (89.4 s) and `Finished
+  systemd-cryptsetup@synctang_test_crypt` (93.7 s), with nobody typing a
+  passphrase. The phone logged no Keystore errors.
+- The confirmation answer was given by a script that said yes only if the
+  transport id was the phone's, standing in for the person at the console.
+
+Found on the way, open `[U]`:
+
+- The text under the QR code says "Or enter these two values in the app by
+  hand", the device ID and the pairing code. The app has one field, for the
+  device ID; it accepts the full `synctang://pair?...` link but ignores a
+  code typed separately, so typing only the device ID saves the machine without
+  enrolling the phone. The by-hand fallback, for a camera that cannot scan,
+  does not work as written.
+- `unlocker status` run while `unlocker pair` was writing the header failed once
+  with `Failed to get token 0 for export` and worked a moment later.
+
 ## Deviations from the plan
 
 - Loopback LUKS2 tests (`cmd/unlocker`) do not need root or a privileged
