@@ -125,7 +125,7 @@ Decide:
 |---|---|
 | `Version: 2` and at least one `luks2` keyslot | Expected. Continue. |
 | `Version: 1` | **STOP.** LUKS1 is not supported. |
-| More than one `crypto_LUKS` container and you cannot tell which is the root | **STOP.** Ask the person which one. |
+| More than one `crypto_LUKS` container and you cannot tell which is the root | **STOP.** Ask the person which one. (Other volumes can be handled as well; see "Other LUKS volumes" after section 10. Start with the root.) |
 | The root is not on LUKS, or is on something else (ZFS, btrfs on a bare disk) | **STOP.** Nothing here applies. |
 | A `clevis`, `systemd-tpm2` or other token already exists | Fine, they stay and still work. But if the person unlocks with a **TPM-sealed key bound to the boot measurements** (for example Ubuntu's TPM full-disk encryption), rebuilding the initrd can change the measurements and break that unlock. This is untested. **STOP** and ask. |
 | Root is on **LVM inside LUKS**, or LUKS on RAID | Untested. **STOP** and tell the person, who may choose to continue. |
@@ -259,10 +259,12 @@ unset PASS
 ```
 
 The `--test-passphrase` line asks for the passphrase, checks it against the header
-without opening anything, and prints `passphrase ok`. It is there because
-`unlocker pair` does **not** check the passphrase when it starts: a typo only shows
-up at the end, after the phone has scanned and the person has confirmed. Have them
-fix a typo here, then type it again at the `read` prompt.
+without opening anything, and prints `passphrase ok`. Newer builds of
+`unlocker pair` also test the passphrase themselves and refuse, before they show a
+code or make an identity, if it is wrong. Older builds do not: with them a typo only
+shows up at the end, after the phone has scanned and the person has confirmed. The
+check here costs nothing and works with either, so keep it. If it fails, have them
+type the passphrase again; then type it once more at the `read` prompt.
 
 What happens, so you can talk them through it:
 
@@ -331,6 +333,35 @@ Expected: every keyslot from section 3 is still there, plus one new one, and a n
 their own terminal, without opening anything:
 `sudo cryptsetup open --test-passphrase "$DEV"`.
 
+### Other LUKS volumes (optional)
+
+Only if the person asks, and only after the root works. The agent can unlock more
+than one volume in the same boot, but with limits:
+
+- It covers volumes **the initrd unlocks**: the root, and any volume named by an
+  `rd.luks.uuid=` argument on the kernel command line or in the crypttab that the
+  initrd carries. A volume that the running system opens after the boot is not
+  covered: the agent is stopped before the pivot to the real root, and that volume
+  keeps asking the way it does today. Do not change the kernel command line or the
+  crypttab to make a volume qualify; that is the person's decision.
+- **Each volume carries its own token and is enrolled on its own.** For each one, the
+  person runs the block from section 8 again with that volume's `<DEV>` and
+  **that volume's passphrase** (the QR code scans again; the app stays paired with
+  the same machine). Check each with `sudo unlocker status --device <DEV>`.
+- At boot the key holder is asked **once per volume**, so with two volumes the
+  person approves twice, one after the other.
+
+Two journal lines look like faults and are not. systemd tries the secret that just
+opened one volume on the next, which fails for a volume with its own secret
+(`Failed to activate with specified passphrase. (Passphrase incorrect?)`) and makes
+it ask again. And the agent may log `cannot choose which device to unlock yet` once,
+between one volume's request ending and the next appearing; it will not guess, and it
+tries again.
+
+This was tried with two volumes, both unlocked in the initrd and enrolled with the
+same key holder, and worked. Not tried: a phone approving two volumes, and different
+key holders on different volumes.
+
 Summarise for the person what you did, the backup location, the machine's
 transport id, and that the passphrase still unlocks the disk. Then ask whether they
 want the reboot test.
@@ -346,8 +377,8 @@ needs the console. Tell them first, in these words or close to them:
 - The console should print `unlocker: waiting for a key holder, transport id <the id
   you wrote down>`. Wait about twenty seconds after that for the machine to reach the
   relay.
-- On the phone: **Unlock**, then **Approve**, then the fingerprint, within about a
-  minute and a half (the app gives up on an unanswered Approve after 90 seconds, and
+- On the phone: **Unlock**, then **Approve**, then the fingerprint (once for each
+  volume, if you enrolled more than one), within about a minute and a half (the app gives up on an unanswered Approve after 90 seconds, and
   the machine ends the session soon after). The phone needs Internet access, or to be
   on the same network as the machine.
 - **If the phone does not work, type the passphrase at the console.** That is the
