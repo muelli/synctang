@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/muelli/synctang/mrcore"
 )
@@ -260,6 +261,15 @@ func replaceRecipient(device string, existingPassphrase, newPublicKey []byte, ol
 	return nil
 }
 
+// tokenReadAttempts and tokenReadRetryDelay bound how a read of the existing
+// token is retried. cryptsetup reads a header that a concurrent "enrol" or
+// "pair" may be rewriting, and a read that lands in the middle fails once and
+// works a moment later ("Failed to get token 0 for export").
+var (
+	tokenReadAttempts   = 4
+	tokenReadRetryDelay = 200 * time.Millisecond
+)
+
 // loadToken finds this device's existing mr-1 token, if any, and
 // returns it along with its token ID (or -1 if there is none yet, in
 // which case a fresh token carrying machineName/transportID is
@@ -276,8 +286,18 @@ func loadToken(dump, device, machineName, transportID string) (mrcore.Token, int
 	}
 
 	id := ids[0]
-	exported, err := runCommand(nil, "cryptsetup", "token", "export",
-		"--token-id", strconv.Itoa(id), device)
+	var exported []byte
+	var err error
+	for attempt := 1; attempt <= tokenReadAttempts; attempt++ {
+		exported, err = runCommand(nil, "cryptsetup", "token", "export",
+			"--token-id", strconv.Itoa(id), device)
+		if err == nil {
+			break
+		}
+		if attempt < tokenReadAttempts {
+			time.Sleep(tokenReadRetryDelay)
+		}
+	}
 	if err != nil {
 		return mrcore.Token{}, -1, fmt.Errorf("reading the existing token: %w", err)
 	}
