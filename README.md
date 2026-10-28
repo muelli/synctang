@@ -58,6 +58,12 @@ Without Debian packaging, `go build ./cmd/unlocker ./cmd/keyholder`,
 install the binary as `unlocker` on the machine, run `just install-dracut`,
 then `dracut --force`.
 
+**With an AI agent.** To have an agent install the unlocker on a host with a
+LUKS root, pair a phone and optionally test the reboot, point it at
+[docs/agent-install.md](docs/agent-install.md). It is written to be followed
+step by step, with backups first and a stop wherever something is unexpected;
+the passphrase is typed by you, never by the agent.
+
 **Phone.** Install an F-Droid client, add the repository
 `https://muelli.github.io/synctang/fdroid/repo` (or scan the QR code on
 <https://muelli.github.io/synctang/>), and install "synctang key holder".
