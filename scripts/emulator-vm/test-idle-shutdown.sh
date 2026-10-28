@@ -18,8 +18,10 @@ cat > "$work/mtime" <<'SH'
 case "$1" in
 /dev/pts/0) echo $((NOW - 600)) ;;        # used 10 minutes ago
 /dev/pts/1) echo $((NOW - 7200)) ;;       # untouched for 2 hours
+/dev/pts/7) echo "$KEEP_MTIME" ;;         # used at an absolute time
 *keepalive-recent) echo $((NOW - 600)) ;; # touched 10 minutes ago
 *keepalive-old) echo $((NOW - 7200)) ;;   # touched 2 hours ago
+*keepalive-abs) echo "$KEEP_MTIME" ;;     # touched at an absolute time
 *) echo 0 ;;
 esac
 SH
@@ -120,6 +122,62 @@ expect "sshd-session: a bare port-forward tunnel does not keep it on" yes
 
 run 7200 120 "$real_quiet"
 expect "sshd-session: only the listener and a [priv] monitor is idle" yes
+
+# The idle clock runs from the LAST ACTIVITY, not from the last time the
+# script happened to notice some. A keepalive or a terminal counts as use only
+# up to the moment it was last touched; an hour after that the instance is idle
+# for an hour. The bug this guards against only shows across two consecutive
+# runs on the same state: the first, at 56 minutes, sees use and (in the first
+# version) recorded the time of that check as the last use, so the second, at
+# 61 minutes, found only five idle minutes and the instance took about two
+# hours to stop instead of one. Found by thinking through what the first real
+# instance's journal showed, not by the single-run tests above.
+T=5000000
+off=()
+
+# seq_run <activity at T: keepalive|pts|none> <minutes after T for the first run> <... for the second>
+# Runs the script twice on the same state directory. Sets off[1] and off[2].
+# The instance booted two hours before T, except in the "none" case, where it
+# booted at T, so that "an hour after boot" is a time the checks can straddle.
+seq_run() {
+	local kind=$1 m1=$2 m2=$3 ps_text="$quiet" boot=$((T - 7200))
+	[ "$kind" != none ] || boot=$T
+	rm -rf "${work:?}/state" "$work/powered-off"
+	mkdir -p "$work/state"
+	[ "$kind" != pts ] || ps_text="$quiet
+sshd-session: ubuntu@pts/7"
+	printf '%s\n' "$ps_text" > "$work/ps.txt"
+	[ "$kind" != keepalive ] || touch "$work/state/keepalive-abs"
+	local n k
+	for k in 1 2; do
+		if [ "$k" = 1 ]; then n=$((T + m1 * 60)); else n=$((T + m2 * 60)); fi
+		rm -f "$work/powered-off"
+		EMULATOR_VM_CONF=/nonexistent NOW=$n UPTIME_SECONDS=$((n - boot)) STATE_DIR="$work/state" KEEP_MTIME=$T \
+			KEEPALIVE_FILE="$work/state/keepalive-abs" PS_CMD="cat $work/ps.txt" MTIME_CMD="$work/mtime" \
+			POWEROFF_CMD="$work/poweroff" IDLE_MINUTES=60 MAX_RUNTIME_HOURS=10 \
+			"$here/idle-shutdown.sh" > "$work/out" 2>&1
+		if [ -e "$work/powered-off" ]; then off[k]=yes; else off[k]=no; fi
+	done
+}
+
+expect_seq() { # expect_seq <description> <wanted at the first run> <wanted at the second>
+	if [ "${off[1]}" = "$2" ] && [ "${off[2]}" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1 (first: ${off[1]} wanted $2, second: ${off[2]} wanted $3)"; echo "     $(cat "$work/out")"; fail=1; fi
+}
+
+seq_run keepalive 56 61
+expect_seq "a keepalive stops the instance an hour after it was touched, not two (checks at 56 and 61 minutes)" no yes
+
+seq_run keepalive 40 59
+expect_seq "a keepalive touched 59 minutes ago does not stop it yet" no no
+
+seq_run pts 56 61
+expect_seq "a terminal stops the instance an hour after its last use, not two (checks at 56 and 61 minutes)" no yes
+
+seq_run pts 40 59
+expect_seq "a terminal last used 59 minutes ago does not stop it yet" no no
+
+seq_run none 10 61
+expect_seq "with no use at all it stops an hour after boot, however the checks fall" no yes
 
 # An active session resets the idle clock.
 run 7200 120 "$quiet

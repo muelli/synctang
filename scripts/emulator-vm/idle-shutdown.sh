@@ -6,13 +6,13 @@
 # emulator-idle.timer. The instance is configured to STOP, not terminate,
 # when it shuts itself down, so its disk and installed tools survive.
 #
-# "Used" means any of:
+# "Used" means any of, and it powers off IDLE_MINUTES after the most recent:
 #   * an ssh session that runs a command (sshd shows it as user@notty) exists
 #     for as long as that command runs, which covers an agent or a script
 #     driving the VM, however long a build takes;
-#   * an interactive ssh session (user@pts/N) whose terminal had input or
-#     output within IDLE_MINUTES;
-#   * the keepalive file was touched within IDLE_MINUTES, for a background
+#   * an interactive ssh session (user@pts/N) whose terminal last had input or
+#     output at some time (its own timestamp counts, not the time of the check);
+#   * the keepalive file was last touched at some time, for a background
 #     job nobody is logged in for (emu-ctl.sh keepalive).
 # A bare port forward (ssh -N, the phone's adb tunnel) is deliberately not
 # use: leaving one open must not keep the VM running.
@@ -61,10 +61,18 @@ if [ "$uptime_s" -ge $((max_hours * 3600)) ]; then
 	exit 0
 fi
 
+# The time of the most recent use, not whether there is any "right now".
+# A running ssh command is use at this very moment; a terminal and the
+# keepalive file are use as of when they were last touched. Recording that
+# time, rather than the time of this check, is what makes the instance stop
+# idle_minutes after the last use: recording the check's own time would make
+# a keepalive count for an hour and then wait a further hour idle.
+activity=0
 reason=""
 while IFS= read -r line; do
 	case "$line" in
 	"sshd: "*"@notty"* | "sshd-session: "*"@notty"*)
+		activity=$now
 		reason="an ssh command is running ($line)"
 		break
 		;;
@@ -72,32 +80,32 @@ while IFS= read -r line; do
 		tty=${line##*@}
 		tty=${tty%% *}
 		last=$($mtime_cmd "/dev/$tty" 2>/dev/null || echo 0)
-		if [ $((now - last)) -lt "$limit" ]; then
-			reason="interactive session on $tty was used $(((now - last) / 60)) minutes ago"
-			break
+		if [ "$last" -gt "$activity" ]; then
+			activity=$last
+			reason="an interactive session on $tty, last used $(((now - last) / 60)) minutes ago"
 		fi
 		;;
 	esac
 done < <($ps_cmd)
 
-if [ -z "$reason" ] && [ -e "$keepalive" ]; then
+if [ -e "$keepalive" ]; then
 	last=$($mtime_cmd "$keepalive" 2>/dev/null || echo 0)
-	if [ $((now - last)) -lt "$limit" ]; then
-		reason="keepalive was touched $(((now - last) / 60)) minutes ago"
+	if [ "$last" -gt "$activity" ]; then
+		activity=$last
+		reason="the keepalive was last touched $(((now - last) / 60)) minutes ago"
 	fi
 fi
 
-if [ -n "$reason" ]; then
-	echo "$now" > "$last_active_file"
-	log "in use: $reason"
-	exit 0
+last_active=$(cat "$last_active_file")
+if [ "$activity" -gt "$last_active" ]; then
+	last_active=$activity
+	echo "$last_active" > "$last_active_file"
 fi
 
-last_active=$(cat "$last_active_file")
 idle=$((now - last_active))
 if [ "$idle" -ge "$limit" ]; then
 	log "idle for $((idle / 60)) minutes, the limit is $idle_minutes: powering off"
 	$poweroff_cmd
 else
-	log "idle for $((idle / 60)) of $idle_minutes minutes"
+	log "last use ${reason:-at boot or earlier}; idle for $((idle / 60)) of $idle_minutes minutes"
 fi
