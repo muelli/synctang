@@ -4,6 +4,8 @@ package com.github.muelli.synctang
 import androidx.annotation.StringRes
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -107,6 +109,15 @@ data class Identity(
 // on this phone, so not a string resource.
 internal const val DECLINED_BY_KEY_HOLDER = "declined by the key holder"
 internal const val KEY_HOLDER_NOT_AUTHENTICATED = "key holder did not authenticate"
+internal const val APPROVAL_TIMED_OUT = "key holder did not answer in time"
+
+/**
+ * How long the Approve screen stays up. The machine ended one session about 100
+ * seconds after asking, though its own limit is three minutes, and the phone
+ * cannot look at the connection without consuming protocol bytes, so the screen
+ * has a life of its own, a little shorter than what was seen.
+ */
+internal const val APPROVE_WINDOW_MILLIS = 90_000L
 
 /** Which machine this phone is paired with. [PairingStore] is the real one. */
 interface MachineStore {
@@ -225,6 +236,7 @@ class UnlockFlow(
     private val agree: (ByteArray, ByteArray) -> ByteArray,
     private val resetIdentity: () -> String,
     private val allowSoftwareKey: () -> Unit = {},
+    private val approveWindowMillis: Long = APPROVE_WINDOW_MILLIS,
     private val strings: Strings,
     private val log: (String, Throwable) -> Unit = { _, _ -> },
 ) {
@@ -232,6 +244,9 @@ class UnlockFlow(
     val state: StateFlow<UnlockUiState> = _state.asStateFlow()
 
     private var session: MachineSession? = null
+
+    // Gives up on an Approve screen nobody answers; see [armApproveExpiry].
+    private var approveExpiry: Job? = null
 
     // The dial or pairing now running, if any, so that cancel() can
     // interrupt it rather than decline over a connection that does
@@ -381,6 +396,7 @@ class UnlockFlow(
     /** Dials the machine and waits for it to say what it wants. */
     fun connect() {
         val machine = store.machine() ?: return
+        disarmApproveExpiry()
         val attempt = InFlight()
         inFlight = attempt
         _state.value = UnlockUiState.Connecting(machine)
@@ -402,6 +418,7 @@ class UnlockFlow(
                     declineAndGoHome(DECLINED_BY_KEY_HOLDER)
                 } else {
                     _state.value = describe(machine)
+                    (_state.value as? UnlockUiState.Approve)?.let { armApproveExpiry(machine) }
                 }
             } catch (e: Exception) {
                 withContext(io) { fresh?.closeQuietly() }
@@ -429,6 +446,7 @@ class UnlockFlow(
     fun approve(gate: BiometricGate) {
         val machine = store.machine() ?: return
         val active = session ?: return
+        disarmApproveExpiry()
         _state.value = UnlockUiState.Working(machine)
 
         scope.launch {
@@ -494,6 +512,7 @@ class UnlockFlow(
      * here.
      */
     fun cancel() {
+        disarmApproveExpiry()
         inFlight?.let {
             it.cancel()
             return
@@ -542,6 +561,34 @@ class UnlockFlow(
         }
     }
 
+    /**
+     * An Approve screen that nobody answers gives up: it tells the machine no,
+     * closes the session and says what happened. Left alone it offered an
+     * Approve that could only fail, for as long as the app stayed open.
+     */
+    private fun armApproveExpiry(machine: Machine) {
+        approveExpiry?.cancel()
+        approveExpiry = scope.launch {
+            delay(approveWindowMillis)
+            if (_state.value !is UnlockUiState.Approve) return@launch
+            log("the approval window ran out", IllegalStateException("no answer in ${approveWindowMillis} ms"))
+            withContext(io) {
+                try {
+                    session?.decline(APPROVAL_TIMED_OUT)
+                } catch (e: Exception) {
+                    // The machine has most likely hung up already.
+                }
+                closeSession()
+            }
+            _state.value = UnlockUiState.Failed(machine, strings.get(R.string.error_approval_expired))
+        }
+    }
+
+    private fun disarmApproveExpiry() {
+        approveExpiry?.cancel()
+        approveExpiry = null
+    }
+
     private fun closeSession() {
         session?.closeQuietly()
         session = null
@@ -553,6 +600,7 @@ class UnlockFlow(
      * to hear the result.
      */
     fun close() {
+        disarmApproveExpiry()
         inFlight?.cancel()
         closeSession()
     }

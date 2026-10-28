@@ -67,6 +67,7 @@ class UnlockFlowTest {
             store.saved = null
             "OLD-PHONE-ID"
         },
+        approveWindowMillis = 1_500,
         strings = object : Strings {
             override fun get(id: Int, vararg args: Any) =
                 "res:$id" + if (args.isEmpty()) "" else args.joinToString(",", "(", ")")
@@ -91,6 +92,14 @@ class UnlockFlowTest {
         }
         fail("expected ${T::class.simpleName}, still ${flow.state.value}")
         throw AssertionError()
+    }
+
+    // The flow publishes an outcome and then closes the session in a finally, so a
+    // test that has seen the outcome has not necessarily seen the close.
+    private fun awaitClosed(session: FakeSession): Boolean {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (!session.closed && System.nanoTime() < deadline) Thread.sleep(5)
+        return session.closed
     }
 
     private val machineA = Machine("AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA", "a")
@@ -318,7 +327,7 @@ class UnlockFlowTest {
         onMain { flow.cancel() }
         await<UnlockUiState.Ready>()
         assertTrue("the Go dial was not cancelled", session.cancelled)
-        assertTrue(session.closed)
+        assertTrue("the session was never closed", awaitClosed(session))
     }
 
     @Test
@@ -337,7 +346,7 @@ class UnlockFlowTest {
 
         await<UnlockUiState.Ready>()
         assertEquals(1, session.declines.size)
-        assertTrue(session.closed)
+        assertTrue("the session was never closed", awaitClosed(session))
     }
 
     @Test
@@ -433,7 +442,7 @@ class UnlockFlowTest {
         onMain { flow.cancel() }
         await<UnlockUiState.Ready>()
         assertEquals(listOf(DECLINED_BY_KEY_HOLDER), session.declines.toList())
-        assertTrue(session.closed)
+        assertTrue("the session was never closed", awaitClosed(session))
     }
 
     @Test
@@ -444,7 +453,7 @@ class UnlockFlowTest {
         val failed = await<UnlockUiState.Failed>()
         assertEquals("res:${R.string.error_biometric_lockout}", failed.message)
         assertEquals(1, session.declines.size)
-        assertTrue(session.closed)
+        assertTrue("the session was never closed", awaitClosed(session))
     }
 
     /**
@@ -468,7 +477,7 @@ class UnlockFlowTest {
         assertNull(store.saved)
         assertEquals(1, session.declines.size)
         assertFalse(session.answered)
-        assertTrue(session.closed)
+        assertTrue("the session was never closed", awaitClosed(session))
     }
 
     /**
@@ -486,8 +495,44 @@ class UnlockFlowTest {
         assertEquals("res:${R.string.failure_key_timed_out}", failed.message)
         assertEquals(1, session.declines.size)
         assertFalse(session.answered)
-        assertTrue(session.closed)
+        assertTrue("the session was never closed", awaitClosed(session))
         assertEquals("the key is kept: nothing says it is broken", 0, identityResets)
+    }
+
+    // An Approve screen cannot stay up for ever. The machine ended one session
+    // about 100 seconds after asking (its own cap is three minutes), while the
+    // screen sat there for seventeen minutes offering an Approve that could only
+    // fail, so the app gives up on its own, tells the machine, and says so.
+
+    @Test
+    fun anApproveScreenLeftOpenGivesUpAndTellsTheMachine() {
+        val session = connectToARequest()
+
+        val failed = await<UnlockUiState.Failed>()
+        assertEquals("res:${R.string.error_approval_expired}", failed.message)
+        assertEquals(listOf(APPROVAL_TIMED_OUT), session.declines.toList())
+        assertTrue("the session was never closed", awaitClosed(session))
+        assertFalse(session.answered)
+    }
+
+    @Test
+    fun approvingInTimeIsNotUndoneWhenTheWindowWouldHaveEnded() {
+        connectToARequest()
+
+        onMain { flow.approve { _, _ -> AuthOutcome.SUCCEEDED } }
+        await<UnlockUiState.Done>()
+        Thread.sleep(2_000)
+        assertTrue("the expiry fired after an answer: ${flow.state.value}", flow.state.value is UnlockUiState.Done)
+    }
+
+    @Test
+    fun decliningInTimeIsNotFollowedByAnExpiry() {
+        connectToARequest()
+
+        onMain { flow.cancel() }
+        await<UnlockUiState.Ready>()
+        Thread.sleep(2_000)
+        assertTrue("the expiry fired after a decline: ${flow.state.value}", flow.state.value is UnlockUiState.Ready)
     }
 
     // A software-backed key (decided 2026-10-28: fail closed, with an opt-in)

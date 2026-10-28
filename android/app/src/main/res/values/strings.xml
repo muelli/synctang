@@ -74,6 +74,7 @@
     <string name="error_biometric_lockout">Too many attempts did not match, so the phone has locked its biometric sensor for a while. Wait a little, then try again. Nothing was sent to the machine.</string>
     <string name="error_biometric_lockout_permanent">Too many attempts did not match, so the phone has locked its biometric sensor until you unlock the phone with its PIN, pattern, or password. Do that, then try again. Nothing was sent to the machine.</string>
     <string name="error_biometric_unavailable">The phone\'s biometric hardware cannot be used right now, so the key cannot be used either. Try again in a moment. Nothing was sent to the machine.</string>
+    <string name="error_approval_expired">The machine stopped waiting for an answer, so nothing was sent. Unlock again when you are ready to approve.</string>
     <string name="error_title">That did not work</string>
     <string name="error_retry">Try again</string>
     <string name="error_scan_again">Scan again</string>
