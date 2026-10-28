@@ -41,6 +41,9 @@ MONITOR_SOCK="${MONITOR_SOCK:-$OUTDIR/monitor.sock}"
 # be captured separately.
 JOURNAL_PORT="${JOURNAL_PORT:-7101}"
 TAP="${TAP:-sytap0}"
+# QEMU gives every virtio NIC the same MAC unless told otherwise, so two VMs
+# on one bridge need one each (and their own TAP, ports and OUTDIR).
+MAC="${MAC:-52:54:00:12:34:56}"
 SMP="${SMP:-2}"
 
 if [ ! -f "$DISK" ]; then
@@ -87,7 +90,7 @@ exec qemu-system-x86_64 \
 	-m "$MEM" -smp "$SMP" \
 	-drive "file=$DISK,format=raw,if=virtio" \
 	"${NETDEV[@]}" \
-	-device virtio-net-pci,netdev=net0 \
+	-device "virtio-net-pci,netdev=net0,mac=$MAC" \
 	-serial "telnet:127.0.0.1:$CONSOLE_PORT,server$CONSOLE_WAIT_OPT" \
 	-serial "telnet:127.0.0.1:$JOURNAL_PORT,server,nowait" \
 	-monitor "unix:$MONITOR_SOCK,server,nowait" \

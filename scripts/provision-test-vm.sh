@@ -69,24 +69,19 @@ install -m 755 "$(dirname "$0")/../dracut/90unlocker"/*.sh \
 	"$MNT/usr/lib/dracut/modules.d/90unlocker/"
 
 log "enrolling ${#RECIPIENTS[@]} recipient(s)"
-PASSFILE=$(mktemp)
-chmod 600 "$PASSFILE"
-printf '%s' "$VM_PASSPHRASE" > "$PASSFILE"
-trap 'rm -f "$PASSFILE"; cleanup' EXIT
-
 mkdir -p "$MNT/etc/unlocker"
 for r in "${RECIPIENTS[@]}"; do
 	pubkey="${r%%:*}"
 	transport="${r#*:}"
-	"$UNLOCKER" enrol \
+	# The passphrase goes in on stdin, so it is never written to a file.
+	printf '%s' "$VM_PASSPHRASE" | "$UNLOCKER" enrol \
 		--device "${LOOP}p3" \
 		--pubkey "$pubkey" \
 		--recipient-transport-id "$transport" \
-		--existing-passphrase-file "$PASSFILE" \
+		--existing-passphrase-file - \
 		--name "$MACHINE_NAME" \
 		--machine-key-file "$MNT/etc/unlocker/machine.pem"
 done
-rm -f "$PASSFILE"
 
 KVER=$(basename "$(find "$MNT/lib/modules" -mindepth 1 -maxdepth 1 -type d | sort | head -1)")
 log "rebuilding the initrd for $KVER"

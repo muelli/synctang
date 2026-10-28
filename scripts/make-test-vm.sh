@@ -188,6 +188,9 @@ cat > /etc/dracut.conf.d/99-synctang-journal.conf <<'DRACUT'
 install_items+=" /etc/systemd/journald.conf.d/99-synctang-test.conf "
 DRACUT
 
+# The cloud image ships no host keys (cloud-init normally makes them, and it
+# is disabled here), and sshd refuses to start without any.
+ssh-keygen -A
 systemctl enable ssh
 systemctl enable serial-getty@ttyS0.service
 
