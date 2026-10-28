@@ -54,13 +54,21 @@ also powers off once it has been running for `EMU_MAX_RUNTIME_HOURS`
 (default 10), so a session that is never closed cannot run for ever.
 
 The decisions are tested with a fake clock and fake process list:
-`test-idle-shutdown.sh` (eighteen cases, and breaking the script makes the
+`test-idle-shutdown.sh` (twenty-three cases, and breaking the script makes the
 right ones fail). It was also tested on a real instance (2026-10-28), which
 found a bug the fake tests could not: OpenSSH 9.8 and later, including the
 10.2 in Ubuntu 26.04, names a session process `sshd-session: user@notty` or
 `sshd-session: user@pts/N`, not `sshd:`, so the first version saw no session
 at all and would have powered the VM off in the middle of a build `[V]`. Both
 names are recognised now, with the real process titles in the tests.
+
+A second flaw was found by reasoning about what the first real instance's
+journal showed, not by running anything: the script recorded the time of each
+check that saw use as the time of last use, so a keepalive (or a terminal)
+counted as use for an hour and then the instance waited a further hour idle,
+about two hours in all instead of one. It now records the activity's own
+timestamp. The test that catches it runs the script twice on the same state,
+at 56 and at 61 minutes, and fails against the old script.
 
 Verified on a real instance `[V]`:
 
