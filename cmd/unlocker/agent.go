@@ -4,6 +4,7 @@ package main
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -79,7 +80,14 @@ func runAgentOnce(ctx context.Context, device string, machineCert tls.Certificat
 	}
 	defer conn.Close()
 
-	return runExchange(ctx, conn, tok, device, machineName, askPasswordDir)
+	return runExchange(ctx, conn, tok, device, agentNameFor(machineName, tok.Machine.Name), askPasswordDir)
+}
+
+// agentNameFor is the name the agent greets a key holder with: the one
+// passed on the command line if there is one, else the one enrolment recorded
+// in the token. The dracut hook passes none.
+func agentNameFor(flagName, tokenName string) string {
+	return cmp.Or(flagName, tokenName)
 }
 
 // runExchange is everything that happens once a key holder is on the
