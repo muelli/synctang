@@ -26,7 +26,24 @@ avdmanager=${AVDMANAGER:-$(find "$ANDROID_HOME/cmdline-tools" -name avdmanager -
 
 [ -n "$avdmanager" ] || { echo "avdmanager not found under $ANDROID_HOME/cmdline-tools" >&2; exit 1; }
 
+# avdmanager and the emulator each work out where AVDs live from the
+# environment, and on a GitHub runner they disagreed: the emulator died with
+# "Unknown AVD name [ci]" right after avdmanager had apparently succeeded.
+# Name one directory and give it to both.
+export ANDROID_AVD_HOME=${ANDROID_AVD_HOME:-$HOME/.android/avd}
+mkdir -p "$ANDROID_AVD_HOME"
+
 echo no | "$avdmanager" create avd -n "$avd" -k "system-images;android-34;google_apis;x86_64" -d pixel_6 --force
+
+# avdmanager exits 0 in some situations where it has made nothing; stop here
+# with the facts rather than start an emulator that cannot find its AVD.
+if [ ! -e "$ANDROID_AVD_HOME/$avd.ini" ]; then
+	echo "avdmanager did not create $ANDROID_AVD_HOME/$avd.ini" >&2
+	echo "AVD files found anywhere under \$HOME:" >&2
+	find "$HOME" -name '*.ini' -path '*avd*' 2>/dev/null | head -20 >&2 || true
+	echo "ANDROID_USER_HOME=${ANDROID_USER_HOME:-} ANDROID_SDK_HOME=${ANDROID_SDK_HOME:-} HOME=$HOME" >&2
+	exit 1
+fi
 
 # Informational: says whether KVM is usable, which is the first thing to
 # look at when the emulator will not start.
