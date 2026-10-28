@@ -53,6 +53,24 @@ func authorizedPeersFor(tok mrcore.Token) ([]string, error) {
 // trusting it, and answers the matching systemd ask-password request
 // with it.
 func runAgentOnce(ctx context.Context, device string, machineCert tls.Certificate, machineName string, askPasswordDir string, listenOpts transport.ListenOptions, tr transport.Transport) error {
+	deliver := func(keyMaterial []byte) error {
+		if err := answerAskPasswordFor(askPasswordDir, device, keyMaterial); err != nil {
+			return fmt.Errorf("unlocker: answering ask-password request: %w", err)
+		}
+		return nil
+	}
+	return serveOneExchange(ctx, device, machineName, listenOpts, tr, deliver)
+}
+
+// deliverFunc takes the recovered and verified key material and puts it to use:
+// the agent hands it to systemd, "unlocker open" opens the volume with it. It
+// must not keep the slice; the caller wipes it.
+type deliverFunc func(keyMaterial []byte) error
+
+// serveOneExchange is everything an exchange needs around the conversation
+// itself: read the volume's token, listen for one of the key holders it names,
+// and run the exchange, handing the result to deliver.
+func serveOneExchange(ctx context.Context, device, machineName string, listenOpts transport.ListenOptions, tr transport.Transport, deliver deliverFunc) error {
 	dump, err := runCommand(nil, "cryptsetup", "luksDump", device)
 	if err != nil {
 		return fmt.Errorf("unlocker: reading LUKS header: %w", err)
@@ -80,7 +98,7 @@ func runAgentOnce(ctx context.Context, device string, machineCert tls.Certificat
 	}
 	defer conn.Close()
 
-	return runExchange(ctx, conn, tok, device, agentNameFor(machineName, tok.Machine.Name), askPasswordDir)
+	return runExchange(ctx, conn, tok, device, agentNameFor(machineName, tok.Machine.Name), deliver)
 }
 
 // agentNameFor is the name the agent greets a key holder with: the one
@@ -103,7 +121,8 @@ func runExchange(
 	ctx context.Context,
 	conn transport.Conn,
 	tok mrcore.Token,
-	device, machineName, askPasswordDir string,
+	device, machineName string,
+	deliver deliverFunc,
 ) error {
 	// Bound the exchange itself, not just the wait for a connection.
 	//
@@ -222,8 +241,8 @@ func runExchange(
 		return report(fmt.Errorf("unlocker: recovered secret does not open %s: %w", device, err))
 	}
 
-	if err := answerAskPasswordFor(askPasswordDir, device, keyMaterial); err != nil {
-		return report(fmt.Errorf("unlocker: answering ask-password request: %w", err))
+	if err := deliver(keyMaterial); err != nil {
+		return report(err)
 	}
 
 	return report(nil)

@@ -33,6 +33,8 @@ commands:
   agent   run the systemd password agent, answering recovery attempts
   status  show which key holders are enrolled and this machine's identity
   pair    show a QR code and enrol the key holder that scans it
+  open    wait for a key holder, then open a LUKS volume (an external drive,
+          say) that is not asking for a password at boot
 `
 
 // defaultMachineKeyFile is where this machine's own persistent transport
@@ -72,6 +74,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runPair(args[1:], stdout, stderr)
 	case "status":
 		return runStatus(args[1:], stdout, stderr)
+	case "open":
+		return runOpen(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unlocker: unknown command %q\n%s", args[0], usage)
 		return 2

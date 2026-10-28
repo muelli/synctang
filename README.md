@@ -156,6 +156,30 @@ LAN, IPv4 only, same broadcast domain) and the public Syncthing relay
 network at once, and use whichever finds the other first. Details in
 `docs/transport.md`.
 
+### Open a drive after boot
+
+The agent only runs in the initrd, and is stopped before the switch to the
+real root. For a volume that is not asking for a password at boot, an
+external drive plugged in later say, there is a command that waits for a key
+holder and then opens the volume itself:
+
+    sudo unlocker open /dev/sdb1 backup
+
+It prints this machine's transport id, waits (five minutes, `--timeout`) for
+a key holder to approve, checks that the recovered secret really opens the
+volume, runs `cryptsetup open`, prints `/dev/mapper/backup` and exits.
+Nothing keeps running. Without a name the volume is called
+`synctang-<start of its UUID>`. Mounting is a separate step, and
+`cryptsetup close backup` closes it.
+
+The drive has to have a key holder enrolled first, which writes a keyslot and a
+token into the drive's own LUKS header: run `unlocker pair --device /dev/sdb1`
+(or `enrol`) once, with the drive's passphrase, as for any other volume, and
+back its header up first. The token names key holders, not a machine, so the
+drive can be opened on any computer that runs the unlocker and whose transport
+id the key holder knows. The phone app keeps one paired machine at a time; the
+laptop's `keyholder unlock <transport id>` takes any.
+
 ### Revoke or rotate a key holder
 
 Revoke destroys that key holder's keyslot and removes its token entry,
