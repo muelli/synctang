@@ -249,6 +249,38 @@ key holder (the key holder VM, over the public relay). `[V]`, once.
 - Not tried: a data volume opened after boot, two key holders on different
   volumes, and a phone doing the approving (the key holder VM answered).
 
+## An extra volume unlocked after boot, by hand, 2026-10-28
+
+On the booted machine VM, a second LUKS2 volume (`/dev/vdb`, its own passphrase)
+that the initrd knows nothing about, enrolled with the key holder VM. `[V]`, once.
+
+- `/etc/crypttab` got `external UUID=<uuid> none luks,noauto`, and `systemctl
+  start --no-block systemd-cryptsetup@external` put the unit in `activating` with
+  a pending request in `/run/systemd/ask-password` whose `Id=` is
+  `cryptsetup:/dev/disk/by-uuid/<uuid>`: the form the agent matches on, now seen on
+  a running system.
+- `unlocker agent --device /dev/vdb`, started by hand as root, waited for a key
+  holder; `keyholder unlock --yes <machine id>` on the key holder VM was approved
+  and the journal has `recovery attempt succeeded` about 38 seconds after the
+  agent started. The unit became `active` and `/dev/mapper/external` exists on
+  `/dev/vdb`.
+- The agent does not exit after the unlock; it goes back to waiting and has to be
+  stopped by hand.
+
+So a volume that systemd asks for after boot can be unlocked with the agent that
+exists today. What is missing is everything around it: no service or path unit
+starts the agent when a request appears, the packages install no unit at all, a
+volume plugged into a desktop is unlocked by the desktop's own dialog (udisks),
+which does not use this protocol, and the phone app keeps one paired machine at a
+time. The drive's token names key holders, not a machine, so a drive moved to
+another computer needs that computer to run the unlocker and the key holder to know
+its id.
+
+Found on the way, in the test harness: stopping QEMU right after `update-grub`
+loses the write, because the guest never flushed it. The VM then booted with a
+stale `rd.luks.uuid=` and sat in dracut's emergency shell. Power the guest off, or
+`sync`, before killing it.
+
 ## Deviations from the plan
 
 - Loopback LUKS2 tests (`cmd/unlocker`) do not need root or a privileged
