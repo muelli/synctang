@@ -86,7 +86,8 @@ carries that identity; the token itself is read from the disk at boot.
     unlocker pair --device /dev/sdXN --name my-machine \
       --existing-passphrase-file <(printf %s "$PASS")
 
-Shows a QR code and a one-time code, then waits. Scan it in the app: the
+Tests the passphrase against the header first (a typo stops it before anything
+is shown or created), then shows a QR code and a one-time code and waits. Scan it in the app: the
 phone proves it holds the code and sends its public key, and the machine
 shows you which key holder answered before it writes anything. The code
 lasts five minutes (`--timeout`), enrols one key holder, and is useless

@@ -194,6 +194,15 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 	}
 	defer mrcore.Wipe(passphrase)
 
+	// Tested now, not left for the enrolment at the end: a typo would
+	// otherwise show up only after the phone had scanned the code and the
+	// person had confirmed it. Before the identity is made, too, so a
+	// refused run leaves nothing behind.
+	if err := verifyPassphrase(*device, passphrase); err != nil {
+		fmt.Fprintf(stderr, "unlocker: that passphrase does not open %s (%v); nothing was changed\n", *device, err)
+		return 1
+	}
+
 	cert, err := transport.LoadOrCreateCert(*machineKeyFile)
 	if err != nil {
 		fmt.Fprintf(stderr, "unlocker: %v\n", err)
