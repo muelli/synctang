@@ -94,7 +94,17 @@ replayed or on a second phone. `--yes` skips the confirmation. If the QR
 code will not scan (a serial console, say), the link it carries is
 printed as text to paste into the app's device ID field. (A device ID
 typed on its own only remembers the machine; the link, with its one-time
-code, is what enrols the phone.) `NO_COLOR` gives a plain ASCII code.
+code, is what enrols the phone.)
+
+`--qr` chooses how the code is drawn: `auto` (the default), `blocks`,
+`plain`, `kitty` or `iterm2`. Automatic means a real image on a terminal
+known to show one (Kitty and Ghostty through the Kitty graphics protocol;
+iTerm2 and WezTerm through iTerm2's inline images, also reached over ssh
+from iTerm2), the plain ASCII code when `NO_COLOR` is set, and half blocks
+everywhere else, which is what a serial console, a pipe, `tmux` and
+`screen` get. A multiplexer swallows image sequences unless it passes them
+through, so `--qr kitty` or `--qr iterm2` is how to ask for one there (the
+sequence is wrapped for tmux's `allow-passthrough`).
 
 ### Enrol a laptop key holder
 

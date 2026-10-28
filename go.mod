@@ -13,6 +13,7 @@ require (
 	github.com/mdp/qrterminal/v3 v3.2.1
 	github.com/muelli/syncthing-socket v0.1.1-alpha.0.20261018051137-204ecb48b52c
 	github.com/syncthing/syncthing v1.30.0
+	rsc.io/qr v0.2.0
 )
 
 require (
@@ -45,7 +46,6 @@ require (
 	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/tools v0.50.0 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
-	rsc.io/qr v0.2.0 // indirect
 )
 
 tool golang.org/x/mobile/cmd/gobind

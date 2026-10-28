@@ -173,7 +173,12 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 	window := fs.Duration("timeout", defaultPairWindow, "how long to accept a pairing for")
 	yes := fs.Bool("yes", false, "enrol whoever answers the code without asking for confirmation")
 	directAddr := fs.String("direct-addr", "", "listen on this address directly, bypassing relay and discovery (testing only)")
+	qrMode := fs.String("qr", "auto", "how to draw the QR code: "+strings.Join(qrModes, ", ")+"; auto uses an image where the terminal is known to show one")
 	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if !validQRMode(*qrMode) {
+		fmt.Fprintf(stderr, "unlocker: --qr: unknown mode %q, want one of %s\n", *qrMode, strings.Join(qrModes, ", "))
 		return 2
 	}
 
@@ -203,11 +208,11 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 	}
 	defer mrcore.Wipe(secret)
 
-	if qrCode, err := renderPairingQRCode(pairingURL(machineID, *name, encoded)); err != nil {
+	if qrCode, err := renderPairingQR(pairingURL(machineID, *name, encoded), *qrMode, os.Getenv, isTerminal(stdout)); err != nil {
 		// Not fatal: the printed values below are enough to pair by
 		// hand, and a machine whose terminal cannot show a QR code is
 		// exactly the case they exist for.
-		fmt.Fprintf(stderr, "unlocker: could not draw the QR code (%v); use the values below\n", err)
+		fmt.Fprintf(stderr, "unlocker: could not draw the QR code (%v); use the link below\n", err)
 	} else {
 		fmt.Fprintln(stdout)
 		fmt.Fprint(stdout, qrCode)
@@ -271,17 +276,6 @@ func pairConfirmer(assumeYes bool, stdout io.Writer, stdin io.Reader) func(strin
 		answer := strings.ToLower(strings.TrimSpace(line))
 		return answer == "y" || answer == "yes"
 	}
-}
-
-// renderPairingQRCode honours NO_COLOR (https://no-color.org/), which
-// matters here beyond taste: the coloured form is built from ANSI
-// escapes, and piping it into a file or a log turns it into unreadable
-// noise, while the plain form survives.
-func renderPairingQRCode(content string) (string, error) {
-	if _, noColour := os.LookupEnv("NO_COLOR"); noColour {
-		return renderQRCodePlain(content)
-	}
-	return renderQRCode(content)
 }
 
 // pairingURL is what the QR code encodes, and what the Android app
