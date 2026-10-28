@@ -80,6 +80,24 @@ the correct raw x-coordinate, proved by the machine opening its volume
 with it (`TESTREPORT.md` A4, 2026-09-21). The earlier emulator spike is
 in `docs/wp0-keystore-ecdh.md`.
 
+**That depends on the phone, and on some phones it is false.** On a
+Pixel 3a XL (Android 12, Keymaster 4.x secure hardware, which advertises
+StrongBox) a key-agreement key was created at security level
+**software**, both when StrongBox was requested and when it was not, and
+the key's attestation certificate says the same (`keymasterSecurityLevel=0`)
+`[V]` (instrumented probe, 2026-10-28). Ordinary signing keys on the same
+phone were created correctly, in the TEE and in StrongBox, so the hardware
+is fine: Android 12 emulates key agreement in software where the hardware
+predates it. On such a phone the key is not protected by secure hardware:
+anything with root access to the phone could read it, and the biometric
+window protects nothing a rooted attacker cannot bypass. Using that key also
+hung in the Keystore for the whole 20 seconds the probe waited
+(`BACKEND_BUSY`), though an earlier run completed its key-use tests on the
+same phone, so the hang is intermittent and its cause is `[U]`. The app now
+reports where Android says the key lives and says plainly when it is
+software. Which phones give hardware-backed key agreement is `[U]`; the
+phone used for A4 did, and the model was not recorded.
+
 **Rendezvous infrastructure.** The Syncthing relay network sees two
 Device IDs and traffic volume, nothing else: the tunnel itself is TLS
 1.3 with certificate pinning by Device ID (`mrcore/transport`), so a

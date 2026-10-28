@@ -181,7 +181,8 @@ internal fun Modifier.heroAction(): Modifier = fillMaxWidth().heightIn(min = Spa
 @Composable
 internal fun Identity.backingDescription(): String = when (backing) {
     KeyHolderKey.Backing.STRONGBOX -> stringResource(R.string.identity_backing_strongbox)
-    KeyHolderKey.Backing.TEE_OR_SOFTWARE -> stringResource(R.string.identity_backing_tee)
+    KeyHolderKey.Backing.TEE -> stringResource(R.string.identity_backing_tee)
+    KeyHolderKey.Backing.SOFTWARE -> stringResource(R.string.identity_backing_software)
 }
 
 internal fun Context.copyToClipboard(text: String) {

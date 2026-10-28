@@ -43,7 +43,7 @@ class UnlockFlowTest {
     private var nextSession: () -> FakeSession = { FakeSession() }
     private var nextPairing: () -> FakePairing = { FakePairing() }
 
-    private val identity = Identity("PHONE-ID", "04ab", KeyHolderKey.Backing.TEE_OR_SOFTWARE)
+    private val identity = Identity("PHONE-ID", "04ab", KeyHolderKey.Backing.TEE)
     @Volatile private var agreeFails: Exception? = null
     @Volatile private var identityResets = 0
     private val logged = Collections.synchronizedList(mutableListOf<Throwable>())

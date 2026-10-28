@@ -163,17 +163,21 @@ class KeyHolderKey(
             .build()
 
     /** Where the private scalar actually lives. */
-    enum class Backing { STRONGBOX, TEE_OR_SOFTWARE }
+    /**
+     * Where Android says the key was made, which is not always where it was
+     * asked for. SOFTWARE is a real answer here: on a phone whose secure
+     * hardware predates key agreement (seen on a Pixel 3a XL, Android 12,
+     * Keymaster 4.x) a PURPOSE_AGREE_KEY key is created in software even when
+     * StrongBox is requested, while signing keys on the same phone are made
+     * in the TEE and in StrongBox. Reported as such, never as hardware.
+     */
+    enum class Backing { STRONGBOX, TEE, SOFTWARE }
 
     fun backing(): Backing {
         val private = privateKey()
         val info = KeyFactory.getInstance(private.algorithm, ANDROID_KEYSTORE)
             .getKeySpec(private, KeyInfo::class.java)
-        return if (info.securityLevel == KeyProperties.SECURITY_LEVEL_STRONGBOX) {
-            Backing.STRONGBOX
-        } else {
-            Backing.TEE_OR_SOFTWARE
-        }
+        return classify(info.securityLevel)
     }
 
     /**
@@ -255,6 +259,19 @@ class KeyHolderKey(
 
     companion object {
         const val DEFAULT_ALIAS = "synctang-key-holder"
+
+        /**
+         * What a KeyInfo security level means for what the person is told.
+         * "Secure, but not which" counts as the TEE; a level that is unknown,
+         * or one this build has never heard of, is reported as software,
+         * because the alternative is claiming hardware that nothing confirmed.
+         */
+        fun classify(securityLevel: Int): Backing = when (securityLevel) {
+            KeyProperties.SECURITY_LEVEL_STRONGBOX -> Backing.STRONGBOX
+            KeyProperties.SECURITY_LEVEL_TRUSTED_ENVIRONMENT,
+            KeyProperties.SECURITY_LEVEL_UNKNOWN_SECURE -> Backing.TEE
+            else -> Backing.SOFTWARE
+        }
 
         /**
          * How long a biometric authentication stays good for. Between

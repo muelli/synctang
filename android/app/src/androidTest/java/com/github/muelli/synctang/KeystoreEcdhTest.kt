@@ -1,17 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 package com.github.muelli.synctang
 
-import android.content.pm.PackageManager
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
 import mobile.Mobile
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -53,18 +50,15 @@ class KeystoreEcdhTest {
         key.delete()
     }
 
-    // On a phone that advertises StrongBox the key has to be in it: that is
-    // the claim the app makes in its About screen and the reason the key is
-    // created the way it is. On an emulator, or a phone without it, there is
-    // nothing to check and the test is skipped rather than passed. The
-    // backing is logged either way, so a run shows what it actually got.
+    // The app tells the person where their key lives, so it must never say
+    // hardware when Android says otherwise. This is the invariant, and the
+    // facts behind it are logged raw. A phone is allowed to land in software:
+    // a Pixel 3a XL on Android 12 does for key agreement, even when StrongBox
+    // is requested and the phone advertises it (its signing keys are in the
+    // TEE and StrongBox). What is not allowed is the app calling that
+    // hardware.
     @Test
-    fun theKeyIsInStrongBoxOnAPhoneThatHasOne() {
-        // The facts behind the answer, logged raw: the level the framework
-        // reports, whether it says the key is inside secure hardware, and how
-        // long creating a key takes (a StrongBox chip is much slower than the
-        // TEE). They are what tells a phone that refused StrongBox from a
-        // framework that reports the level wrongly.
+    fun theBackingIsNeverOverstated() {
         key.delete()
         val started = System.nanoTime()
         key.ensureKey()
@@ -73,19 +67,18 @@ class KeystoreEcdhTest {
         val private = keyStore.getKey(alias, null) as java.security.PrivateKey
         val info = java.security.KeyFactory.getInstance(private.algorithm, "AndroidKeyStore")
             .getKeySpec(private, android.security.keystore.KeyInfo::class.java)
+        val backing = key.backing()
         Log.i(
             "synctang-test",
-            "key facts: securityLevel=${info.securityLevel} (1=TEE, 2=StrongBox) " +
-                "insideSecureHardware=${info.isInsideSecureHardware} creationMillis=$millis",
+            "key facts: securityLevel=${info.securityLevel} insideSecureHardware=${info.isInsideSecureHardware} " +
+                "creationMillis=$millis reportedBacking=$backing",
         )
-        val backing = key.backing()
-        Log.i("synctang-test", "key backing: $backing")
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        assumeTrue(
-            "this device does not advertise StrongBox, so there is nothing to check",
-            context.packageManager.hasSystemFeature(PackageManager.FEATURE_STRONGBOX_KEYSTORE),
-        )
-        assertEquals(KeyHolderKey.Backing.STRONGBOX, backing)
+        if (!info.isInsideSecureHardware) {
+            assertEquals(KeyHolderKey.Backing.SOFTWARE, backing)
+        }
+        if (backing == KeyHolderKey.Backing.STRONGBOX) {
+            assertEquals(2, info.securityLevel)
+        }
     }
 
     @Test

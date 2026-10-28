@@ -13,6 +13,10 @@ not here. See `TESTREPORT.md` for the acceptance table (A1-A11).
   against a hand-built peer point and returned the correct value, as
   proved by the machine opening its volume with it (A4). The emulator
   run could only show that a software Keystore accepted such a point.
+  That was one phone: on a Pixel 3a XL (Android 12, Keymaster 4.x) a
+  key-agreement key is created in software, not in StrongBox or the TEE
+  (`docs/threat-model.md`), so "StrongBox" is not something every phone
+  can deliver for this key.
 - **WP1** (`mrcore` math): done.
 - **WP2** (transport): done. `SyncthingRelay` (public relay + global
   discovery), `LocalDiscovery` (LAN multicast, no Internet needed),

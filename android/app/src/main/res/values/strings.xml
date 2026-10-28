@@ -34,7 +34,8 @@
     <string name="identity_device_id">This phone\'s device ID</string>
     <string name="identity_public_key">This phone\'s public key</string>
     <string name="identity_backing_strongbox">Key held in StrongBox, the phone\'s secure element.</string>
-    <string name="identity_backing_tee">Key held in the Keystore. This phone has no StrongBox, so the key lives in the trusted execution environment instead. It still cannot be exported.</string>
+    <string name="identity_backing_software">This phone cannot keep this kind of key in secure hardware: Android stores it in software. synctang still works, but the key is not protected by the phone\'s secure hardware, and anything with root access to the phone could read it.</string>
+    <string name="identity_backing_tee">Key held in the phone\'s trusted execution environment, not in StrongBox: the phone has none, or could not use it for this key. The key cannot be exported.</string>
 
     <!-- Unlock -->
     <string name="unlock_machine">Machine</string>

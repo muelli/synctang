@@ -4,7 +4,9 @@ its boot prompt, with a person in the loop for every single unlock.
 This app is the key holder. What makes it different from a remote-passphrase
 app is what it does not have: it never holds the machine's disk passphrase, or
 anything from which the passphrase could be worked out. It holds one long-term
-key, generated inside the phone's secure hardware and unable to leave it. The
+key, generated in the phone's Keystore: in secure hardware, unable to leave it,
+on phones whose hardware supports this kind of key, and the app tells you
+plainly when yours does not and the key is held in software. The
 machine sends a blinded challenge point; the phone does one elliptic curve
 agreement against that point and sends back the result; the machine, and only
 the machine, turns that into the key that opens the disk.
@@ -20,9 +22,9 @@ How it works:
   public key on the machine.
 - When the machine boots, it waits at its prompt and asks. The phone shows the
   machine's cryptographically verified identity, and the name it gave itself.
-- One Unlock button, behind a strong biometric. The key is created so that the
-  phone's secure hardware, not this app, refuses to use it without a recent
-  biometric match.
+- One Unlock button, behind a strong biometric. The key is created so that
+  Android, and on hardware-backed phones the secure hardware rather than this
+  app, refuses to use it without a recent biometric match.
 - Optionally, the machine can print a code on its own console that is checked
   on the phone first, which shows you that the request comes from the machine
   you are standing at. It does not protect you if someone has a copy of the
