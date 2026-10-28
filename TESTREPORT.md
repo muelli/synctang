@@ -221,6 +221,34 @@ and a new debug app on the Pixel 3a XL. `[V]` unless marked.
   reading the token is retried up to four times, 200 ms apart) and not
   provoked on the VM `[I]`.
 
+## Two LUKS volumes unlocked in the same boot, 2026-10-28
+
+The machine VM with a second LUKS2 volume (`/dev/vdb`, its own passphrase)
+added to its kernel command line (`rd.luks.uuid=`), both enrolled with the same
+key holder (the key holder VM, over the public relay). `[V]`, once.
+
+- The initrd waited for both volumes. The key holder ran `keyholder unlock`
+  twice in a row, one exchange per volume: the root opened first (`recovery
+  attempt succeeded` at 62 s), the data volume second (95 s). Both
+  `systemd-cryptsetup` units finished, `/dev/vda3` and `/dev/vdb` each sit under
+  their own mapping, and no agent was left after the boot.
+- The second exchange had to pick the data volume while both headers carry a
+  token: it did, by the pending password request's id (`cryptsetup:<path>`,
+  resolved through the `by-uuid` link). That form was `[I]` before; here it
+  worked on a running system.
+- Two journal lines look like faults and are not. systemd tries the secret that
+  just opened one volume on the next (`Failed to activate with specified
+  passphrase. (Passphrase incorrect?)`), which fails for a volume with its own
+  secret and makes it ask again. And the agent logged `cannot choose which device
+  to unlock yet` once, in the moment between the root's request ending and the
+  data volume's appearing; it refuses to guess and tries again.
+- One approval per volume. Each volume carries its own token, so each is enrolled
+  on its own (`unlocker pair` or `enrol` with that `--device`). Only volumes the
+  initrd unlocks are covered: the agent is stopped before the pivot to the real
+  root.
+- Not tried: a data volume opened after boot, two key holders on different
+  volumes, and a phone doing the approving (the key holder VM answered).
+
 ## Deviations from the plan
 
 - Loopback LUKS2 tests (`cmd/unlocker`) do not need root or a privileged
