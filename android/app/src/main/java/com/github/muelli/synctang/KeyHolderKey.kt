@@ -123,6 +123,20 @@ class KeyHolderKey(
         try {
             generator.initialize(spec(strongBox = true))
             generator.generateKeyPair()
+            if (landedOutsideStrongBox(securityLevel())) {
+                // The request was accepted and the key is not in StrongBox.
+                // On a Pixel 3a XL (Android 12) such a key comes back in
+                // software, and every use of it then hangs in the Keystore
+                // (BACKEND_BUSY from the key blob upgrade, 3 of 3 uses and
+                // never recovering), while the same key made without the
+                // request is also in software and works in about 20 ms. So a
+                // StrongBox request that did not deliver StrongBox is not
+                // kept; the key is made again the ordinary way.
+                android.util.Log.w(LOG_TAG, "the key was asked for in StrongBox and is not there, making it again without the request")
+                keyStore.deleteEntry(alias)
+                generator.initialize(spec(strongBox = false))
+                generator.generateKeyPair()
+            }
         } catch (e: StrongBoxUnavailableException) {
             // Logged, because the reason matters and was invisible: a phone
             // can advertise StrongBox and still refuse to hold this kind of
@@ -172,11 +186,13 @@ class KeyHolderKey(
      */
     enum class Backing { STRONGBOX, TEE, SOFTWARE }
 
-    fun backing(): Backing {
+    fun backing(): Backing = classify(securityLevel())
+
+    private fun securityLevel(): Int {
         val private = privateKey()
-        val info = KeyFactory.getInstance(private.algorithm, ANDROID_KEYSTORE)
+        return KeyFactory.getInstance(private.algorithm, ANDROID_KEYSTORE)
             .getKeySpec(private, KeyInfo::class.java)
-        return classify(info.securityLevel)
+            .securityLevel
     }
 
     /**
@@ -273,6 +289,10 @@ class KeyHolderKey(
          */
         fun refuses(backing: Backing, softwareAllowed: Boolean): Boolean =
             backing == Backing.SOFTWARE && !softwareAllowed
+
+        /** Whether a key that was asked for in StrongBox is somewhere else. */
+        fun landedOutsideStrongBox(securityLevel: Int): Boolean =
+            securityLevel != KeyProperties.SECURITY_LEVEL_STRONGBOX
 
         fun classify(securityLevel: Int): Backing = when (securityLevel) {
             KeyProperties.SECURITY_LEVEL_STRONGBOX -> Backing.STRONGBOX

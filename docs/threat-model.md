@@ -90,10 +90,18 @@ phone were created correctly, in the TEE and in StrongBox, so the hardware
 is fine: Android 12 emulates key agreement in software where the hardware
 predates it. On such a phone the key is not protected by secure hardware:
 anything with root access to the phone could read it, and the biometric
-window protects nothing a rooted attacker cannot bypass. Using that key also
-hung in the Keystore for the whole 20 seconds the probe waited
-(`BACKEND_BUSY`), though an earlier run completed its key-use tests on the
-same phone, so the hang is intermittent and its cause is `[U]`. The app
+window protects nothing a rooted attacker cannot bypass. Using such a key
+hung in the Keystore (`BACKEND_BUSY` from the key blob upgrade, never
+recovering) when it had been created with StrongBox requested, which the app
+always did first: 3 of 3 such keys hung, and 3 of 3 keys made without the
+request were also in software and answered in 14 to 21 ms `[V]` (a probe on
+that phone, 2026-10-28). The app now checks where a StrongBox request landed
+and, if it is not StrongBox, deletes the key and makes it again without the
+request `[V]` (the test that hung on that phone now passes in 0.3 s). A real
+unlock attempt with the old key recognised the fingerprint twice and each time
+spent six seconds in that stall until the Keystore reported the five-second
+authentication as expired. A key made by the old code on such a phone cannot
+be repaired and has to be replaced, which means pairing again. The app
 reports where Android says the key lives. A software key is **refused**: the
 app stops at a screen that says why and offers "Use a software key on this
 phone", and nothing is paired or unlocked until the owner has pressed it (a

@@ -66,6 +66,25 @@ class KeyBackingTest {
         assertEquals(KeyHolderKey.Backing.SOFTWARE, KeyHolderKey.classify(99))
     }
 
+    // A StrongBox request that ends in software must not be kept. On a Pixel
+    // 3a XL (Android 12) a key-agreement key created WITH the request comes
+    // back at security level 0 and then every use hangs in the Keystore
+    // (BACKEND_BUSY, 3 of 3), while the same key created without the request
+    // is also at level 0 and works in about 20 ms (3 of 3).
+
+    @Test
+    fun aKeyAskedForInStrongBoxThatLandedElsewhereIsMadeAgainWithoutTheRequest() {
+        assertTrue(KeyHolderKey.landedOutsideStrongBox(KeyProperties.SECURITY_LEVEL_SOFTWARE))
+        assertTrue(KeyHolderKey.landedOutsideStrongBox(KeyProperties.SECURITY_LEVEL_TRUSTED_ENVIRONMENT))
+        assertTrue(KeyHolderKey.landedOutsideStrongBox(KeyProperties.SECURITY_LEVEL_UNKNOWN_SECURE))
+        assertTrue(KeyHolderKey.landedOutsideStrongBox(KeyProperties.SECURITY_LEVEL_UNKNOWN))
+    }
+
+    @Test
+    fun aKeyThatReallyIsInStrongBoxIsKept() {
+        assertFalse(KeyHolderKey.landedOutsideStrongBox(KeyProperties.SECURITY_LEVEL_STRONGBOX))
+    }
+
     // What the app does about a software key (decided 2026-10-28: refuse
     // unless the person has allowed it on this phone).
 
