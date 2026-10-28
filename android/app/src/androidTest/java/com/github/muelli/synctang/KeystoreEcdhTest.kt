@@ -60,6 +60,24 @@ class KeystoreEcdhTest {
     // backing is logged either way, so a run shows what it actually got.
     @Test
     fun theKeyIsInStrongBoxOnAPhoneThatHasOne() {
+        // The facts behind the answer, logged raw: the level the framework
+        // reports, whether it says the key is inside secure hardware, and how
+        // long creating a key takes (a StrongBox chip is much slower than the
+        // TEE). They are what tells a phone that refused StrongBox from a
+        // framework that reports the level wrongly.
+        key.delete()
+        val started = System.nanoTime()
+        key.ensureKey()
+        val millis = (System.nanoTime() - started) / 1_000_000
+        val keyStore = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        val private = keyStore.getKey(alias, null) as java.security.PrivateKey
+        val info = java.security.KeyFactory.getInstance(private.algorithm, "AndroidKeyStore")
+            .getKeySpec(private, android.security.keystore.KeyInfo::class.java)
+        Log.i(
+            "synctang-test",
+            "key facts: securityLevel=${info.securityLevel} (1=TEE, 2=StrongBox) " +
+                "insideSecureHardware=${info.isInsideSecureHardware} creationMillis=$millis",
+        )
         val backing = key.backing()
         Log.i("synctang-test", "key backing: $backing")
         val context = InstrumentationRegistry.getInstrumentation().targetContext
