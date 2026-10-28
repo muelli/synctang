@@ -100,7 +100,11 @@ phone", and nothing is paired or unlocked until the owner has pressed it (a
 choice kept for that phone). A key made a moment earlier is deleted again
 when refused, since nothing is enrolled on it; a key that already existed is
 left alone, because machines may be enrolled on it. The debug build with no
-biometric gate (emulators) skips the refusal. The key use itself is limited to
+biometric gate (emulators) skips the refusal. On the Pixel 3a XL, 2026-10-28, a fresh install
+stopped at the refusal screen, the allow button carried on to pairing, the
+choice survived a restart, and About then said the key was allowed in
+software `[V]`. The 20 second limit and the path for a key that already
+existed were not tried on a device `[U]`. The key use itself is limited to
 20 seconds: past that the app stops waiting, tells the machine no and says so
 (the stuck Keystore call cannot be interrupted, only abandoned, and whether
 the next attempt works afterwards is `[U]`). Which phones give hardware-backed key agreement is `[U]`; the
