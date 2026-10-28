@@ -73,6 +73,17 @@ class PairingStore(context: Context) : MachineStore {
             .commit()
     }
 
+    /**
+     * Whether the owner has accepted, on this phone, a key that Android
+     * made in software. Off until they say so, and kept across a new
+     * identity: it is about the phone, not about one key.
+     */
+    fun softwareKeyAllowed(): Boolean = prefs.getBoolean(KEY_SOFTWARE_ALLOWED, false)
+
+    fun allowSoftwareKey() {
+        prefs.edit().putBoolean(KEY_SOFTWARE_ALLOWED, true).commit()
+    }
+
     override fun saveMachine(machine: Machine) {
         prefs.edit()
             .putString(KEY_MACHINE_ID, machine.deviceId)
@@ -84,6 +95,7 @@ class PairingStore(context: Context) : MachineStore {
         const val KEY_SEED = "identity-seed"
         const val KEY_MACHINE_ID = "machine-device-id"
         const val KEY_MACHINE_NAME = "machine-name"
+        const val KEY_SOFTWARE_ALLOWED = "software-key-allowed"
     }
 }
 

@@ -16,7 +16,8 @@ not here. See `TESTREPORT.md` for the acceptance table (A1-A11).
   That was one phone: on a Pixel 3a XL (Android 12, Keymaster 4.x) a
   key-agreement key is created in software, not in StrongBox or the TEE
   (`docs/threat-model.md`), so "StrongBox" is not something every phone
-  can deliver for this key.
+  can deliver for this key. The app refuses such a key until the owner
+  allows it on that phone (2026-10-28).
 - **WP1** (`mrcore` math): done.
 - **WP2** (transport): done. `SyncthingRelay` (public relay + global
   discovery), `LocalDiscovery` (LAN multicast, no Internet needed),

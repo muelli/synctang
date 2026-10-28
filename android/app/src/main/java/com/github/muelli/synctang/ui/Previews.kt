@@ -129,6 +129,12 @@ private fun DonePreview() = Frame {
     DoneScreen(UnlockUiState.Done(machine), {})
 }
 
+@Preview(name = "Software key refused", widthDp = 360, heightDp = 640)
+@Composable
+private fun SoftwareKeyPreview() = Frame {
+    SoftwareKeyScreen({})
+}
+
 @Preview(name = "Failed", widthDp = 360, heightDp = 640)
 @Composable
 private fun FailedPreview() = Frame {

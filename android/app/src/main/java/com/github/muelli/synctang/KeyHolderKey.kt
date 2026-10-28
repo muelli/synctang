@@ -162,7 +162,6 @@ class KeyHolderKey(
             .setIsStrongBoxBacked(strongBox)
             .build()
 
-    /** Where the private scalar actually lives. */
     /**
      * Where Android says the key was made, which is not always where it was
      * asked for. SOFTWARE is a real answer here: on a phone whose secure
@@ -266,6 +265,15 @@ class KeyHolderKey(
          * or one this build has never heard of, is reported as software,
          * because the alternative is claiming hardware that nothing confirmed.
          */
+        /**
+         * Whether the app will not use a key that lives here. A software key
+         * is not protected by the phone's secure hardware, which is the
+         * protection this app tells people they have, so it is refused unless
+         * the person has said, on this phone, that they accept that.
+         */
+        fun refuses(backing: Backing, softwareAllowed: Boolean): Boolean =
+            backing == Backing.SOFTWARE && !softwareAllowed
+
         fun classify(securityLevel: Int): Backing = when (securityLevel) {
             KeyProperties.SECURITY_LEVEL_STRONGBOX -> Backing.STRONGBOX
             KeyProperties.SECURITY_LEVEL_TRUSTED_ENVIRONMENT,
@@ -306,6 +314,13 @@ class KeyHolderKey(
  */
 class BiometricEnrolmentRequired(cause: Throwable) :
     Exception("no biometric is enrolled on this phone", cause)
+
+/**
+ * The phone made this key in software, and its owner has not accepted that.
+ * Not a failure of the app: see [KeyHolderKey.refuses].
+ */
+class SoftwareKeyRefused :
+    Exception("the key on this phone is software-backed and was not allowed")
 
 /**
  * The key has been retired for good, which the Keystore does to a key

@@ -34,7 +34,11 @@
     <string name="identity_device_id">This phone\'s device ID</string>
     <string name="identity_public_key">This phone\'s public key</string>
     <string name="identity_backing_strongbox">Key held in StrongBox, the phone\'s secure element.</string>
-    <string name="identity_backing_software">This phone cannot keep this kind of key in secure hardware: Android stores it in software. synctang still works, but the key is not protected by the phone\'s secure hardware, and anything with root access to the phone could read it.</string>
+    <string name="identity_backing_software">This phone cannot keep this kind of key in secure hardware: Android stores it in software. You have allowed that on this phone. The key is not protected by the phone\'s secure hardware, and anything with root access to the phone could read it.</string>
+    <string name="software_key_title">This phone cannot protect the key with its hardware</string>
+    <string name="software_key_body">Android would keep this phone\'s key in software, not in the phone\'s secure chip. Anything with root access to the phone could copy it, and your fingerprint would not stop that. synctang will not use such a key unless you allow it.</string>
+    <string name="software_key_allow">Use a software key on this phone</string>
+    <string name="software_key_leave_hint">Press back to leave without allowing it.</string>
     <string name="identity_backing_tee">Key held in the phone\'s trusted execution environment, not in StrongBox: the phone has none, or could not use it for this key. The key cannot be exported.</string>
 
     <!-- Unlock -->
@@ -90,5 +94,6 @@
     <string name="failure_protocol">The machine sent something this phone will not act on, so nothing was answered.</string>
     <string name="failure_other">Something unexpected went wrong. Try again; if it keeps happening, the details below help a bug report.</string>
     <string name="failure_auth_expired">The fingerprint or face check ran out before the answer was ready, so nothing was sent. Try again.</string>
+    <string name="failure_key_timed_out">This phone\'s key did not answer, so nothing was sent to the machine. Try again. If it keeps happening, restart the phone.</string>
     <string name="failure_key_invalidated">This phone\'s key stopped working because a fingerprint or face was added to the phone, and the machine was not answered. The phone now has a new key: pair with the machine again. On the machine, revoke this phone\'s old device ID, %1$s, with unlocker enrol --remove.</string>
 </resources>

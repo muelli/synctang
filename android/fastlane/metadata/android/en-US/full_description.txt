@@ -5,9 +5,9 @@ This app is the key holder. What makes it different from a remote-passphrase
 app is what it does not have: it never holds the machine's disk passphrase, or
 anything from which the passphrase could be worked out. It holds one long-term
 key, generated in the phone's Keystore: in secure hardware, unable to leave it,
-on phones whose hardware supports this kind of key, and the app tells you
-plainly when yours does not and the key is held in software. The
-machine sends a blinded challenge point; the phone does one elliptic curve
+on phones whose hardware supports this kind of key. Where yours does not,
+the app stops and says so, and will use a software key only if you allow it.
+The machine sends a blinded challenge point; the phone does one elliptic curve
 agreement against that point and sends back the result; the machine, and only
 the machine, turns that into the key that opens the disk.
 

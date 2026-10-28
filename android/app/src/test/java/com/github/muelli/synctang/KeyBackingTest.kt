@@ -3,6 +3,8 @@ package com.github.muelli.synctang
 
 import android.security.keystore.KeyProperties
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -62,5 +64,22 @@ class KeyBackingTest {
             KeyHolderKey.classify(KeyProperties.SECURITY_LEVEL_UNKNOWN),
         )
         assertEquals(KeyHolderKey.Backing.SOFTWARE, KeyHolderKey.classify(99))
+    }
+
+    // What the app does about a software key (decided 2026-10-28: refuse
+    // unless the person has allowed it on this phone).
+
+    @Test
+    fun aSoftwareKeyIsRefusedUnlessTheOwnerAllowedIt() {
+        assertTrue(KeyHolderKey.refuses(KeyHolderKey.Backing.SOFTWARE, softwareAllowed = false))
+        assertFalse(KeyHolderKey.refuses(KeyHolderKey.Backing.SOFTWARE, softwareAllowed = true))
+    }
+
+    @Test
+    fun hardwareBackedKeysAreNeverRefused() {
+        for (backing in listOf(KeyHolderKey.Backing.STRONGBOX, KeyHolderKey.Backing.TEE)) {
+            assertFalse(KeyHolderKey.refuses(backing, softwareAllowed = false))
+            assertFalse(KeyHolderKey.refuses(backing, softwareAllowed = true))
+        }
     }
 }

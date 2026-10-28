@@ -64,6 +64,7 @@ fun explain(e: Throwable): Explained {
             FailureKind.OTHER, FailureKind.CANCELLED -> Explained(R.string.failure_other, null, raw)
         }
         is AuthenticationExpired -> Explained(R.string.failure_auth_expired, null, raw)
+        is KeyUseTimedOut -> Explained(R.string.failure_key_timed_out, null, raw)
         else -> Explained(R.string.failure_other, null, raw)
     }
 }

@@ -93,9 +93,17 @@ anything with root access to the phone could read it, and the biometric
 window protects nothing a rooted attacker cannot bypass. Using that key also
 hung in the Keystore for the whole 20 seconds the probe waited
 (`BACKEND_BUSY`), though an earlier run completed its key-use tests on the
-same phone, so the hang is intermittent and its cause is `[U]`. The app now
-reports where Android says the key lives and says plainly when it is
-software. Which phones give hardware-backed key agreement is `[U]`; the
+same phone, so the hang is intermittent and its cause is `[U]`. The app
+reports where Android says the key lives. A software key is **refused**: the
+app stops at a screen that says why and offers "Use a software key on this
+phone", and nothing is paired or unlocked until the owner has pressed it (a
+choice kept for that phone). A key made a moment earlier is deleted again
+when refused, since nothing is enrolled on it; a key that already existed is
+left alone, because machines may be enrolled on it. The debug build with no
+biometric gate (emulators) skips the refusal. The key use itself is limited to
+20 seconds: past that the app stops waiting, tells the machine no and says so
+(the stuck Keystore call cannot be interrupted, only abandoned, and whether
+the next attempt works afterwards is `[U]`). Which phones give hardware-backed key agreement is `[U]`; the
 phone used for A4 did, and the model was not recorded.
 
 **Rendezvous infrastructure.** The Syncthing relay network sees two

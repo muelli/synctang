@@ -75,4 +75,9 @@ class ExplainTest {
     fun anExpiredBiometricWindowSaysToTryAgain() {
         assertEquals(R.string.failure_auth_expired, explain(AuthenticationExpired(RuntimeException())).message)
     }
+
+    @Test
+    fun aKeyThatDoesNotRespondHasItsOwnMessage() {
+        assertEquals(R.string.failure_key_timed_out, explain(KeyUseTimedOut(20)).message)
+    }
 }

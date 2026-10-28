@@ -45,6 +45,8 @@ class UnlockFlowTest {
 
     private val identity = Identity("PHONE-ID", "04ab", KeyHolderKey.Backing.TEE)
     @Volatile private var agreeFails: Exception? = null
+    @Volatile private var identityFails: Exception? = null
+    @Volatile private var softwareKeyAllowances = 0
     @Volatile private var identityResets = 0
     private val logged = Collections.synchronizedList(mutableListOf<Throwable>())
 
@@ -52,7 +54,11 @@ class UnlockFlowTest {
         scope = scope,
         io = Dispatchers.IO,
         store = store,
-        identity = { identity },
+        identity = { identityFails?.let { throw it } ?: identity },
+        allowSoftwareKey = {
+            softwareKeyAllowances++
+            identityFails = null
+        },
         newSession = { nextSession().also { sessions += it } },
         newPairing = { nextPairing().also { pairings += it } },
         agree = { _, _ -> agreeFails?.let { throw it } ?: ByteArray(32) },
@@ -463,6 +469,59 @@ class UnlockFlowTest {
         assertEquals(1, session.declines.size)
         assertFalse(session.answered)
         assertTrue(session.closed)
+    }
+
+    /**
+     * A key stuck inside the Keystore (BACKEND_BUSY, seen on a Pixel 3a XL)
+     * must end in a message, not a spinner, and the machine must be told so
+     * that it does not wait for its own timeout.
+     */
+    @Test
+    fun aKeyThatDoesNotRespondDeclinesAndSaysSo() {
+        val session = connectToARequest()
+        agreeFails = KeyUseTimedOut(20)
+
+        onMain { flow.approve { _, _ -> AuthOutcome.SUCCEEDED } }
+        val failed = await<UnlockUiState.Failed>()
+        assertEquals("res:${R.string.failure_key_timed_out}", failed.message)
+        assertEquals(1, session.declines.size)
+        assertFalse(session.answered)
+        assertTrue(session.closed)
+        assertEquals("the key is kept: nothing says it is broken", 0, identityResets)
+    }
+
+    // A software-backed key (decided 2026-10-28: fail closed, with an opt-in)
+
+    @Test
+    fun aSoftwareKeyStopsAtAScreenThatSaysSoInsteadOfPairing() {
+        identityFails = SoftwareKeyRefused()
+        onMain { flow.refresh() }
+        val refused = await<UnlockUiState.SoftwareKeyRefused>()
+        assertEquals(BackAction.EXIT, backAction(refused))
+        assertNull("About must not offer the identity of a refused key", com.github.muelli.synctang.ui.aboutIdentity(refused))
+        assertEquals(0, softwareKeyAllowances)
+    }
+
+    @Test
+    fun allowingASoftwareKeyRecordsTheChoiceAndCarriesOn() {
+        identityFails = SoftwareKeyRefused()
+        onMain { flow.refresh() }
+        await<UnlockUiState.SoftwareKeyRefused>()
+
+        onMain { flow.allowSoftwareKey() }
+        await<UnlockUiState.NeedsPairing>()
+        assertEquals(1, softwareKeyAllowances)
+    }
+
+    @Test
+    fun anAlreadyPairedPhoneIsStoppedToo() {
+        store.saved = machineA
+        identityFails = SoftwareKeyRefused()
+        onMain { flow.refresh() }
+        await<UnlockUiState.SoftwareKeyRefused>()
+
+        onMain { flow.allowSoftwareKey() }
+        assertEquals(machineA, await<UnlockUiState.Ready>().machine)
     }
 
     @Test

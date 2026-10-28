@@ -46,8 +46,11 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
         identity = ::identity,
         newSession = { machine -> GoSession(machine, store.identitySeed(), multicastLock) },
         newPairing = { GoPairing(store.identitySeed(), multicastLock) },
-        agree = key::agree,
+        // On its own thread with a limit: a Keystore call can hang, and a
+        // hung one cannot be interrupted, only left behind.
+        agree = { x, y -> runWithin(KEY_USE_TIMEOUT_SECONDS) { key.agree(x, y) } },
         resetIdentity = ::resetIdentity,
+        allowSoftwareKey = store::allowSoftwareKey,
         strings = object : Strings {
             override fun get(id: Int, vararg args: Any) = application.getString(id, *args)
         },
@@ -61,7 +64,18 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun identity(): Identity {
+        val created = !key.exists()
         val backing = key.ensureKey()
+        // The debug build with no biometric gate is for emulators, whose
+        // Keystore is software; it has no secrets to protect.
+        if (KeyHolderKey.refuses(backing, softwareAllowed = store.softwareKeyAllowed() || TestMode.noBiometric)) {
+            // A key made a moment ago has nothing enrolled against it, so
+            // do not leave it behind. One that already existed may be what
+            // machines are enrolled on: it is left alone, and the person
+            // decides.
+            if (created) key.delete()
+            throw SoftwareKeyRefused()
+        }
         return Identity(
             deviceId = Mobile.deviceIDForSeed(store.identitySeed()),
             publicKeyHex = key.publicPoint().toHex(),
@@ -84,6 +98,7 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
     fun refresh() = flow.refresh()
     fun startPairing() = flow.startPairing()
     fun keepCurrentMachine() = flow.keepCurrentMachine()
+    fun allowSoftwareKey() = flow.allowSoftwareKey()
     fun undoReplace() = flow.undoReplace()
     fun dismissUndo() = flow.dismissUndo()
     fun pair(scanned: String): Boolean = flow.pair(scanned)

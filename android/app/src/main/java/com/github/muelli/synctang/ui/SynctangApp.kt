@@ -108,6 +108,7 @@ fun SynctangApp(gate: BiometricGate, model: UnlockViewModel = viewModel()) {
                 is UnlockUiState.Approve -> ApproveScreen(current, { model.approve(gate) }, model::cancel)
                 is UnlockUiState.Done -> DoneScreen(current, model::refresh)
                 is UnlockUiState.Failed -> FailedScreen(current, model::refresh, model::startPairing)
+                is UnlockUiState.SoftwareKeyRefused -> SoftwareKeyScreen(model::allowSoftwareKey)
             }
         }
     }

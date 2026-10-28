@@ -71,6 +71,13 @@ sealed interface UnlockUiState {
     data class Done(val machine: Machine) : UnlockUiState
 
     /**
+     * Android made this phone's key in software, not in secure hardware,
+     * and its owner has not accepted that. Nothing proceeds until they
+     * do ([UnlockFlow.allowSoftwareKey]).
+     */
+    object SoftwareKeyRefused : UnlockUiState
+
+    /**
      * [message] is in words for a person; [detail], when there is one,
      * is the machine's own reason. [technical] is the raw error text,
      * shown only on request.
@@ -174,7 +181,8 @@ enum class BackAction {
 fun backAction(state: UnlockUiState): BackAction = when (state) {
     is UnlockUiState.NeedsPairing ->
         if (state.previous != null) BackAction.KEEP_CURRENT_MACHINE else BackAction.EXIT
-    is UnlockUiState.Ready, is UnlockUiState.Done, is UnlockUiState.Failed -> BackAction.EXIT
+    is UnlockUiState.Ready, is UnlockUiState.Done, is UnlockUiState.Failed,
+    is UnlockUiState.SoftwareKeyRefused -> BackAction.EXIT
     is UnlockUiState.Connecting, is UnlockUiState.Pairing,
     is UnlockUiState.Approve -> BackAction.CANCEL
     is UnlockUiState.Working -> BackAction.IGNORE
@@ -216,6 +224,7 @@ class UnlockFlow(
     private val newPairing: () -> PairingAttempt,
     private val agree: (ByteArray, ByteArray) -> ByteArray,
     private val resetIdentity: () -> String,
+    private val allowSoftwareKey: () -> Unit = {},
     private val strings: Strings,
     private val log: (String, Throwable) -> Unit = { _, _ -> },
 ) {
@@ -248,6 +257,16 @@ class UnlockFlow(
     }
 
     fun keepCurrentMachine() = refresh()
+
+    /**
+     * The owner has accepted a software-backed key on this phone. Recorded
+     * by [allowSoftwareKey]; the flow then carries on as if the key had
+     * been fine.
+     */
+    fun allowSoftwareKey() {
+        allowSoftwareKey.invoke()
+        refresh()
+    }
 
     /**
      * Goes back to the machine a pairing has just replaced. Only the
@@ -287,6 +306,8 @@ class UnlockFlow(
             } else {
                 UnlockUiState.Ready(machine, identity)
             }
+        } catch (e: SoftwareKeyRefused) {
+            UnlockUiState.SoftwareKeyRefused
         } catch (e: BiometricEnrolmentRequired) {
             UnlockUiState.Failed(null, strings.get(R.string.error_no_biometric))
         } catch (e: Exception) {
@@ -450,6 +471,11 @@ class UnlockFlow(
                     Retry.SCAN_AGAIN,
                 )
             } catch (e: AuthenticationExpired) {
+                declineQuietly(active)
+                _state.value = failed(machine, e)
+            } catch (e: KeyUseTimedOut) {
+                // The key is not known to be broken, so it is kept; the
+                // machine is told, rather than left to its own timeout.
                 declineQuietly(active)
                 _state.value = failed(machine, e)
             } catch (e: Exception) {
