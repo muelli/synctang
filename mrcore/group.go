@@ -74,6 +74,21 @@ func randomScalarFrom(r io.Reader) ([]byte, error) {
 	}
 }
 
+// ValidatePrivateScalar checks that scalar is a usable P-256 private key:
+// 32 bytes, and as a big-endian number in [1, n-1]. Zero would give the point
+// at infinity and anything from n up is a different spelling of a smaller
+// scalar, so neither may become a key.
+func ValidatePrivateScalar(scalar []byte) error {
+	if len(scalar) != 32 {
+		return fmt.Errorf("mrcore: a P-256 scalar is 32 bytes, got %d", len(scalar))
+	}
+	v := new(big.Int).SetBytes(scalar)
+	if v.Sign() == 0 || v.Cmp(elliptic.P256().Params().N) >= 0 {
+		return fmt.Errorf("mrcore: scalar is not in [1, n-1]")
+	}
+	return nil
+}
+
 func (p256Group) ScalarBaseMult(scalar []byte) ([]byte, error) {
 	p, err := nistec.NewP256Point().ScalarBaseMult(scalar)
 	if err != nil {

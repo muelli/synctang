@@ -250,3 +250,37 @@ func TestP256NegateCancels(t *testing.T) {
 		}
 	}
 }
+
+// A private scalar has to lie in [1, n-1]. ScalarBaseMult takes anything the
+// curve code can reduce, so a scalar that is handed in rather than drawn here is
+// checked before it becomes a key.
+func TestValidatePrivateScalar(t *testing.T) {
+	n := elliptic.P256().Params().N
+	enc := func(v *big.Int) []byte { return v.FillBytes(make([]byte, 32)) }
+	one := big.NewInt(1)
+
+	good := map[string][]byte{
+		"one":       enc(one),
+		"n minus 1": enc(new(big.Int).Sub(n, one)),
+		"middle":    enc(new(big.Int).Rsh(n, 1)),
+	}
+	for name, s := range good {
+		if err := ValidatePrivateScalar(s); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	bad := map[string][]byte{
+		"nil":      nil,
+		"31 bytes": make([]byte, 31),
+		"33 bytes": make([]byte, 33),
+		"zero":     make([]byte, 32),
+		"n":        enc(n),
+		"n plus 1": enc(new(big.Int).Add(n, one)),
+		"all ones": bytes.Repeat([]byte{0xff}, 32),
+	}
+	for name, s := range bad {
+		if err := ValidatePrivateScalar(s); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
