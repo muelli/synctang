@@ -2,6 +2,9 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <resources>
     <string name="app_name">synctang</string>
+    <!-- The window title: the app, then the screen. -->
+    <string name="window_title">%1$s: %2$s</string>
+    <string name="ready_title">Ready to unlock</string>
 
     <!-- Pairing -->
     <string name="pair_title">Pair with a machine</string>
@@ -23,6 +26,12 @@
     <string name="pair_replaced">Now paired with %1$s instead of %2$s.</string>
     <string name="pair_undo">Undo</string>
     <string name="pair_undo_dismiss">Dismiss</string>
+
+    <!-- Keyboard shortcut list (Meta+/) -->
+    <string name="shortcut_group_title">synctang</string>
+    <string name="shortcut_keep_current">Keep the machine already paired</string>
+    <string name="shortcut_toggle_device_id">Show or hide all of the device ID</string>
+    <string name="shortcut_toggle_key_id">Show or hide all of the key requested</string>
 
     <!-- About this phone -->
     <string name="about_title">About this phone</string>
