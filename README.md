@@ -180,6 +180,33 @@ drive can be opened on any computer that runs the unlocker and whose transport
 id the key holder knows. The phone app keeps one paired machine at a time; the
 laptop's `keyholder unlock <transport id>` takes any.
 
+### Keyboard use of the app
+
+The app can be driven from a hardware keyboard (Android's desktop mode, or a
+phone with one attached). Tab and Shift+Tab move between controls, Enter or
+Space presses the focused one, and each screen starts with its main control
+focused. Every control also has a key, which works wherever focus is; Meta+/
+shows the ones the current screen offers.
+
+| Key | Does |
+| --- | --- |
+| Ctrl+Enter | The main action of the screen: Unlock, Approve and unlock, Try again, Scan again, Pair, Unlock something again |
+| Esc | Back out, as the Back gesture does: Decline, Cancel, keep the machine already paired, close About, dismiss the undo bar |
+| Ctrl+P | Pair with a machine again |
+| Ctrl+I | About this phone |
+| Ctrl+E | Enrol by hand |
+| Ctrl+Shift+C | Copy the enrolment command |
+| Ctrl+T | Show or hide the technical details of an error |
+| Ctrl+1, Ctrl+2 | Show in full or less: the device ID, the key requested |
+| Ctrl+G, Ctrl+O | Allow the camera, open the app's settings |
+| Ctrl+Z | Undo a pairing that replaced a machine |
+
+"Use a software key on this phone" has no key, and is not focused when its
+screen opens: it weakens a protection, so it has to be reached and pressed on
+purpose. A held key does not repeat an action. Each screen names itself to the
+screen reader and in the window title, for instance "synctang: Pair with a
+machine".
+
 ### Revoke or rotate a key holder
 
 Revoke destroys that key holder's keyslot and removes its token entry,
