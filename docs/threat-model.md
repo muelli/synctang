@@ -88,7 +88,17 @@ the key's attestation certificate says the same (`keymasterSecurityLevel=0`)
 `[V]` (instrumented probe, 2026-10-28). Ordinary signing keys on the same
 phone were created correctly, in the TEE and in StrongBox, so the hardware
 is fine: Android 12 emulates key agreement in software where the hardware
-predates it. On such a phone the key is not protected by secure hardware:
+predates it. The phone does have a security chip: the Titan M services
+(`citadeld`, `keymaster@4.1-service.citadel`) are running and the hardware
+manifest declares a StrongBox Keymaster 4.1, next to a Keymaster 4.0 in the
+Qualcomm TEE `[V]` (`ps` and `/vendor/etc/vintf/manifest.xml` on the phone,
+2026-11-01). The limit is the Keymaster interface, which has no key agreement:
+Android 12's keystore compat layer says "Since KeyMaster doesn't support ECDH,
+route all key creation requests to soft-KeyMint if and only an ECDH key is
+requested" (`km_compat.cpp`, `android12-release`) `[V]`. Whether a phone with a
+KeyMint implementation holds such a key in hardware is `[U]`: none was tried.
+That phone's security patch level is 2022-05-05, so it no longer receives
+updates, which matters more for a key held in software. On such a phone the key is not protected by secure hardware:
 anything with root access to the phone could read it, and the biometric
 window protects nothing a rooted attacker cannot bypass. Using such a key
 hung in the Keystore (`BACKEND_BUSY` from the key blob upgrade, never
