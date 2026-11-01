@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<resources>
+    <!-- So a debug build on a phone that also has the release is not mistaken for it. -->
+    <string name="app_name">synctang (debug)</string>
+</resources>

@@ -73,6 +73,11 @@ android {
 
         getByName("debug") {
             buildConfigField("boolean", "NO_BIOMETRIC", noBiometric.toString())
+            // A different application id, so that a debug build installs next to
+            // the release from the F-Droid repository instead of replacing it
+            // (Android refuses to replace an app with one signed by another key,
+            // and removing the release deletes its Keystore key and its pairing).
+            applicationIdSuffix = ".debug"
         }
         release {
             buildConfigField("boolean", "NO_BIOMETRIC", "false")

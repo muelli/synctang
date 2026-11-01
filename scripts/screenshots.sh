@@ -23,7 +23,7 @@ set -euo pipefail
 : "${ANDROID_HOME:?set ANDROID_HOME}"
 ADB="$ANDROID_HOME/platform-tools/adb"
 AVD="${AVD:-shots}"
-APPID=com.github.muelli.synctang
+APPID=com.github.muelli.synctang.debug
 OUT="android/fastlane/metadata/android/en-US/images/phoneScreenshots"
 SYSTEM_IMAGE="${SYSTEM_IMAGE:-system-images;android-34;google_apis;x86_64}"
 
@@ -131,7 +131,7 @@ shoot() { # shoot <n> <description>
 # Generating the long-term key takes a while under software rendering,
 # and the first screen shows a spinner until it finishes.
 "$ADB" shell am force-stop "$APPID"
-"$ADB" shell am start -n "$APPID/.MainActivity" >/dev/null
+"$ADB" shell am start -n "$APPID/com.github.muelli.synctang.MainActivity" >/dev/null
 sleep 40
 # The manual field takes focus on launch, which is right for a hardware
 # keyboard and brings the soft keyboard up over half the screen on a phone.
