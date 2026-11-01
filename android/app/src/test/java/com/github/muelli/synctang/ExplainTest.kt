@@ -71,10 +71,6 @@ class ExplainTest {
         assertEquals("IllegalStateException", explain(IllegalStateException()).technical)
     }
 
-    @Test
-    fun anExpiredBiometricWindowSaysToTryAgain() {
-        assertEquals(R.string.failure_auth_expired, explain(AuthenticationExpired(RuntimeException())).message)
-    }
 
     @Test
     fun aKeyThatDoesNotRespondHasItsOwnMessage() {

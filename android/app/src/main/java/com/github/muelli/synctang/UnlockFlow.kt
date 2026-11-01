@@ -2,6 +2,7 @@
 package com.github.muelli.synctang
 
 import androidx.annotation.StringRes
+import javax.crypto.Cipher
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -28,9 +29,13 @@ enum class AuthOutcome {
  * A biometric prompt, abstracted so the unlock flow does not depend on
  * an Activity. [BiometricGateImpl] is the real one; a test can supply
  * its own.
+ *
+ * [cipher] is the one operation the fingerprint is for: the prompt
+ * authenticates exactly this cipher, and only after it succeeds can the
+ * cipher unwrap the key.
  */
 fun interface BiometricGate {
-    suspend fun authenticate(title: String, subtitle: String): AuthOutcome
+    suspend fun authenticate(title: String, subtitle: String, cipher: Cipher): AuthOutcome
 }
 
 /** What a Failed screen's button does. */
@@ -145,10 +150,11 @@ interface MachineSession {
     fun requestKidHex(): String
 
     /**
-     * Answers the request with [agree] applied to the challenge
-     * point's coordinates, and waits for the machine's verdict.
+     * Answers the request with the key [unwrap] returns, and waits for
+     * the machine's verdict. [unwrap] is called once, here, and what it
+     * returns is wiped before this returns.
      */
-    fun answer(agree: (ByteArray, ByteArray) -> ByteArray)
+    fun answer(unwrap: () -> ByteArray)
 }
 
 /** One network pairing. The real one wraps the gomobile `Pairer`. */
@@ -233,7 +239,10 @@ class UnlockFlow(
     private val identity: () -> Identity,
     private val newSession: (Machine) -> MachineSession,
     private val newPairing: () -> PairingAttempt,
-    private val agree: (ByteArray, ByteArray) -> ByteArray,
+    // One use of the key: a cipher the fingerprint will be bound to, and
+    // the unwrapping that cipher then does.
+    private val prepareKey: () -> Cipher,
+    private val unwrapKey: (Cipher) -> ByteArray,
     private val resetIdentity: () -> String,
     private val allowSoftwareKey: () -> Unit = {},
     private val approveWindowMillis: Long = APPROVE_WINDOW_MILLIS,
@@ -434,14 +443,13 @@ class UnlockFlow(
     }
 
     /**
-     * Approves the request: prompt for a biometric, then do the ECDH in
-     * the Keystore and send the answer.
+     * Approves the request: prepare one use of the key, have the person's
+     * fingerprint authenticate exactly that use, unwrap the key with it and
+     * send the answer.
      *
-     * The prompt is not what enforces the gate. The key is created with
-     * a short authentication validity window, so the Keystore itself
-     * refuses the ECDH unless a strong biometric matched moments ago
-     * (see KeyHolderKey). Skipping the prompt would simply make
-     * [KeyHolderKey.agree] throw.
+     * The gate is the hardware's: the cipher can unwrap nothing until the
+     * prompt has authenticated it, so skipping the prompt would simply make the
+     * unwrapping throw.
      */
     fun approve(gate: BiometricGate) {
         val machine = store.machine() ?: return
@@ -450,9 +458,25 @@ class UnlockFlow(
         _state.value = UnlockUiState.Working(machine)
 
         scope.launch {
+            // Before any prompt: a key that was retired, or is missing, is found
+            // here, and nobody is asked to touch the sensor for an answer that
+            // cannot be given.
+            val cipher = try {
+                withContext(io) { prepareKey() }
+            } catch (e: KeyInvalidated) {
+                retireInvalidatedKey(machine, active, e)
+                return@launch
+            } catch (e: Exception) {
+                declineQuietly(active)
+                withContext(io) { closeSession() }
+                _state.value = failed(machine, e)
+                return@launch
+            }
+
             val outcome = gate.authenticate(
                 title = strings.get(R.string.biometric_title),
                 subtitle = strings.get(R.string.biometric_subtitle, machine.name.ifBlank { machine.deviceId }),
+                cipher = cipher,
             )
             if (outcome != AuthOutcome.SUCCEEDED) {
                 // Tell the machine rather than leaving it waiting for a
@@ -471,26 +495,10 @@ class UnlockFlow(
             }
 
             try {
-                withContext(io) { active.answer(agree) }
+                withContext(io) { active.answer { unwrapKey(cipher) } }
                 _state.value = UnlockUiState.Done(machine)
             } catch (e: KeyInvalidated) {
-                // Nothing was sent, and nothing this key does will ever
-                // work again: tell the machine no, and start afresh
-                // with a new key and a new transport identity. A new
-                // identity, because the machine answers the first
-                // recipient whose identity matches, so pairing again
-                // under the old one would leave the dead key in front.
-                log("the key was invalidated", e)
-                declineQuietly(active)
-                val oldDeviceId = withContext(io) { resetIdentity() }
-                _state.value = UnlockUiState.Failed(
-                    machine,
-                    strings.get(R.string.failure_key_invalidated, oldDeviceId),
-                    Retry.SCAN_AGAIN,
-                )
-            } catch (e: AuthenticationExpired) {
-                declineQuietly(active)
-                _state.value = failed(machine, e)
+                retireInvalidatedKey(machine, active, e)
             } catch (e: KeyUseTimedOut) {
                 // The key is not known to be broken, so it is kept; the
                 // machine is told, rather than left to its own timeout.
@@ -502,6 +510,25 @@ class UnlockFlow(
                 withContext(io) { closeSession() }
             }
         }
+    }
+
+    /**
+     * Nothing was sent, and nothing this key does will ever work again: tell
+     * the machine no, and start afresh with a new key and a new transport
+     * identity. A new identity, because the machine answers the first recipient
+     * whose identity matches, so pairing again under the old one would leave the
+     * dead key in front.
+     */
+    private suspend fun retireInvalidatedKey(machine: Machine, active: MachineSession, cause: KeyInvalidated) {
+        log("the key was invalidated", cause)
+        declineQuietly(active)
+        val oldDeviceId = withContext(io) { resetIdentity() }
+        withContext(io) { closeSession() }
+        _state.value = UnlockUiState.Failed(
+            machine,
+            strings.get(R.string.failure_key_invalidated, oldDeviceId),
+            Retry.SCAN_AGAIN,
+        )
     }
 
     /**

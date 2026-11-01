@@ -5,6 +5,7 @@ import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import javax.crypto.Cipher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -15,6 +16,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -44,7 +46,10 @@ class UnlockFlowTest {
     private var nextPairing: () -> FakePairing = { FakePairing() }
 
     private val identity = Identity("PHONE-ID", "04ab", KeyHolderKey.Backing.TEE)
-    @Volatile private var agreeFails: Exception? = null
+    @Volatile private var prepareFails: Exception? = null
+    @Volatile private var unwrapFails: Exception? = null
+    private val preparedCiphers = Collections.synchronizedList(mutableListOf<Cipher>())
+    private val unwrappedWith = Collections.synchronizedList(mutableListOf<Cipher>())
     @Volatile private var identityFails: Exception? = null
     @Volatile private var softwareKeyAllowances = 0
     @Volatile private var identityResets = 0
@@ -61,7 +66,15 @@ class UnlockFlowTest {
         },
         newSession = { nextSession().also { sessions += it } },
         newPairing = { nextPairing().also { pairings += it } },
-        agree = { _, _ -> agreeFails?.let { throw it } ?: ByteArray(32) },
+        prepareKey = {
+            prepareFails?.let { throw it }
+            Cipher.getInstance("AES").also { preparedCiphers += it }
+        },
+        unwrapKey = { cipher ->
+            unwrapFails?.let { throw it }
+            unwrappedWith += cipher
+            ByteArray(32)
+        },
         resetIdentity = {
             identityResets++
             store.saved = null
@@ -449,7 +462,7 @@ class UnlockFlowTest {
     fun aLockedOutBiometricDeclinesAndSaysSo() {
         val session = connectToARequest()
 
-        onMain { flow.approve { _, _ -> AuthOutcome.LOCKED_OUT } }
+        onMain { flow.approve { _, _, _ -> AuthOutcome.LOCKED_OUT } }
         val failed = await<UnlockUiState.Failed>()
         assertEquals("res:${R.string.error_biometric_lockout}", failed.message)
         assertEquals(1, session.declines.size)
@@ -467,9 +480,9 @@ class UnlockFlowTest {
     @Test
     fun anInvalidatedKeyDeclinesStartsAFreshIdentityAndSaysWhatToRevoke() {
         val session = connectToARequest()
-        agreeFails = KeyInvalidated(RuntimeException("Key permanently invalidated"))
+        unwrapFails = KeyInvalidated(RuntimeException("Key permanently invalidated"))
 
-        onMain { flow.approve { _, _ -> AuthOutcome.SUCCEEDED } }
+        onMain { flow.approve { _, _, _ -> AuthOutcome.SUCCEEDED } }
         val failed = await<UnlockUiState.Failed>()
         assertEquals("res:${R.string.failure_key_invalidated}(OLD-PHONE-ID)", failed.message)
         assertEquals(Retry.SCAN_AGAIN, failed.retry)
@@ -488,9 +501,9 @@ class UnlockFlowTest {
     @Test
     fun aKeyThatDoesNotRespondDeclinesAndSaysSo() {
         val session = connectToARequest()
-        agreeFails = KeyUseTimedOut(20)
+        unwrapFails = KeyUseTimedOut(20)
 
-        onMain { flow.approve { _, _ -> AuthOutcome.SUCCEEDED } }
+        onMain { flow.approve { _, _, _ -> AuthOutcome.SUCCEEDED } }
         val failed = await<UnlockUiState.Failed>()
         assertEquals("res:${R.string.failure_key_timed_out}", failed.message)
         assertEquals(1, session.declines.size)
@@ -519,7 +532,7 @@ class UnlockFlowTest {
     fun approvingInTimeIsNotUndoneWhenTheWindowWouldHaveEnded() {
         connectToARequest()
 
-        onMain { flow.approve { _, _ -> AuthOutcome.SUCCEEDED } }
+        onMain { flow.approve { _, _, _ -> AuthOutcome.SUCCEEDED } }
         await<UnlockUiState.Done>()
         Thread.sleep(2_000)
         assertTrue("the expiry fired after an answer: ${flow.state.value}", flow.state.value is UnlockUiState.Done)
@@ -533,6 +546,75 @@ class UnlockFlowTest {
         await<UnlockUiState.Ready>()
         Thread.sleep(2_000)
         assertTrue("the expiry fired after a decline: ${flow.state.value}", flow.state.value is UnlockUiState.Ready)
+    }
+
+    // The fingerprint is bound to the one operation that unwraps the key: the
+    // cipher the flow prepares is the one the prompt authenticates, and the one that
+    // then unwraps. A prompt that authenticated some other cipher would prove nothing.
+    @Test
+    fun thePromptAuthenticatesTheCipherThatThenUnwrapsTheKey() {
+        val session = connectToARequest()
+        var seenByThePrompt: Cipher? = null
+
+        onMain {
+            flow.approve { _, _, cipher ->
+                seenByThePrompt = cipher
+                AuthOutcome.SUCCEEDED
+            }
+        }
+        await<UnlockUiState.Done>()
+
+        assertEquals(1, preparedCiphers.size)
+        assertSame("the prompt was given a different cipher from the one prepared", preparedCiphers.single(), seenByThePrompt)
+        assertSame("the key was unwrapped with a different cipher from the one authenticated", preparedCiphers.single(), unwrappedWith.single())
+        assertTrue(session.answered)
+    }
+
+    // Declining the prompt must not unwrap anything.
+    @Test
+    fun aDeclinedPromptNeverUnwrapsTheKey() {
+        val session = connectToARequest()
+
+        onMain { flow.approve { _, _, _ -> AuthOutcome.CANCELLED } }
+        await<UnlockUiState.Failed>()
+
+        assertTrue("the key was unwrapped without authentication", unwrappedWith.isEmpty())
+        assertFalse(session.answered)
+    }
+
+    // A key that was retired by a new fingerprint is found when the cipher is
+    // prepared, before any prompt, so nobody is asked to touch the sensor for an
+    // answer that cannot be given.
+    @Test
+    fun aKeyThatWasInvalidatedIsFoundBeforeThePromptAppears() {
+        val session = connectToARequest()
+        prepareFails = KeyInvalidated(RuntimeException("Key permanently invalidated"))
+        var prompted = false
+
+        onMain { flow.approve { _, _, _ -> prompted = true; AuthOutcome.SUCCEEDED } }
+        val failed = await<UnlockUiState.Failed>()
+
+        assertFalse("the person was asked for a fingerprint for a key that is gone", prompted)
+        assertEquals("res:${R.string.failure_key_invalidated}(OLD-PHONE-ID)", failed.message)
+        assertEquals(Retry.SCAN_AGAIN, failed.retry)
+        assertEquals(1, identityResets)
+        assertEquals(1, session.declines.size)
+        assertFalse(session.answered)
+        assertTrue("the session was never closed", awaitClosed(session))
+    }
+
+    @Test
+    fun aFailureToPrepareTheKeyDeclinesAndSaysSo() {
+        val session = connectToARequest()
+        prepareFails = IllegalStateException("no key holder key under alias x")
+
+        onMain { flow.approve { _, _, _ -> AuthOutcome.SUCCEEDED } }
+        val failed = await<UnlockUiState.Failed>()
+
+        assertEquals("res:${R.string.failure_other}", failed.message)
+        assertEquals(1, session.declines.size)
+        assertEquals(0, identityResets)
+        assertTrue(awaitClosed(session))
     }
 
     // A software-backed key (decided 2026-10-28: fail closed, with an opt-in)
@@ -570,23 +652,10 @@ class UnlockFlowTest {
     }
 
     @Test
-    fun anExpiredBiometricWindowDeclinesAndSaysToTryAgain() {
-        val session = connectToARequest()
-        agreeFails = AuthenticationExpired(RuntimeException("User not authenticated"))
-
-        onMain { flow.approve { _, _ -> AuthOutcome.SUCCEEDED } }
-        val failed = await<UnlockUiState.Failed>()
-        assertEquals("res:${R.string.failure_auth_expired}", failed.message)
-        assertEquals(Retry.REFRESH, failed.retry)
-        assertEquals(0, identityResets)
-        assertEquals(1, session.declines.size)
-    }
-
-    @Test
     fun anApprovedRequestIsAnswered() {
         val session = connectToARequest()
 
-        onMain { flow.approve { _, _ -> AuthOutcome.SUCCEEDED } }
+        onMain { flow.approve { _, _, _ -> AuthOutcome.SUCCEEDED } }
         await<UnlockUiState.Done>()
         assertTrue(session.answered)
         assertTrue(session.declines.isEmpty())
@@ -667,8 +736,8 @@ private class FakeSession(
     override fun peerId() = "PEER"
     override fun hasRequest() = true
     override fun requestKidHex() = "ab"
-    override fun answer(agree: (ByteArray, ByteArray) -> ByteArray) {
-        agree(ByteArray(32), ByteArray(32))
+    override fun answer(unwrap: () -> ByteArray) {
+        unwrap()
         answered = true
     }
 }

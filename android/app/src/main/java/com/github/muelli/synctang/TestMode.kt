@@ -47,5 +47,6 @@ object TestMode {
  * satisfy; with a gated key this would simply make the ECDH fail.
  */
 object OpenGate : BiometricGate {
-    override suspend fun authenticate(title: String, subtitle: String): AuthOutcome = AuthOutcome.SUCCEEDED
+    override suspend fun authenticate(title: String, subtitle: String, cipher: javax.crypto.Cipher): AuthOutcome =
+        AuthOutcome.SUCCEEDED
 }

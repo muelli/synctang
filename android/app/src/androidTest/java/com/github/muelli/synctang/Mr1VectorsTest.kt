@@ -75,16 +75,39 @@ class Mr1VectorsTest {
         assertTrue("a wrong x-coordinate must be an error, not a wrong secret", threw)
     }
 
+    // The key holder's scalar is made and used in Go now, so the new calls have to
+    // be right through the binding: the public point of the vector's scalar is the
+    // vector's, and nothing that is not a scalar is accepted.
     @Test
-    fun affineCoordinatesSplitTheChallengePointAsSec1Says() {
-        val point = hex("recover", "X")
-        val x = Mobile.affineX(point)
-        val y = Mobile.affineY(point)
+    fun thePublicPointOfTheVectorScalarMatchesTheVector() {
+        assertArrayEquals(
+            hex("recipient", "S"),
+            Mobile.publicPointOf(hex("recipient", "s_scalar")),
+        )
+    }
 
-        assertEquals(32, x.size)
-        assertEquals(32, y.size)
-        assertArrayEquals(point.copyOfRange(1, 33), x)
-        assertArrayEquals(point.copyOfRange(33, 65), y)
+    @Test
+    fun somethingThatIsNotAScalarIsRefusedThroughTheBinding() {
+        for (bad in listOf(ByteArray(0), ByteArray(31), ByteArray(32), ByteArray(32) { 0xff.toByte() })) {
+            var threw = false
+            try {
+                Mobile.publicPointOf(bad)
+            } catch (e: Exception) {
+                threw = true
+            }
+            assertTrue("accepted a scalar of ${bad.size} bytes", threw)
+        }
+    }
+
+    @Test
+    fun aNewKeyScalarIsFreshAndItsPointIsOnTheCurve() {
+        val a = Mobile.newKeyScalar()
+        val b = Mobile.newKeyScalar()
+        assertEquals(32, a.size)
+        assertNotEquals(a.toList(), b.toList())
+        val point = Mobile.publicPointOf(a)
+        assertEquals(65, point.size)
+        assertEquals(4.toByte(), point[0])
     }
 
     @Test

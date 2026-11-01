@@ -30,7 +30,10 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
     // Alias and gating both come from TestMode, together: an ungated
     // key lives under its own alias so it can never be mistaken for
     // the real one.
+    // The wrapped key goes in the directory Android does not back up: a restore
+    // onto another phone could only bring back a file nothing there can unwrap.
     private val key = KeyHolderKey(
+        directory = application.noBackupFilesDir,
         alias = TestMode.aliasFor(TestMode.noBiometric),
         requireUserAuthentication = !TestMode.noBiometric,
     )
@@ -46,9 +49,10 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
         identity = ::identity,
         newSession = { machine -> GoSession(machine, store.identitySeed(), multicastLock) },
         newPairing = { GoPairing(store.identitySeed(), multicastLock) },
+        prepareKey = key::prepareUnwrap,
         // On its own thread with a limit: a Keystore call can hang, and a
         // hung one cannot be interrupted, only left behind.
-        agree = { x, y -> runWithin(KEY_USE_TIMEOUT_SECONDS) { key.agree(x, y) } },
+        unwrapKey = { cipher -> runWithin(KEY_USE_TIMEOUT_SECONDS) { key.unwrap(cipher) } },
         resetIdentity = ::resetIdentity,
         allowSoftwareKey = store::allowSoftwareKey,
         strings = object : Strings {
@@ -138,11 +142,17 @@ private class GoSession(
     override fun hasRequest() = session.hasRequest()
     override fun requestKidHex() = session.requestKid().toHex()
 
-    override fun answer(agree: (ByteArray, ByteArray) -> ByteArray) {
-        // Not classified as a whole: agree's own failures (an expired
-        // or invalidated key) must reach the flow as themselves.
-        val xOnly = agree(session.requestPointAffineX(), session.requestPointAffineY())
-        classified(session::lastFailure, session::lastFailureDetail) { session.answerXOnly(xOnly) }
+    override fun answer(unwrap: () -> ByteArray) {
+        // Not classified as a whole: the unwrapping's own failures (a retired key, a
+        // Keystore that does not answer) must reach the flow as themselves.
+        val scalar = unwrap()
+        try {
+            // The Go side multiplies the machine's challenge point by the scalar and
+            // wipes its copy; this wipes the app's, whatever happens.
+            classified(session::lastFailure, session::lastFailureDetail) { session.answerWithScalar(scalar) }
+        } finally {
+            scalar.fill(0)
+        }
     }
 
     private companion object {

@@ -5,30 +5,24 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import javax.crypto.Cipher
 import kotlin.coroutines.resume
 import kotlinx.coroutines.suspendCancellableCoroutine
 
 /**
  * The real biometric prompt.
  *
- * Note what this does NOT do: it does not pass a
- * BiometricPrompt.CryptoObject. There is no CryptoObject constructor
- * for a KeyAgreement on any Android release up to and including API 34
- * (the constructors are Signature, Cipher, Mac, IdentityCredential and
- * PresentationSession), so a key with PURPOSE_AGREE_KEY cannot be
- * bound to a prompt operation the way a Cipher key can.
- *
- * The gate is therefore enforced by the Keystore rather than by this
- * prompt: the key is created with a short authentication validity
- * window and AUTH_BIOMETRIC_STRONG (see KeyHolderKey), so Keymint
- * refuses the ECDH unless a strong biometric matched within that
- * window. This prompt is how the window gets opened; it is not the
- * thing an attacker could skip to avoid the check, because skipping it
- * leaves the key unusable.
+ * It is handed the cipher the key will be unwrapped with and passes it to the
+ * prompt as its CryptoObject. That is what makes the fingerprint specific to this
+ * one use: the secure hardware that holds the wrapping key will let this cipher,
+ * and nothing else, decrypt once a strong biometric has matched, and not again
+ * without another. Skipping the prompt does not help an attacker, because the
+ * cipher is then simply refused; the prompt is not the check, it is how the hardware
+ * is told the check passed.
  */
 class BiometricGateImpl(private val activity: FragmentActivity) : BiometricGate {
 
-    override suspend fun authenticate(title: String, subtitle: String): AuthOutcome {
+    override suspend fun authenticate(title: String, subtitle: String, cipher: Cipher): AuthOutcome {
         val manager = BiometricManager.from(activity)
         val can = manager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
         authOutcomeForCapability(can)?.let { return it }
@@ -60,7 +54,7 @@ class BiometricGateImpl(private val activity: FragmentActivity) : BiometricGate 
                 .build()
 
             continuation.invokeOnCancellation { prompt.cancelAuthentication() }
-            prompt.authenticate(info)
+            prompt.authenticate(info, BiometricPrompt.CryptoObject(cipher))
         }
     }
 }
