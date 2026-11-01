@@ -31,6 +31,7 @@ internal fun DoneScreen(state: UnlockUiState.Done, onDone: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .focusRequester(rememberAutoFocusRequester())
+            .shortcut(AppAction.UNLOCK_AGAIN, onInvoke = onDone)
             .focusRing(),
     ) {
         Text(stringResource(R.string.unlock_again))

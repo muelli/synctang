@@ -17,6 +17,7 @@
     <string name="pair_invalid">That is not a pairing link or a machine device ID.</string>
     <string name="enrol_manual_title">Enrol by hand</string>
     <string name="enrol_manual_hint">Only for a machine that cannot show a pairing code. Run this on the machine, once, to let this phone unlock it.</string>
+    <string name="pair_copied">Copied to the clipboard.</string>
     <string name="pair_copy">Copy the enrolment command</string>
     <string name="pair_by_hand">No pairing code? Enrol by hand</string>
     <string name="pair_again">Pair with a machine again</string>
@@ -63,6 +64,8 @@
     <string name="unlock_request_identity">Device ID</string>
     <string name="identity_matches">This is the machine this phone was paired with.</string>
     <string name="identity_mismatch">This is not the machine this phone was paired with.</string>
+    <string name="identifier_show_all_of">Show in full: %1$s</string>
+    <string name="identifier_show_less_of">Show less: %1$s</string>
     <string name="identifier_show_all">Show in full</string>
     <string name="identifier_show_less">Show less</string>
     <string name="unlock_request_key">Key requested</string>

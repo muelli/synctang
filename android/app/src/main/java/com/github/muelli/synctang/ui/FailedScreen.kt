@@ -43,11 +43,13 @@ internal fun FailedScreen(state: UnlockUiState.Failed, onRetry: () -> Unit, onSc
     // a fresh scan, not a dial against a machine that never enrolled
     // this phone.
     val scanAgain = state.retry == Retry.SCAN_AGAIN
+    val again = if (scanAgain) onScanAgain else onRetry
     Button(
-        onClick = if (scanAgain) onScanAgain else onRetry,
+        onClick = again,
         modifier = Modifier
             .fillMaxWidth()
             .focusRequester(rememberAutoFocusRequester())
+            .shortcut(if (scanAgain) AppAction.SCAN_AGAIN else AppAction.RETRY, onInvoke = again)
             .focusRing(),
     ) {
         Text(stringResource(if (scanAgain) R.string.error_scan_again else R.string.error_retry))
@@ -57,7 +59,10 @@ internal fun FailedScreen(state: UnlockUiState.Failed, onRetry: () -> Unit, onSc
     // never pushes the action off a small screen.
     state.technical?.let { technical ->
         var showDetails by rememberSaveable { mutableStateOf(false) }
-        TextButton(onClick = { showDetails = !showDetails }, modifier = Modifier.focusRing()) {
+        TextButton(
+            onClick = { showDetails = !showDetails },
+            modifier = Modifier.shortcut(AppAction.TOGGLE_DETAILS) { showDetails = !showDetails }.focusRing(),
+        ) {
             Text(stringResource(if (showDetails) R.string.error_details_hide else R.string.error_details_show))
         }
         if (showDetails) {

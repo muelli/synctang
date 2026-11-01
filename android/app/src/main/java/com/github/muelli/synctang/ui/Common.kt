@@ -37,6 +37,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.github.muelli.synctang.Identity
@@ -44,7 +47,6 @@ import com.github.muelli.synctang.KeyHolderKey
 import com.github.muelli.synctang.Machine
 import com.github.muelli.synctang.R
 import com.github.muelli.synctang.focusRing
-import com.github.muelli.synctang.onEscape
 
 /** Spacing shared by every screen, so that they line up with each other. */
 internal object Spacing {
@@ -81,7 +83,7 @@ internal fun ScreenColumn(modifier: Modifier = Modifier, content: @Composable Co
 @Composable
 internal fun ScreenHeader(title: String, explanation: String? = null) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.small)) {
-        Text(title, style = MaterialTheme.typography.headlineSmall)
+        Text(title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
         explanation?.let {
             Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -93,7 +95,7 @@ internal fun ScreenHeader(title: String, explanation: String? = null) {
 internal fun StatusHeader(icon: ImageVector, tint: Color, headline: String, detail: String?) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.small)) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(Spacing.statusIcon))
-        Text(headline, style = MaterialTheme.typography.headlineSmall)
+        Text(headline, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
         detail?.let {
             SelectionContainer {
                 Text(it, style = MaterialTheme.typography.bodyLarge)
@@ -118,10 +120,11 @@ internal fun MachineName(machine: Machine) {
  * identity itself. The name alone proves nothing; the machine chose it.
  */
 @Composable
-internal fun MachineIdentity(machine: Machine, peerId: String, onEscape: () -> Unit) {
+internal fun MachineIdentity(machine: Machine, peerId: String) {
     MachineName(machine)
     val matches = sameDeviceId(peerId, machine.deviceId)
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    // One thing to a screen reader: the verdict, not an icon and a sentence.
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.semantics(mergeDescendants = true) {}) {
         Icon(
             if (matches) Icons.Filled.CheckCircle else Icons.Filled.Warning,
             contentDescription = null,
@@ -134,7 +137,12 @@ internal fun MachineIdentity(machine: Machine, peerId: String, onEscape: () -> U
             style = MaterialTheme.typography.bodyMedium,
         )
     }
-    Identifier(stringResource(R.string.unlock_request_identity), peerId, shortDeviceId(peerId), onEscape)
+    Identifier(
+        stringResource(R.string.unlock_request_identity),
+        peerId,
+        shortDeviceId(peerId),
+        AppAction.TOGGLE_DEVICE_ID,
+    )
 }
 
 /**
@@ -142,21 +150,33 @@ internal fun MachineIdentity(machine: Machine, peerId: String, onEscape: () -> U
  * away and selectable, for comparing against what a machine prints.
  */
 @Composable
-internal fun Identifier(label: String, full: String, short: String, onEscape: () -> Unit = {}) {
+internal fun Identifier(label: String, full: String, short: String, toggle: AppAction) {
     var expanded by rememberSaveable(full) { mutableStateOf(false) }
     Column {
-        Text(label, style = MaterialTheme.typography.labelMedium)
-        SelectionContainer {
-            Text(
-                if (expanded) full else short,
-                style = MaterialTheme.typography.bodyMedium,
-                fontFamily = FontFamily.Monospace,
-            )
+        // Read together: a value with no name is no use to listen to.
+        Column(Modifier.semantics(mergeDescendants = true) {}) {
+            Text(label, style = MaterialTheme.typography.labelMedium)
+            SelectionContainer {
+                Text(
+                    if (expanded) full else short,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontFamily = FontFamily.Monospace,
+                )
+            }
         }
         if (short != full) {
+            // Said with what it applies to: there are two of these on
+            // the approval screen, and "Show all" twice says nothing.
+            val describe = stringResource(
+                if (expanded) R.string.identifier_show_less_of else R.string.identifier_show_all_of,
+                label,
+            )
             TextButton(
                 onClick = { expanded = !expanded },
-                modifier = Modifier.onEscape(onEscape).focusRing(),
+                modifier = Modifier
+                    .semantics { contentDescription = describe }
+                    .shortcut(toggle) { expanded = !expanded }
+                    .focusRing(),
             ) {
                 Text(stringResource(if (expanded) R.string.identifier_show_less else R.string.identifier_show_all))
             }

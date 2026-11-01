@@ -20,6 +20,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.github.muelli.synctang.QrScanner
@@ -81,6 +84,7 @@ internal fun PairingScreen(
         enabled = typed.isNotBlank(),
         modifier = Modifier
             .fillMaxWidth()
+            .shortcut(AppAction.PAIR, enabled = typed.isNotBlank()) { rejected = !onPair(typed) }
             .focusRing(),
     ) {
         Text(stringResource(R.string.pair_manual_action))
@@ -90,6 +94,9 @@ internal fun PairingScreen(
             stringResource(R.string.pair_invalid),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.error,
+            // Heard as it appears: the field keeps focus, so nothing
+            // else tells a screen reader that the pairing was refused.
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive },
         )
     }
     state.previous?.let { previous ->
@@ -97,6 +104,7 @@ internal fun PairingScreen(
             onClick = onKeepCurrent,
             modifier = Modifier
                 .fillMaxWidth()
+                .shortcut(AppAction.KEEP_CURRENT, onInvoke = onKeepCurrent)
                 .focusRing(),
         ) {
             Text(stringResource(R.string.pair_keep_current, previous.name.ifBlank { previous.deviceId }))
@@ -105,7 +113,10 @@ internal fun PairingScreen(
 
     // For a machine that cannot show a pairing code: the command lives
     // with the phone's other details rather than on every first run.
-    TextButton(onClick = onEnrolByHand, modifier = Modifier.focusRing()) {
+    TextButton(
+        onClick = onEnrolByHand,
+        modifier = Modifier.shortcut(AppAction.ENROL_BY_HAND, onInvoke = onEnrolByHand).focusRing(),
+    ) {
         Text(stringResource(R.string.pair_by_hand))
     }
 }

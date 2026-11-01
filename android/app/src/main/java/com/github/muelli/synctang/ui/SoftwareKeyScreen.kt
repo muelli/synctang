@@ -30,6 +30,9 @@ internal fun SoftwareKeyScreen(onAllow: () -> Unit) {
         onClick = onAllow,
         modifier = Modifier
             .fillMaxWidth()
+            // Deliberately without a key, and without initial focus: see
+            // AppAction.ALLOW_SOFTWARE_KEY.
+            .shortcut(AppAction.ALLOW_SOFTWARE_KEY, onInvoke = onAllow)
             .focusRing(),
     ) {
         Text(stringResource(R.string.software_key_allow))

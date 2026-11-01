@@ -7,17 +7,23 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import com.github.muelli.synctang.Identity
 import com.github.muelli.synctang.R
 import com.github.muelli.synctang.UnlockUiState
 import com.github.muelli.synctang.enrolCommand
 import com.github.muelli.synctang.focusRing
-import com.github.muelli.synctang.onEscape
 
 /**
  * The phone's identity, when About this phone may be opened over
@@ -36,13 +42,13 @@ fun aboutIdentity(state: UnlockUiState): Identity? = when (state) {
  * for a machine that cannot show a pairing code.
  */
 @Composable
-internal fun AboutScreen(identity: Identity, version: String, onClose: () -> Unit) {
+internal fun AboutScreen(identity: Identity, version: String) {
     SectionTitle(stringResource(R.string.about_phone_title))
     Labelled(stringResource(R.string.identity_device_id), identity.deviceId)
     Labelled(stringResource(R.string.identity_public_key), identity.publicKeyHex)
     Text(identity.backingDescription(), style = MaterialTheme.typography.bodySmall)
 
-    EnrolmentDetails(identity, onClose)
+    EnrolmentDetails(identity)
 
     Text(stringResource(R.string.about_version, version), style = MaterialTheme.typography.bodySmall)
 }
@@ -53,7 +59,7 @@ internal fun AboutScreen(identity: Identity, version: String, onClose: () -> Uni
  * loose hex strings, because that is the form it is actually used in.
  */
 @Composable
-private fun EnrolmentDetails(identity: Identity, onClose: () -> Unit) {
+private fun EnrolmentDetails(identity: Identity) {
     val context = LocalContext.current
     val command = remember(identity) {
         enrolCommand(identity.publicKeyHex, identity.deviceId)
@@ -68,18 +74,32 @@ private fun EnrolmentDetails(identity: Identity, onClose: () -> Unit) {
             fontFamily = FontFamily.Monospace,
         )
     }
+    var copied by remember(command) { mutableStateOf(false) }
+    val copy = {
+        context.copyToClipboard(command)
+        copied = true
+    }
     OutlinedButton(
-        onClick = { context.copyToClipboard(command) },
+        onClick = copy,
         modifier = Modifier
             .fillMaxWidth()
-            .onEscape(onClose)
+            .shortcut(AppAction.COPY_COMMAND, onInvoke = copy)
             .focusRing(),
     ) {
         Text(stringResource(R.string.pair_copy))
+    }
+    // Android 13 and later say so themselves; earlier versions, and a
+    // screen reader, would otherwise get no sign that anything happened.
+    if (copied) {
+        Text(
+            stringResource(R.string.pair_copied),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+        )
     }
 }
 
 @Composable
 internal fun SectionTitle(text: String) {
-    Text(text, style = MaterialTheme.typography.titleMedium)
+    Text(text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
 }

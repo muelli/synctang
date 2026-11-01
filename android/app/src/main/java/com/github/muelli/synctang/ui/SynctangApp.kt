@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 package com.github.muelli.synctang.ui
 
+import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -21,7 +22,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,6 +37,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
@@ -45,12 +49,18 @@ import com.github.muelli.synctang.UnlockUiState
 import com.github.muelli.synctang.UnlockViewModel
 import com.github.muelli.synctang.backAction
 import com.github.muelli.synctang.focusRing
-import com.github.muelli.synctang.onEscape
 import com.github.muelli.synctang.rememberAutoFocusRequester
+
+@Composable
+internal fun SynctangApp(gate: BiometricGate, shortcuts: ShortcutRegistry, model: UnlockViewModel = viewModel()) {
+    CompositionLocalProvider(LocalShortcuts provides shortcuts) {
+        SynctangScreens(gate, model)
+    }
+}
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-fun SynctangApp(gate: BiometricGate, model: UnlockViewModel = viewModel()) {
+private fun SynctangScreens(gate: BiometricGate, model: UnlockViewModel) {
     val state by model.state.collectAsState()
 
     // About this phone is a flag rather than a route: there is one
@@ -74,6 +84,14 @@ fun SynctangApp(gate: BiometricGate, model: UnlockViewModel = viewModel()) {
         }
     }
 
+    // The window is named for the screen it shows: the app, then the
+    // screen. That is what the task switcher lists and what a screen
+    // reader announces when it changes.
+    val screen = stringResource(screenTitle(state, aboutOpen = about != null))
+    val windowTitle = stringResource(R.string.window_title, stringResource(R.string.app_name), screen)
+    val activity = LocalContext.current as? Activity
+    SideEffect { activity?.title = windowTitle }
+
     val snackbar = remember { SnackbarHostState() }
     UndoReplace(state as? UnlockUiState.Ready, snackbar, model)
 
@@ -93,9 +111,9 @@ fun SynctangApp(gate: BiometricGate, model: UnlockViewModel = viewModel()) {
         // The Surface around this already paints the background.
         containerColor = Color.Transparent,
     ) { padding ->
-        ScreenColumn(Modifier.padding(padding)) {
+        ScreenColumn(Modifier.padding(padding).semantics { paneTitle = screen }) {
             if (about != null) {
-                AboutScreen(about, appVersion(), onClose = { aboutOpen = false })
+                AboutScreen(about, appVersion())
                 return@ScreenColumn
             }
             when (val current = state) {
@@ -131,7 +149,7 @@ internal fun AppBar(aboutOpen: Boolean, onOpenAbout: (() -> Unit)?, onCloseAbout
                     onClick = onCloseAbout,
                     modifier = Modifier
                         .focusRequester(rememberAutoFocusRequester())
-                        .onEscape(onCloseAbout)
+                        .shortcut(AppAction.CLOSE_ABOUT, onInvoke = onCloseAbout)
                         .focusRing(),
                 ) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.about_close))
@@ -140,7 +158,10 @@ internal fun AppBar(aboutOpen: Boolean, onOpenAbout: (() -> Unit)?, onCloseAbout
         },
         actions = {
             if (!aboutOpen && onOpenAbout != null) {
-                IconButton(onClick = onOpenAbout, modifier = Modifier.focusRing()) {
+                IconButton(
+                    onClick = onOpenAbout,
+                    modifier = Modifier.shortcut(AppAction.OPEN_ABOUT, onInvoke = onOpenAbout).focusRing(),
+                ) {
                     Icon(Icons.Outlined.Info, contentDescription = stringResource(R.string.about_title))
                 }
             }
@@ -192,16 +213,20 @@ internal fun UndoReplace(ready: UnlockUiState.Ready?, snackbar: SnackbarHostStat
 internal fun UndoSnackbarHost(state: SnackbarHostState) {
     SnackbarHost(state) { data ->
         Snackbar(
-            modifier = Modifier
-                .padding(12.dp)
-                .onEscape { data.dismiss() },
+            modifier = Modifier.padding(12.dp),
             action = {
-                TextButton(onClick = { data.performAction() }, modifier = Modifier.focusRing()) {
+                TextButton(
+                    onClick = { data.performAction() },
+                    modifier = Modifier.shortcut(AppAction.UNDO) { data.performAction() }.focusRing(),
+                ) {
                     Text(data.visuals.actionLabel.orEmpty())
                 }
             },
             dismissAction = {
-                TextButton(onClick = { data.dismiss() }, modifier = Modifier.focusRing()) {
+                TextButton(
+                    onClick = { data.dismiss() },
+                    modifier = Modifier.shortcut(AppAction.DISMISS) { data.dismiss() }.focusRing(),
+                ) {
                     Text(stringResource(R.string.pair_undo_dismiss))
                 }
             },

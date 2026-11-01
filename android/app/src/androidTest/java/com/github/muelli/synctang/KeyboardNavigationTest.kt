@@ -122,44 +122,6 @@ class KeyboardNavigationTest {
     }
 
     /**
-     * Escape is how a desktop user backs out of something. On the
-     * approval screens that means declining, which is the safe
-     * direction: the machine is told no and stays locked.
-     */
-    @Test
-    fun escapeTriggersTheHandler() {
-        var escaped = 0
-        rule.setContent {
-            Button(
-                onClick = {},
-                modifier = Modifier.testTag("button").onEscape { escaped++ },
-            ) { Text("button") }
-        }
-
-        rule.onNodeWithTag("button").requestFocus()
-        rule.onNodeWithTag("button").performKeyInput { pressKey(Key.Escape) }
-
-        rule.runOnIdle { assertEquals(1, escaped) }
-    }
-
-    /** Any other key must still reach whatever would normally handle it. */
-    @Test
-    fun onEscapeDoesNotSwallowOtherKeys() {
-        var escaped = 0
-        rule.setContent {
-            Button(
-                onClick = {},
-                modifier = Modifier.testTag("button").onEscape { escaped++ },
-            ) { Text("button") }
-        }
-
-        rule.onNodeWithTag("button").requestFocus()
-        rule.onNodeWithTag("button").performKeyInput { pressKey(Key.A) }
-
-        rule.runOnIdle { assertEquals(0, escaped) }
-    }
-
-    /**
      * Every screen should arrive with its primary action already
      * focused, so that a keyboard user can act without first hunting
      * for where focus went.

@@ -2,8 +2,13 @@
 package com.github.muelli.synctang
 
 import android.os.Bundle
+import android.view.KeyEvent
+import android.view.KeyboardShortcutGroup
+import android.view.KeyboardShortcutInfo
+import android.view.Menu
 import androidx.activity.compose.setContent
 import androidx.fragment.app.FragmentActivity
+import com.github.muelli.synctang.ui.ShortcutRegistry
 import com.github.muelli.synctang.ui.SynctangApp
 import com.github.muelli.synctang.ui.SynctangTheme
 
@@ -20,6 +25,9 @@ import com.github.muelli.synctang.ui.SynctangTheme
  */
 class MainActivity : FragmentActivity() {
 
+    /** What the screens on show can be told to do by key; see [ShortcutRegistry]. */
+    private val shortcuts = ShortcutRegistry()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // The gate is an interface, so test mode swaps it rather than
@@ -30,8 +38,38 @@ class MainActivity : FragmentActivity() {
             if (TestMode.noBiometric) OpenGate else BiometricGateImpl(this)
         setContent {
             SynctangTheme {
-                SynctangApp(gate)
+                SynctangApp(gate, shortcuts)
             }
+        }
+    }
+
+    /**
+     * Keys are taken here, before whatever has focus sees them, so they
+     * work on a screen where nothing is focused (a spinner, a keyboard
+     * just attached) and cannot be swallowed by a text field. A held
+     * key does not repeat an action: Approve must take one press.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN &&
+            event.repeatCount == 0 &&
+            shortcuts.handle(event.keyCode, event.isCtrlPressed, event.isShiftPressed, event.isAltPressed, event.isMetaPressed)
+        ) {
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    /** What Android shows for Meta+/: the keys of the screen as it is now. */
+    override fun onProvideKeyboardShortcuts(data: MutableList<KeyboardShortcutGroup>, menu: Menu?, deviceId: Int) {
+        super.onProvideKeyboardShortcuts(data, menu, deviceId)
+        val infos = shortcuts.available.mapNotNull { action ->
+            val chord = action.chord ?: return@mapNotNull null
+            val modifiers = (if (chord.ctrl) KeyEvent.META_CTRL_ON else 0) or
+                (if (chord.shift) KeyEvent.META_SHIFT_ON else 0)
+            KeyboardShortcutInfo(getString(action.label), chord.keyCode, modifiers)
+        }
+        if (infos.isNotEmpty()) {
+            data.add(0, KeyboardShortcutGroup(getString(R.string.shortcut_group_title), infos))
         }
     }
 }

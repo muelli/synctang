@@ -15,14 +15,18 @@ import androidx.compose.ui.res.stringResource
 import com.github.muelli.synctang.R
 import com.github.muelli.synctang.UnlockUiState
 import com.github.muelli.synctang.focusRing
-import com.github.muelli.synctang.onEscape
 import com.github.muelli.synctang.rememberAutoFocusRequester
 
 @Composable
 internal fun ApproveScreen(state: UnlockUiState.Approve, onApprove: () -> Unit, onDecline: () -> Unit) {
     ScreenHeader(stringResource(R.string.unlock_request_title), stringResource(R.string.approve_explanation))
-    MachineIdentity(state.machine, state.peerId, onEscape = onDecline)
-    Identifier(stringResource(R.string.unlock_request_key), state.kidHex, shortKeyId(state.kidHex), onDecline)
+    MachineIdentity(state.machine, state.peerId)
+    Identifier(
+        stringResource(R.string.unlock_request_key),
+        state.kidHex,
+        shortKeyId(state.kidHex),
+        AppAction.TOGGLE_KEY_ID,
+    )
 
     // Focus starts on Approve even though it is the consequential
     // button, because approving still has to get past BiometricPrompt:
@@ -34,7 +38,7 @@ internal fun ApproveScreen(state: UnlockUiState.Approve, onApprove: () -> Unit, 
         modifier = Modifier
             .heroAction()
             .focusRequester(rememberAutoFocusRequester())
-            .onEscape(onDecline)
+            .shortcut(AppAction.APPROVE, onInvoke = onApprove)
             .focusRing(),
     ) {
         Text(stringResource(R.string.unlock_approve), style = MaterialTheme.typography.titleMedium)
@@ -43,7 +47,7 @@ internal fun ApproveScreen(state: UnlockUiState.Approve, onApprove: () -> Unit, 
         onClick = onDecline,
         modifier = Modifier
             .fillMaxWidth()
-            .onEscape(onDecline)
+            .shortcut(AppAction.DECLINE, onInvoke = onDecline)
             .focusRing(),
     ) {
         Text(stringResource(R.string.unlock_decline))

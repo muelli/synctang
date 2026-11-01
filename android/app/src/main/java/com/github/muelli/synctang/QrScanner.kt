@@ -40,6 +40,8 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.github.muelli.synctang.ui.AppAction
+import com.github.muelli.synctang.ui.shortcut
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.BinaryBitmap
 import com.google.zxing.DecodeHintType
@@ -263,7 +265,7 @@ fun CameraPermissionPrompt(
             Column(modifier) {
                 Button(
                     onClick = onAsk,
-                    modifier = Modifier.fillMaxWidth().focusRing(),
+                    modifier = Modifier.fillMaxWidth().shortcut(AppAction.GRANT_CAMERA, onInvoke = onAsk).focusRing(),
                 ) {
                     Text(stringResource(R.string.pair_grant_camera))
                 }
@@ -274,7 +276,10 @@ fun CameraPermissionPrompt(
                 Text(stringResource(R.string.pair_camera_denied), style = MaterialTheme.typography.bodyMedium)
                 Button(
                     onClick = onOpenSettings,
-                    modifier = Modifier.fillMaxWidth().focusRing(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .shortcut(AppAction.OPEN_SETTINGS, onInvoke = onOpenSettings)
+                        .focusRing(),
                 ) {
                     Text(stringResource(R.string.pair_open_settings))
                 }

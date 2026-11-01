@@ -115,24 +115,6 @@ fun Modifier.tabMovesFocus(): Modifier {
 }
 
 /**
- * Runs [onEscape] when Escape is pressed while this element, or
- * anything inside it, has focus.
- *
- * Used on the two screens that ask a question, where backing out means
- * declining. That is the safe direction by construction: the machine is
- * told no and stays locked, which is also what happens if the person
- * simply walks away.
- */
-fun Modifier.onEscape(onEscape: () -> Unit): Modifier = onPreviewKeyEvent { event ->
-    if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
-        onEscape()
-        true
-    } else {
-        false
-    }
-}
-
-/**
  * Draws a visible ring around this element while it has focus.
  *
  * Material's own focus indication is faint, and was designed on the

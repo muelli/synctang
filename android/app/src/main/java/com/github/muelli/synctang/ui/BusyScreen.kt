@@ -17,11 +17,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.github.muelli.synctang.Machine
 import com.github.muelli.synctang.R
 import com.github.muelli.synctang.focusRing
-import com.github.muelli.synctang.onEscape
 import com.github.muelli.synctang.rememberAutoFocusRequester
 
 /**
@@ -35,7 +37,13 @@ internal fun Busy(message: String, machine: Machine? = null, onCancel: (() -> Un
     Row(verticalAlignment = Alignment.CenterVertically) {
         CircularProgressIndicator(modifier = Modifier.size(32.dp))
         Spacer(Modifier.width(Spacing.between))
-        Text(message, style = MaterialTheme.typography.titleMedium)
+        // Announced as it appears, since nothing else on this screen
+        // takes focus for a screen reader to land on.
+        Text(
+            message,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+        )
     }
     if (onCancel != null) {
         OutlinedButton(
@@ -43,7 +51,7 @@ internal fun Busy(message: String, machine: Machine? = null, onCancel: (() -> Un
             modifier = Modifier
                 .fillMaxWidth()
                 .focusRequester(rememberAutoFocusRequester())
-                .onEscape(onCancel)
+                .shortcut(AppAction.CANCEL, onInvoke = onCancel)
                 .focusRing(),
         ) {
             Text(stringResource(R.string.busy_cancel))

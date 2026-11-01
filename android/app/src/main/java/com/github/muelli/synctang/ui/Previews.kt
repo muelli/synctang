@@ -66,7 +66,7 @@ private fun CameraDeniedPreview() = Frame {
 @Preview(name = "About this phone", widthDp = 360, heightDp = 1000)
 @Composable
 private fun AboutPreview() = Frame(aboutOpen = true) {
-    AboutScreen(identity, "42", onClose = {})
+    AboutScreen(identity, "42")
 }
 
 @Preview(name = "Ready", widthDp = 360, heightDp = 640)

@@ -17,6 +17,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import com.github.muelli.synctang.R
 import com.github.muelli.synctang.UnlockUiState
@@ -29,7 +31,11 @@ internal fun ReadyScreen(state: UnlockUiState.Ready, onUnlock: () -> Unit, onPai
     // there is to act on.
     Column {
         Text(stringResource(R.string.ready_paired_with), style = MaterialTheme.typography.labelLarge)
-        Text(state.machine.label(), style = MaterialTheme.typography.headlineMedium)
+        Text(
+            state.machine.label(),
+            style = MaterialTheme.typography.headlineMedium,
+            modifier = Modifier.semantics { heading() },
+        )
         if (state.machine.name.isNotBlank()) {
             Text(
                 shortDeviceId(state.machine.deviceId),
@@ -49,6 +55,7 @@ internal fun ReadyScreen(state: UnlockUiState.Ready, onUnlock: () -> Unit, onPai
         modifier = Modifier
             .heroAction()
             .focusRequester(rememberAutoFocusRequester())
+            .shortcut(AppAction.UNLOCK, onInvoke = onUnlock)
             .focusRing(),
     ) {
         Icon(Icons.Filled.Lock, contentDescription = null)
@@ -57,7 +64,10 @@ internal fun ReadyScreen(state: UnlockUiState.Ready, onUnlock: () -> Unit, onPai
     }
     // Not destructive: the machine above stays paired, and stays the
     // one Unlock dials, until a new pairing has actually worked.
-    TextButton(onClick = onPairAgain, modifier = Modifier.focusRing()) {
+    TextButton(
+        onClick = onPairAgain,
+        modifier = Modifier.shortcut(AppAction.PAIR_AGAIN, onInvoke = onPairAgain).focusRing(),
+    ) {
         Text(stringResource(R.string.pair_again))
     }
 }
