@@ -83,7 +83,7 @@ func TestAnswerXOnlyGivesUpOnAMachineThatNeverReportsTheOutcome(t *testing.T) {
 	defer s.Close()
 
 	start := time.Now()
-	err = s.AnswerXOnly(make([]byte, 32))
+	err = s.answerXOnly(make([]byte, 32))
 	if err == nil {
 		t.Fatal("AnswerXOnly reported success without the machine's verdict")
 	}

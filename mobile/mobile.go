@@ -10,12 +10,14 @@
 // declared in this package cross the language boundary. No Go
 // interfaces, no slices of anything but bytes, no time.Time.
 //
-// The one thing deliberately NOT done here is the ECDH operation
-// itself. The key holder's long-term scalar lives in the Android
-// Keystore (ideally StrongBox) and is not readable by any process,
-// including this one, so the multiplication has to happen in Kotlin
-// via java.security.KeyAgreement. Session hands Kotlin the peer point
-// and takes back the resulting x-coordinate; see AnswerXOnly.
+// The key holder's long-term scalar is made here (NewKeyScalar) and
+// handed to the app once, to be wrapped by a key in the phone's secure
+// hardware that needs a fingerprint for every use. It cannot live in the
+// Android Keystore as an agreement key: on a phone whose Keymaster has no
+// key agreement (a Pixel 3a XL's, say) Android makes such a key in
+// software. So the app unwraps the scalar for one answer, hands it to
+// Session.AnswerWithScalar, which does the multiplication and wipes its
+// copy, and wipes its own.
 package mobile
 
 import (
@@ -170,21 +172,61 @@ func (c *Challenge) Finish(xOnly []byte) ([]byte, error) {
 	return mrcore.FinishXOnly(mrcore.P256(), append([]byte(nil), c.e...), c.rec, xOnly)
 }
 
-// AffineX returns the 32-byte x-coordinate of an uncompressed SEC1
-// point, and AffineY its y-coordinate. The Android side needs both to
-// rebuild the peer point as a java.security.spec.ECPublicKeySpec, and
-// parsing SEC1 is not something worth writing twice.
-func AffineX(point []byte) ([]byte, error) { return affineCoord(point, 1) }
-
-// AffineY returns the 32-byte y-coordinate of an uncompressed SEC1
-// point. See AffineX.
-func AffineY(point []byte) ([]byte, error) { return affineCoord(point, 1+coordLen) }
-
-func affineCoord(point []byte, off int) ([]byte, error) {
-	if len(point) != uncompressedPointLen || point[0] != 4 {
-		return nil, fmt.Errorf("mobile: not an uncompressed P-256 point (%d bytes)", len(point))
+// FinishWithScalar answers the challenge with the key holder's scalar,
+// as Session.AnswerWithScalar does, and completes the attempt. For the
+// instrumented test, which unwraps the real key and checks the machine
+// recovers what it enrolled.
+func (c *Challenge) FinishWithScalar(scalar []byte) ([]byte, error) {
+	defer mrcore.Wipe(scalar)
+	xOnly, err := xOnlyAnswer(c.x, scalar)
+	if err != nil {
+		return nil, err
 	}
-	return append([]byte(nil), point[off:off+coordLen]...), nil
+	return c.Finish(xOnly)
+}
+
+// NewKeyScalar returns a fresh long-term private scalar for a key
+// holder: 32 bytes, uniformly random and non-zero. The caller wraps it
+// at once and wipes it; nothing here keeps a copy.
+func NewKeyScalar() ([]byte, error) {
+	return mrcore.P256().RandomScalar()
+}
+
+// PublicPointOf returns the SEC1 uncompressed public point for a private
+// scalar, which is what a machine is enrolled against. It refuses
+// anything that is not a valid scalar: the wrong length, zero, or not
+// below the group order.
+func PublicPointOf(scalar []byte) ([]byte, error) {
+	if err := mrcore.ValidatePrivateScalar(scalar); err != nil {
+		return nil, fmt.Errorf("mobile: %w", err)
+	}
+	point, err := mrcore.P256().ScalarBaseMult(scalar)
+	if err != nil {
+		return nil, fmt.Errorf("mobile: not a valid scalar: %w", err)
+	}
+	return point, nil
+}
+
+// xOnlyAnswer is x(scalar . point), the 32-byte answer an x-only key
+// holder sends. It checks the point first: the scalar is about to be
+// applied to something a machine chose.
+func xOnlyAnswer(point, scalar []byte) ([]byte, error) {
+	g := mrcore.P256()
+	if err := mrcore.ValidateChallengePoint(g, point); err != nil {
+		return nil, withKind(FailureProtocol, fmt.Errorf("mobile: refusing the machine's challenge: %w", err))
+	}
+	if err := mrcore.ValidatePrivateScalar(scalar); err != nil {
+		return nil, fmt.Errorf("mobile: %w", err)
+	}
+	product, err := g.ScalarMult(point, scalar)
+	if err != nil {
+		return nil, fmt.Errorf("mobile: key agreement: %w", err)
+	}
+	defer mrcore.Wipe(product)
+	if len(product) != uncompressedPointLen || product[0] != 4 {
+		return nil, fmt.Errorf("mobile: key agreement gave %d bytes, not a point", len(product))
+	}
+	return append([]byte(nil), product[1:1+coordLen]...), nil
 }
 
 // machineNameMaxRunes and machineErrorMaxRunes bound text the machine
@@ -493,19 +535,6 @@ func (s *Session) RequestPoint() []byte {
 	return append([]byte(nil), s.x...)
 }
 
-// RequestPointAffineX and RequestPointAffineY are RequestPoint split
-// into the two raw coordinates the Android Keystore needs to rebuild
-// the peer key.
-func (s *Session) RequestPointAffineX() ([]byte, error) {
-	return AffineX(s.RequestPoint())
-}
-
-// RequestPointAffineY returns the challenge point's y-coordinate. See
-// RequestPointAffineX.
-func (s *Session) RequestPointAffineY() ([]byte, error) {
-	return AffineY(s.RequestPoint())
-}
-
 // HasRequest reports whether a recovery request has been received,
 // without the caller comparing byte slices in Kotlin.
 func (s *Session) HasRequest() bool {
@@ -514,13 +543,33 @@ func (s *Session) HasRequest() bool {
 	return len(s.x) > 0
 }
 
-// AnswerXOnly sends the x-coordinate of s.X back to the machine, which
+// AnswerWithScalar answers the machine's request with the key holder's
+// long-term scalar: it computes x(scalar . X) for the machine's challenge
+// point X, sends that, and waits for the machine's verdict. The scalar is
+// wiped before this returns, whatever happens; the caller wipes its own copy.
+func (s *Session) AnswerWithScalar(scalar []byte) (err error) {
+	defer mrcore.Wipe(scalar)
+	defer func() { s.failure.record(err) }()
+
+	point := s.RequestPoint()
+	if len(point) == 0 {
+		return errors.New("mobile: no recovery request to answer")
+	}
+	xOnly, err := xOnlyAnswer(point, scalar)
+	if err != nil {
+		return err
+	}
+	defer mrcore.Wipe(xOnly)
+	return s.answerXOnly(append([]byte(nil), xOnly...))
+}
+
+// answerXOnly sends the x-coordinate of s.X back to the machine, which
 // is the whole of a hardware-bound key holder's contribution: the
 // machine lifts it back to a point and finishes the recovery itself.
 // xOnly is what java.security.KeyAgreement.generateSecret() returns
 // for an EC key, which is the raw coordinate and not a KDF output
 // (confirmed on device, see docs/wp0-keystore-ecdh.md).
-func (s *Session) AnswerXOnly(xOnly []byte) (err error) {
+func (s *Session) answerXOnly(xOnly []byte) (err error) {
 	defer func() { s.failure.record(err) }()
 	s.mu.Lock()
 	defer s.mu.Unlock()

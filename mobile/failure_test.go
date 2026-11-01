@@ -91,7 +91,7 @@ func requestScript(t *testing.T, after func(transport.Conn)) func(transport.Conn
 func TestLastFailureOfAnAnswerWhoseOutcomeNeverArrives(t *testing.T) {
 	shortReplyTimeout(t)
 	s := connectedSession(t, "kind unknown", requestScript(t, func(transport.Conn) {}))
-	err := s.AnswerXOnly(make([]byte, 32))
+	err := s.answerXOnly(make([]byte, 32))
 	assertFailure(t, err, s.LastFailure(), s.LastFailureDetail(), FailureOutcomeUnknown, "")
 }
 
@@ -100,7 +100,7 @@ func TestLastFailureOfAnAnswerTheMachineCouldNotUse(t *testing.T) {
 	s := connectedSession(t, "kind rejected", requestScript(t, func(conn transport.Conn) {
 		_ = mrcore.WriteMessage(conn, mrcore.RecoverResult{OK: false, Error: reason})
 	}))
-	err := s.AnswerXOnly(make([]byte, 32))
+	err := s.answerXOnly(make([]byte, 32))
 	assertFailure(t, err, s.LastFailure(), s.LastFailureDetail(), FailureAnswerRejected, reason)
 }
 

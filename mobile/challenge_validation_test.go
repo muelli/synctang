@@ -25,8 +25,8 @@ func freeAddrForTest(t *testing.T) string {
 
 // The phone applies its long-term key to whatever point the machine
 // sends, so the point has to be checked when it arrives, before anything
-// can reach the Keystore, and not only inside AnswerXOnly after the
-// Kotlin side has already used it.
+// can be used, and not only inside the answer after the app has already
+// unwrapped its key.
 func TestConnectRefusesAnOffCurveChallengePoint(t *testing.T) {
 	const (
 		phoneSeed   = "test phone identity seed"
@@ -77,8 +77,5 @@ func TestConnectRefusesAnOffCurveChallengePoint(t *testing.T) {
 	}
 	if session.HasRequest() {
 		t.Fatal("an off-curve challenge point was kept as a request to answer")
-	}
-	if _, err := session.RequestPointAffineX(); err == nil {
-		t.Fatal("RequestPointAffineX handed an off-curve point to the caller")
 	}
 }

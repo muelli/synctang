@@ -5,10 +5,8 @@ package mobile
 import (
 	"bytes"
 	"context"
-	"crypto/elliptic"
 	"encoding/hex"
 	"encoding/json"
-	"math/big"
 	"os"
 	"strings"
 	"testing"
@@ -102,26 +100,6 @@ func TestRecipientFinishXOnlyRejectsWrongAnswer(t *testing.T) {
 	wrong[0] ^= 0xff
 	if _, err := recipientFromVectors(t, v).FinishXOnly(mustHex(t, v.Recover.EScalar), wrong); err == nil {
 		t.Fatal("expected an error from a wrong x-coordinate, got none")
-	}
-}
-
-func TestAffineCoordinatesMatchVector(t *testing.T) {
-	v := loadVectors(t)
-	point := mustHex(t, v.Recover.X)
-
-	x, err := AffineX(point)
-	if err != nil {
-		t.Fatalf("AffineX: %v", err)
-	}
-	y, err := AffineY(point)
-	if err != nil {
-		t.Fatalf("AffineY: %v", err)
-	}
-	if !bytes.Equal(point[1:33], x) || !bytes.Equal(point[33:], y) {
-		t.Fatalf("affine split does not match the SEC1 encoding")
-	}
-	if _, err := AffineX([]byte{1, 2, 3}); err == nil {
-		t.Fatal("expected an error for a non-point, got none")
 	}
 }
 
@@ -234,26 +212,13 @@ func runSession(t *testing.T, v vectors) {
 		t.Fatalf("RequestKid does not match the enrolled kid")
 	}
 
-	// Stand in for the Keystore: multiply the challenge point by the
-	// key holder's long-term scalar and keep only the x-coordinate,
-	// which is exactly what KeyAgreement.generateSecret() returns.
-	px, err := session.RequestPointAffineX()
-	if err != nil {
-		t.Fatalf("RequestPointAffineX: %v", err)
+	// Answer with the key holder's long-term scalar, as the app does after
+	// unwrapping it; a second answer to the same request must be refused.
+	scalar := mustHex(t, v.Recipient.SScalar)
+	if err := session.AnswerWithScalar(append([]byte(nil), scalar...)); err != nil {
+		t.Fatalf("AnswerWithScalar: %v", err)
 	}
-	py, err := session.RequestPointAffineY()
-	if err != nil {
-		t.Fatalf("RequestPointAffineY: %v", err)
-	}
-	xOnly := softwareECDH(t, mustHex(t, v.Recipient.SScalar), px, py)
-	if want := mustHex(t, v.Recover.XOnly); !bytes.Equal(xOnly, want) {
-		t.Fatalf("software ECDH\n got %x\nwant %x", xOnly, want)
-	}
-
-	if err := session.AnswerXOnly(xOnly); err != nil {
-		t.Fatalf("AnswerXOnly: %v", err)
-	}
-	if err := session.AnswerXOnly(xOnly); err == nil {
+	if err := session.AnswerWithScalar(append([]byte(nil), scalar...)); err == nil {
 		t.Fatal("expected the second answer to be refused")
 	}
 
@@ -265,20 +230,6 @@ func runSession(t *testing.T, v vectors) {
 			t.Fatalf("machine recovered\n got %x\nwant %x", p, want)
 		}
 	}
-}
-
-// softwareECDH is the stand-in for the Android Keystore in tests:
-// x(scalar . (px, py)), returned as the raw 32-byte coordinate.
-// elliptic.ScalarMult is deprecated but is the only standard library
-// route to a bare scalar multiplication, and this is test-only code.
-//
-//nolint:staticcheck
-func softwareECDH(t *testing.T, scalar, px, py []byte) []byte {
-	t.Helper()
-	x, _ := elliptic.P256().ScalarMult(new(big.Int).SetBytes(px), new(big.Int).SetBytes(py), scalar)
-	out := make([]byte, coordLen)
-	x.FillBytes(out)
-	return out
 }
 
 // TestEnrolAndChallengeRoundTrip covers the loop the Android
@@ -300,18 +251,9 @@ func TestEnrolAndChallengeRoundTrip(t *testing.T) {
 		t.Fatalf("EnrolAndChallenge: %v", err)
 	}
 
-	px, err := AffineX(ch.Point())
+	recoveredSecret, err := ch.FinishWithScalar(s)
 	if err != nil {
-		t.Fatalf("AffineX: %v", err)
-	}
-	py, err := AffineY(ch.Point())
-	if err != nil {
-		t.Fatalf("AffineY: %v", err)
-	}
-
-	recoveredSecret, err := ch.Finish(softwareECDH(t, s, px, py))
-	if err != nil {
-		t.Fatalf("Finish: %v", err)
+		t.Fatalf("FinishWithScalar: %v", err)
 	}
 	if !bytes.Equal(recoveredSecret, ch.Secret()) {
 		t.Fatalf("recovered\n got %x\nwant %x", recoveredSecret, ch.Secret())
@@ -478,7 +420,7 @@ func TestAnswerXOnlyReportsAMachineThatCouldNotUseTheAnswer(t *testing.T) {
 	}
 	defer s.Close()
 
-	err = s.AnswerXOnly(make([]byte, 32))
+	err = s.answerXOnly(make([]byte, 32))
 	if err == nil {
 		t.Fatal("AnswerXOnly reported success for an answer the machine could not use")
 	}
