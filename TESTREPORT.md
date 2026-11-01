@@ -249,6 +249,33 @@ key holder (the key holder VM, over the public relay). `[V]`, once.
 - Not tried: a data volume opened after boot, two key holders on different
   volumes, and a phone doing the approving (the key holder VM answered).
 
+## `unlocker open`: a drive opened after boot, 2026-11-01
+
+A second LUKS2 volume (`/dev/vdb`) on the booted machine VM, opened with `sudo
+unlocker open /dev/vdb <name>` and approved by a key holder. `[V]`
+
+- **Laptop key holder (the key holder VM, over the public relay).** Opened as
+  `/dev/mapper/external`, exit 0, no `unlocker` process left. A filesystem was
+  made on it, a file written, the volume closed and opened again with a second
+  approval, and the file was there: the secret is the same each time. Without a
+  name it was called `synctang-<start of the UUID>`.
+- **Refusals, on the real VM.** Not root: refused before waiting. Not a LUKS
+  device: refused. A bad name: exit 2. A name already open: refused. Nobody
+  approving: gave up after 5.1 seconds for `--timeout 5s`, no mapper created. An
+  earlier wait with a 10 minute limit ended days later with `nobody approved
+  within 10m0s` and exit 1, as designed.
+- **Phone (Pixel 3a XL, release build 205 installed from the F-Droid repository).**
+  Paired to the drive with `unlocker pair --device /dev/vdb`, the link pasted
+  into the app's field (a QR code sent through a chat did not scan, so the camera
+  was not used this time). The VM named the key holder by transport id, which
+  matched the id read from the app's About screen beforehand, and enrolled it at
+  keyslot 3. After Unlock, Approve and the fingerprint (two "Not recognized", then
+  a match) the VM printed `unlocked: /dev/mapper/fromphone`, exit 0, and the file
+  from the first session was readable. The phone logged no Keystore errors.
+- Not tried: a desktop (udisks) showing the opened volume as mountable, the
+  QR code scanned by the release build's camera, and a drive moved to a second
+  computer.
+
 ## Deviations from the plan
 
 - Loopback LUKS2 tests (`cmd/unlocker`) do not need root or a privileged
