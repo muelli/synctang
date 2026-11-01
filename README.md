@@ -5,9 +5,10 @@
 An on-demand LUKS volume unlocker for dracut-based boots. A machine asks;
 a human, on a laptop or phone, answers. There is no always-on server, and
 unattended reboots are deliberately not supported: if you need those, use
-Tang. In exchange the key holder's secret can live in a phone's StrongBox
-(on phones whose hardware supports key agreement; the app says plainly when
-its does not) or a laptop's TPM, gated behind a biometric or a keypress, and the LUKS
+Tang. In exchange the key holder's secret can be kept on a phone wrapped by a key in
+its secure hardware, which opens it only for your fingerprint, once per
+unlock (the secret is briefly in the app's memory while it is used; the app says
+plainly where the hardware half lives), or on a laptop in a file or a TPM, gated behind a keypress, and the LUKS
 passphrase is never on the phone in any form.
 
 Work in progress; see `STATUS.md` for what is built and what is not.

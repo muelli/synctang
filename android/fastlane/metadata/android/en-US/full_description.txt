@@ -4,9 +4,11 @@ its boot prompt, with a person in the loop for every single unlock.
 This app is the key holder. What makes it different from a remote-passphrase
 app is what it does not have: it never holds the machine's disk passphrase, or
 anything from which the passphrase could be worked out. It holds one long-term
-key, generated in the phone's Keystore: in secure hardware, unable to leave it,
-on phones whose hardware supports this kind of key. Where yours does not,
-the app stops and says so, and will use a software key only if you allow it.
+key, kept encrypted by a key in the phone's secure hardware that cannot leave
+it and opens the long-term key only for your fingerprint, once for each unlock.
+While an unlock is under way the key is briefly in the app's memory. Where the
+phone has no secure hardware for it, the app stops and says so, and will go on
+only if you allow it.
 The machine sends a blinded challenge point; the phone does one elliptic curve
 agreement against that point and sends back the result; the machine, and only
 the machine, turns that into the key that opens the disk.

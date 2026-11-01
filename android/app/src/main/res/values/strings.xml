@@ -43,13 +43,13 @@
     <!-- Identity -->
     <string name="identity_device_id">This phone\'s device ID</string>
     <string name="identity_public_key">This phone\'s public key</string>
-    <string name="identity_backing_strongbox">Key held in StrongBox, the phone\'s secure element.</string>
-    <string name="identity_backing_software">This phone cannot keep this kind of key in secure hardware: Android stores it in software. You have allowed that on this phone. The key is not protected by the phone\'s secure hardware, and anything with root access to the phone could read it.</string>
-    <string name="software_key_title">This phone cannot protect the key with its hardware</string>
-    <string name="software_key_body">Android would keep this phone\'s key in software, not in the phone\'s secure chip. Anything with root access to the phone could copy it, and your fingerprint would not stop that. synctang will not use such a key unless you allow it.</string>
+    <string name="identity_backing_strongbox">This phone\'s key is locked by a key in StrongBox, the phone\'s security chip, which opens it only for your fingerprint, once for each unlock. While an unlock is under way the key is briefly in this app\'s memory.</string>
+    <string name="identity_backing_software">This phone has no secure hardware that will hold the key that locks this phone\'s key, so that key is only as safe as the phone itself. You have allowed that on this phone. Anything with root access to the phone could read it, and your fingerprint would not stop that.</string>
+    <string name="software_key_title">This phone has no secure hardware for the key</string>
+    <string name="software_key_body">The key that locks synctang\'s key could only be made in software, not in the phone\'s secure hardware. Anything with root access to the phone could read it, and your fingerprint would not stop that. synctang will not use it unless you allow it.</string>
     <string name="software_key_allow">Use a software key on this phone</string>
     <string name="software_key_leave_hint">Press back to leave without allowing it.</string>
-    <string name="identity_backing_tee">Key held in the phone\'s trusted execution environment, not in StrongBox: the phone has none, or could not use it for this key. The key cannot be exported.</string>
+    <string name="identity_backing_tee">This phone\'s key is locked by a key in the phone\'s secure hardware (its trusted execution environment, not StrongBox), which opens it only for your fingerprint, once for each unlock. While an unlock is under way the key is briefly in this app\'s memory.</string>
 
     <!-- Unlock -->
     <string name="unlock_machine">Machine</string>

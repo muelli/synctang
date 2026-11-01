@@ -15,9 +15,10 @@ not here. See `TESTREPORT.md` for the acceptance table (A1-A11).
   run could only show that a software Keystore accepted such a point.
   That was one phone: on a Pixel 3a XL (Android 12, Keymaster 4.x) a
   key-agreement key is created in software, not in StrongBox or the TEE
-  (`docs/threat-model.md`), so "StrongBox" is not something every phone
-  can deliver for this key. The app refuses such a key until the owner
-  allows it on that phone (2026-10-28).
+  (`docs/threat-model.md`), so hardware key agreement is not something every
+  phone can deliver. Since 2026-11-01 the app does not use a Keystore
+  agreement key at all: it keeps its own scalar wrapped by a hardware key that
+  needs a fingerprint per use (`docs/threat-model.md`).
 - **WP1** (`mrcore` math): done.
 - **WP2** (transport): done. `SyncthingRelay` (public relay + global
   discovery), `LocalDiscovery` (LAN multicast, no Internet needed),
@@ -177,11 +178,13 @@ reproducibility are untested and not claimed.
   meant to test. Open:
   - A disk image plus one approval recovers the volume secret. The fix is
     sealing the machine identity in a TPM (not built).
-  - The Android key is usable for a window after any strong biometric, not
-    bound to the request. Shortened from 15 to 5 seconds on 2026-10-28 for
-    keys created from then on; an existing key keeps its 15 (replacing it
-    means re-enrolling every machine). A per-use binding needs API 36.1's
-    `CryptoObject(KeyAgreement)`, not used yet.
+  - Done 2026-11-01: the Android key was usable for a time window after any
+    strong biometric. It is now a scalar wrapped by a hardware key that needs a
+    fingerprint bound to each use (`BiometricPrompt.CryptoObject`), so there is
+    no window. The cost is that the scalar is in the app's memory during one
+    answer, which a non-exportable agreement key would avoid; no such key is
+    available on the test phone `[V]` (17 instrumented tests on a Pixel 3a XL).
+    The old key is not migrated: a phone is paired again.
   - `[U]` A threshold (two key holders must both answer) is the second
     factor that would remove "one approval is enough". Parked for a
     later round; see `docs/threat-model.md`.

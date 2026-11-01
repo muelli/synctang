@@ -54,79 +54,72 @@ What the key holder does to help, cheapest first:
   seeing the console, and a copy of the disk could simply not ask, so it
   protected nothing and was removed before any release `[I]`. The second
   factor that would help is a threshold (below).
-- On Android the key is created so the Keystore refuses to use it unless
-  a strong biometric matched within the last 5 seconds (it was 15 until
-  2026-10-28; a key created before that keeps its 15, because replacing it
-  would change the public key and break every machine the phone is
-  enrolled on). That is a time window, not a binding to the request you
-  saw: code running inside the app, on a phone where it can run, could use
-  the key during the window after any fingerprint unlock of the phone `[I]`
-  (platform behaviour read from documentation, not tested). Only local work
-  happens between the prompt and the key use, so a few seconds is enough.
-  A binding to the request itself needs `BiometricPrompt.CryptoObject` to
-  accept a `KeyAgreement`, which exists from API 36.1 (androidx.biometric
-  1.4.0-alpha07); not used yet.
+- On Android the key is kept wrapped by a hardware key that needs a strong
+  biometric for every single use, bound to that one operation through a
+  `BiometricPrompt.CryptoObject`: the secure hardware refuses to unwrap
+  unless the sensor has just matched for exactly that operation. There is no
+  time window that any other fingerprint unlock of the phone could open, and
+  nothing between the prompt and the use can substitute another request `[V]`
+  (a key that needs a fingerprint refused to unwrap when none was presented,
+  Pixel 3a XL, 2026-11-01). What this does not do is keep the scalar out of the
+  app's memory while it is used: see the next section.
 
 **Key holder compromise.** On the laptop, a plain key file is the weak
 point; a TPM2 ECDH backend (behind a build tag) is the intended fix.
 `[U]` whether `go-tpm` integration is reachable in the time available;
 may remain a stub with its tests skipped, in which case the file backend
 is what actually protects a laptop key holder, no better than any other
-secret in a home directory. On Android, the key is intended to live in
-StrongBox, gated by a strong biometric within a short time window (see
-above). `[V]` on real StrongBox hardware:
-Android Keystore accepted a manually constructed peer point and returned
-the correct raw x-coordinate, proved by the machine opening its volume
-with it (`TESTREPORT.md` A4, 2026-09-21). The earlier emulator spike is
-in `docs/wp0-keystore-ecdh.md`.
+secret in a home directory. On Android, see the next section.
 
-**That depends on the phone, and on some phones it is false.** On a
-Pixel 3a XL (Android 12, Keymaster 4.x secure hardware, which advertises
-StrongBox) a key-agreement key was created at security level
-**software**, both when StrongBox was requested and when it was not, and
-the key's attestation certificate says the same (`keymasterSecurityLevel=0`)
-`[V]` (instrumented probe, 2026-10-28). Ordinary signing keys on the same
-phone were created correctly, in the TEE and in StrongBox, so the hardware
-is fine: Android 12 emulates key agreement in software where the hardware
-predates it. The phone does have a security chip: the Titan M services
-(`citadeld`, `keymaster@4.1-service.citadel`) are running and the hardware
-manifest declares a StrongBox Keymaster 4.1, next to a Keymaster 4.0 in the
-Qualcomm TEE `[V]` (`ps` and `/vendor/etc/vintf/manifest.xml` on the phone,
-2026-11-01). The limit is the Keymaster interface, which has no key agreement:
-Android 12's keystore compat layer says "Since KeyMaster doesn't support ECDH,
-route all key creation requests to soft-KeyMint if and only an ECDH key is
-requested" (`km_compat.cpp`, `android12-release`) `[V]`. Whether a phone with a
-KeyMint implementation holds such a key in hardware is `[U]`: none was tried.
-That phone's security patch level is 2022-05-05, so it no longer receives
-updates, which matters more for a key held in software. On such a phone the key is not protected by secure hardware:
-anything with root access to the phone could read it, and the biometric
-window protects nothing a rooted attacker cannot bypass. Using such a key
-hung in the Keystore (`BACKEND_BUSY` from the key blob upgrade, never
-recovering) when it had been created with StrongBox requested, which the app
-always did first: 3 of 3 such keys hung, and 3 of 3 keys made without the
-request were also in software and answered in 14 to 21 ms `[V]` (a probe on
-that phone, 2026-10-28). The app now checks where a StrongBox request landed
-and, if it is not StrongBox, deletes the key and makes it again without the
-request `[V]` (the test that hung on that phone now passes in 0.3 s). A real
-unlock attempt with the old key recognised the fingerprint twice and each time
-spent six seconds in that stall until the Keystore reported the five-second
-authentication as expired. A key made by the old code on such a phone cannot
-be repaired and has to be replaced, which means pairing again. The app
-reports where Android says the key lives. A software key is **refused**: the
-app stops at a screen that says why and offers "Use a software key on this
-phone", and nothing is paired or unlocked until the owner has pressed it (a
-choice kept for that phone). A key made a moment earlier is deleted again
-when refused, since nothing is enrolled on it; a key that already existed is
-left alone, because machines may be enrolled on it. The debug build with no
-biometric gate (emulators) skips the refusal. On the Pixel 3a XL, 2026-10-28, a fresh install
-stopped at the refusal screen, the allow button carried on to pairing, the
-choice survived a restart, and About then said the key was allowed in
-software `[V]`. The 20 second limit and the path for a key that already
-existed were not tried on a device `[U]`. The key use itself is limited to
-20 seconds: past that the app stops waiting, tells the machine no and says so
-(the stuck Keystore call cannot be interrupted, only abandoned, and whether
-the next attempt works afterwards is `[U]`). Which phones give hardware-backed key agreement is `[U]`; the
-phone used for A4 did, and the model was not recorded.
+**The phone's key is wrapped, not held, and what that means.** The MR-1 key
+agreement could be a Keystore key (`PURPOSE_AGREE_KEY`), non-exportable and
+used inside the secure hardware. It is not, because that only works in
+hardware on a phone with a KeyMint implementation. On a Pixel 3a XL (Android
+12) such a key is created at security level **software** whether or not
+StrongBox is requested, and its attestation says so `[V]` (2026-10-28). The
+phone has a security chip (the Titan M services run and a StrongBox Keymaster
+4.1 is declared, next to a Keymaster 4.0 in the Qualcomm TEE `[V]`, 2026-11-01),
+but the Keymaster interface has no key agreement: Android 12's keystore compat
+layer says "Since KeyMaster doesn't support ECDH, route all key creation
+requests to soft-KeyMint if and only an ECDH key is requested"
+(`km_compat.cpp`, `android12-release`) `[V]`. A key in software is no better
+than a file, and using one hung for as long as anyone waited whenever StrongBox
+had been requested `[V]`.
+
+So the app makes the private scalar itself (in Go) and keeps it wrapped:
+encrypted with RSA-OAEP under a public key whose private half is a Keystore key
+in the phone's secure hardware, created so that each use needs a fresh strong
+biometric. The wrapped scalar and the public point are kept in a directory
+Android does not back up.
+
+- **Protected:** the scalar at rest. A copy of the app's files, a backup or a
+  disk image holds only the wrapped scalar, and the wrapping key cannot leave the
+  hardware, so another phone cannot unwrap it either. Each unlock needs a
+  fingerprint for that operation.
+- **Not protected:** the scalar while it is in use. For the moment of one
+  answer it is in the app's memory and then in Go's, both wiped afterwards, but a
+  process with root access to a running phone that waits for an unlock could take
+  it. A non-exportable hardware key agreement key would not have this weakness;
+  this phone cannot offer one. Whether a phone with KeyMint keeps such a key in
+  hardware, and whether the app should then use it, is `[U]`: none was tried.
+- **On the Pixel 3a XL:** the StrongBox chip creates a key and reports it at the
+  StrongBox level, and then every use of it fails (`BACKEND_BUSY` from the key blob
+  upgrade, for as long as anyone waits) `[V]`. So the app uses each candidate key
+  once, with a time limit, before trusting it, and falls back from StrongBox to the
+  TEE. The wrapping key there is in the TEE (security level 1, inside secure
+  hardware) `[V]`. The phone's security patch level is 2022-05-05: it no longer
+  receives updates.
+- **A Keystore that does not answer:** each unwrap is limited to 20 seconds. Past
+  that the app stops waiting, tells the machine no and says so (a stuck Keystore
+  call cannot be interrupted, only abandoned).
+- **Where the hardware half ends up in software** (an emulator, a phone with no
+  secure hardware for it), the wrapping protects nothing the file would not, and
+  the app refuses to go on unless the owner presses "Use a software key on this
+  phone" (a choice kept for that phone).
+
+An earlier version relied on the key-agreement key and a five-second time window
+after any fingerprint match. That is gone, and so is any compatibility with the
+old key: a phone that had one has to be paired again.
 
 **Rendezvous infrastructure.** The Syncthing relay network sees two
 Device IDs and traffic volume, nothing else: the tunnel itself is TLS
