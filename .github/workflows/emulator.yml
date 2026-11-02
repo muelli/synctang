@@ -14,11 +14,21 @@ name: emulator
 # Not covered, because no emulator can: StrongBox and the biometric prompt.
 # Those stay a manual test on a real phone.
 #
-# Not run on pushes to main yet: the first run hung for an hour and was
-# cancelled, which turned main red. Run it by hand from the Actions tab, or
-# on a pull request, until it has passed once; then add the push trigger
-# back.
+# The first runs hung and were cancelled, which turned main red, so for a
+# while this ran only by hand or on a pull request. It passed on 2026-10-28
+# (the AVD directory fix, 800d1f1), so it runs on pushes to main again, and
+# on branches named ci-emulator-* so a change to this workflow can be tried
+# without touching main.
 on:
+  push:
+    branches:
+      - main
+      - "ci-emulator-*"
+    paths:
+      - "android/**"
+      - "mobile/**"
+      - "mrcore/**"
+      - ".github/workflows/emulator.yml"
   pull_request:
     paths:
       - "android/**"
