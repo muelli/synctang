@@ -314,6 +314,23 @@ e048a46), on the Pixel 3a XL (Android 12), debug build (application id
   fingerprint being enrolled (the key is meant to be invalidated), and a
   reboot of the machine with this key.
 
+### After the external review, same day
+
+The fixes for the review of `7134e8a` (`304f3fd` to `3b9a575`), on the same phone.
+`[V]`
+
+- **Instrumented tests, whole suite:** 41 of 42 passed. The failure was
+  `KeyboardNavigationTest.shiftTabMovesFocusBackwards` again; it has now failed on 2
+  of 5 whole-suite runs and passed in 6 of 6 reruns of its class alone, so it is
+  flaky on this phone and not tied to these changes `[U]` as to cause.
+- New instrumented tests passed: a key with its wrapped file deleted, or its
+  hardware half deleted, is not cleared by `ensureKey` (it throws and keeps the
+  other half), an unfinished creation is made again, and the wrapping cipher runs in
+  `AndroidOpenSSL`, not in the Keystore's provider. The new screen for a key that is
+  not whole passes its keyboard test; it was not looked at on the phone.
+- Not tried: a Keystore that really fails to answer on the TEE key, a power cut
+  during a save.
+
 ## Deviations from the plan
 
 - Loopback LUKS2 tests (`cmd/unlocker`) do not need root or a privileged

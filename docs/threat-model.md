@@ -102,7 +102,8 @@ Android does not back up.
   Keystore's contract; no test tries to read the key out). Each unlock needs a
   fingerprint for that operation. The scalar is wrapped inside the app's own
   process, under a plain RSA key rebuilt from the certificate's, so that the
-  Keystore daemon is never sent it for that.
+  Keystore daemon is never sent it for that `[V]` (on the Pixel the wrapping cipher
+  runs in the `AndroidOpenSSL` provider, 2026-11-02).
 - **Not protected:** the scalar while it is in use, and for some time after. During
   one answer it is in the app's memory and then in Go's. The copies the code holds
   are wiped afterwards, but not every copy is the code's: the Keystore's reply
@@ -134,8 +135,10 @@ Android does not back up.
   offers trying again or making a new key (which throws the old one away, and has
   no keyboard shortcut). The same screen appears if the saved scalar does not
   belong to the saved public point, which the Go side checks before answering.
-  `[V]` by unit tests of the decision and of the screen; the instrumented tests of
-  it have not been run on a phone yet `[U]`.
+  `[V]` by unit tests of the decision and of the screen, and on the Pixel by
+  instrumented tests that delete one half and check the other is kept and
+  `ensureKey` refuses (2026-11-02). The screen itself was not shown on the phone
+  `[U]`.
 - **Where the hardware half ends up in software** (an emulator, a phone with no
   secure hardware for it), the wrapping protects nothing the file would not, and
   the app refuses to go on unless the owner presses "Use a software key on this
