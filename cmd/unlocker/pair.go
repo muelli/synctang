@@ -227,7 +227,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 	}
 	defer mrcore.Wipe(secret)
 
-	if qrCode, err := renderPairingQR(pairingURL(machineID, *name, encoded), *qrMode, os.Getenv, isTerminal(stdout)); err != nil {
+	if qrCode, err := renderPairingQR(pairingURL(machineID, *name, encoded, network), *qrMode, os.Getenv, isTerminal(stdout)); err != nil {
 		// Not fatal: the printed values below are enough to pair by
 		// hand, and a machine whose terminal cannot show a QR code is
 		// exactly the case they exist for.
@@ -237,7 +237,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprint(stdout, qrCode)
 		fmt.Fprintln(stdout)
 	}
-	fmt.Fprint(stdout, pairingInstructions(machineID, *name, encoded, *window))
+	fmt.Fprint(stdout, pairingInstructions(machineID, *name, encoded, network, *window))
 	fmt.Fprintln(stdout)
 
 	ctx, cancel := context.WithTimeout(context.Background(), *window)
@@ -301,11 +301,23 @@ func pairConfirmer(assumeYes bool, stdout io.Writer, stdin io.Reader) func(strin
 // pairingURL is what the QR code encodes, and what the Android app
 // already knows how to parse: the same synctang://pair payload used for
 // scanning a machine's identity, with the one-time code added.
-func pairingURL(machineID, name, encodedSecret string) string {
+//
+// A machine that uses its own relay pool or discovery server says so
+// with relay= and discovery=, so the phone looks it up where it
+// announces. Nothing is added for the public defaults, which keeps the
+// link what older apps read. The announce endpoint is not carried: it
+// is where the machine posts, and a phone only ever looks up.
+func pairingURL(machineID, name, encodedSecret string, network transport.NetworkConfig) string {
 	q := url.Values{}
 	q.Set("machine", machineID)
 	if name != "" {
 		q.Set("name", name)
+	}
+	if network.RelayPool != "" {
+		q.Set("relay", network.RelayPool)
+	}
+	if network.Discovery != "" {
+		q.Set("discovery", network.Discovery)
 	}
 	q.Set("psk", encodedSecret)
 	return "synctang://pair?" + q.Encode()
@@ -314,12 +326,12 @@ func pairingURL(machineID, name, encodedSecret string) string {
 // pairingInstructions is the text shown alongside the QR code, and the
 // whole of what a serial console or a too-small terminal leaves a
 // person with, so it has to be sufficient on its own.
-func pairingInstructions(machineID, name, encodedSecret string, window time.Duration) string {
+func pairingInstructions(machineID, name, encodedSecret string, network transport.NetworkConfig, window time.Duration) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Scan this with the synctang app to pair it with %s.\n\n", cmp.Or(name, "this machine"))
 	b.WriteString("If the camera cannot scan it, paste this link into the app's\n")
 	b.WriteString("device ID field instead (the QR code carries exactly this):\n\n")
-	fmt.Fprintf(&b, "  %s\n\n", pairingURL(machineID, name, encodedSecret))
+	fmt.Fprintf(&b, "  %s\n\n", pairingURL(machineID, name, encodedSecret, network))
 	fmt.Fprintf(&b, "The pairing code is good once, for the next %s.\n", window)
 	b.WriteString("Anyone who can read it off this screen, or off a photograph of\n")
 	b.WriteString("it, can ask to be enrolled, so you will be shown which key\n")

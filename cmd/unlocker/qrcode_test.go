@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/muelli/synctang/mrcore/transport"
 )
 
 // A QR code that cannot be scanned leaves a person with nothing, so the
@@ -91,7 +93,7 @@ func stripANSI(s string) string {
 // parses, with the one-time code added, or a scan silently produces a
 // machine entry that cannot pair.
 func TestPairingURLCarriesWhatTheAppNeeds(t *testing.T) {
-	url := pairingURL("MACHINE-ID", "study workstation", "ORSXG5BRGIZQ")
+	url := pairingURL("MACHINE-ID", "study workstation", "ORSXG5BRGIZQ", transport.NetworkConfig{})
 
 	if !strings.HasPrefix(url, "synctang://pair?") {
 		t.Fatalf("pairing URL %q does not use the scheme the app parses", url)
@@ -110,9 +112,9 @@ func TestPairingURLCarriesWhatTheAppNeeds(t *testing.T) {
 // ID and a code, and following that saved the machine without enrolling the
 // phone.
 func TestPairingInstructionsGiveTheLinkWhereTheQRCodeCannotBeScanned(t *testing.T) {
-	text := pairingInstructions("MACHINE-ID", "study workstation", "ORSXG5BRGIZQ", 5*time.Minute)
+	text := pairingInstructions("MACHINE-ID", "study workstation", "ORSXG5BRGIZQ", transport.NetworkConfig{}, 5*time.Minute)
 
-	link := pairingURL("MACHINE-ID", "study workstation", "ORSXG5BRGIZQ")
+	link := pairingURL("MACHINE-ID", "study workstation", "ORSXG5BRGIZQ", transport.NetworkConfig{})
 	if !strings.Contains(text, link) {
 		t.Errorf("instructions do not contain the link the QR code carries (%s):\n%s", link, text)
 	}
@@ -136,7 +138,7 @@ func TestPairingURLSurvivesTheAppsDecoding(t *testing.T) {
 		machineID = "ABCDEFG-HIJKLMN-OPQRSTU-VWXYZ23-456ABCD-EFGHIJK-LMNOPQR-STUVWXY"
 		code      = "ORSXG5BRGIZQABCDEFGHIJKLMN"
 	)
-	raw := pairingURL(machineID, "study workstation", code)
+	raw := pairingURL(machineID, "study workstation", code, transport.NetworkConfig{})
 
 	query, err := neturl.ParseQuery(strings.TrimPrefix(raw, "synctang://pair?"))
 	if err != nil {
@@ -216,4 +218,39 @@ func splitCells(line string) []string {
 		}
 	}
 	return cells
+}
+
+// A machine that uses its own relay and discovery server has to tell the
+// phone, or the phone looks it up on the public ones and never finds it.
+// A machine on the public servers must keep producing the link it always
+// did, so an older app reads it.
+func TestPairingURLCarriesTheNetworkSettings(t *testing.T) {
+	const machineID = "ABCDEFG-HIJKLMN-OPQRSTU-VWXYZ23-456ABCD-EFGHIJK-LMNOPQR-STUVWXY"
+	plain := pairingURL(machineID, "study", "ORSXG5BRGIZQ", transport.NetworkConfig{})
+	if strings.Contains(plain, "relay=") || strings.Contains(plain, "discovery=") {
+		t.Errorf("defaults must add nothing to the link: %s", plain)
+	}
+
+	cfg, err := transport.ParseNetworkConfig(
+		"relay://10.0.0.5:22067/?id="+testRelayID, "https://disco.example.net:8443/v2/?x=a&y=b", "https://announce.example.net/v2/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := pairingURL(machineID, "study", "ORSXG5BRGIZQ", cfg)
+	query, err := neturl.ParseQuery(strings.TrimPrefix(raw, "synctang://pair?"))
+	if err != nil {
+		t.Fatalf("not a parseable query: %v", err)
+	}
+	if got := query.Get("relay"); got != cfg.RelayPool {
+		t.Errorf("relay = %q, want %q", got, cfg.RelayPool)
+	}
+	if got := query.Get("discovery"); got != cfg.Discovery {
+		t.Errorf("discovery = %q, want %q (escaped, so its own ? and & survive)", got, cfg.Discovery)
+	}
+	if query.Has("discovery-announce") || strings.Contains(raw, "announce") {
+		t.Errorf("the announce endpoint is the machine's business, not the phone's: %s", raw)
+	}
+	if got := query.Get("psk"); got != "ORSXG5BRGIZQ" || !strings.Contains(raw, "psk=ORSXG5BRGIZQ") {
+		t.Errorf("the code must still travel literally: %s", raw)
+	}
 }

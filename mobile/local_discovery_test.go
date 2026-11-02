@@ -142,9 +142,9 @@ func TestDialTransportUsesLocalDiscoveryOnlyWithoutADirectAddress(t *testing.T) 
 		t.Fatalf("GenerateDeterministicCert: %v", err)
 	}
 
-	multi, ok := newDialTransport(cert, "").(*transport.Multi)
+	multi, ok := newDialTransport(cert, "", transport.NetworkConfig{}).(*transport.Multi)
 	if !ok {
-		t.Fatalf("with no direct address, got %T, want *transport.Multi", newDialTransport(cert, ""))
+		t.Fatalf("with no direct address, got %T, want *transport.Multi", newDialTransport(cert, "", transport.NetworkConfig{}))
 	}
 	found := false
 	for _, tr := range multi.Transports {
@@ -156,7 +156,7 @@ func TestDialTransportUsesLocalDiscoveryOnlyWithoutADirectAddress(t *testing.T) 
 		t.Errorf("the raced transports do not include LocalDiscovery: %#v", multi.Transports)
 	}
 
-	if _, isMulti := newDialTransport(cert, "127.0.0.1:1").(*transport.Multi); isMulti {
+	if _, isMulti := newDialTransport(cert, "127.0.0.1:1", transport.NetworkConfig{}).(*transport.Multi); isMulti {
 		t.Error("a direct address should be dialled on its own, not raced against local discovery")
 	}
 }

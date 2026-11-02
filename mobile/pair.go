@@ -56,6 +56,10 @@ type Pairer struct {
 	cancelled bool
 
 	failure lastFailure
+
+	// network is the machine's choice of relay and discovery servers,
+	// from its pairing link; the zero value is the public ones.
+	network transport.NetworkConfig
 }
 
 // LastFailure is the kind of failure the last Pair ended in (one of
@@ -70,6 +74,19 @@ func (p *Pairer) LastFailure() int {
 func (p *Pairer) LastFailureDetail() string {
 	_, detail := p.failure.get()
 	return detail
+}
+
+// SetNetwork is Session.SetNetwork for a pairing: look the machine up
+// on the discovery server its pairing link named. Call it before Pair.
+func (p *Pairer) SetNetwork(relayPool, discovery string) error {
+	network, err := transport.ParseNetworkConfig(relayPool, discovery, "")
+	if err != nil {
+		return fmt.Errorf("mobile: %w", err)
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.network = network
+	return nil
 }
 
 // NewPairer returns a Pairer ready for one Pair call.
@@ -135,9 +152,13 @@ func (p *Pairer) Pair(machineID, pairingCode, seed, publicKeyHex, name, directAd
 	}
 	defer p.arm(nil)
 
+	p.mu.Lock()
+	network := p.network
+	p.mu.Unlock()
+
 	var lastErr error
 	for {
-		lastErr = pairOnce(ctx, cert, machineID, selfID, secret, publicKey, name, directAddr)
+		lastErr = pairOnce(ctx, cert, machineID, selfID, secret, publicKey, name, directAddr, network)
 		if lastErr == nil {
 			return nil
 		}
@@ -163,8 +184,8 @@ func (p *Pairer) Pair(machineID, pairingCode, seed, publicKeyHex, name, directAd
 	}
 }
 
-func pairOnce(ctx context.Context, cert tls.Certificate, machineID, selfID string, secret, publicKey []byte, name, directAddr string) error {
-	tr := newDialTransport(cert, directAddr)
+func pairOnce(ctx context.Context, cert tls.Certificate, machineID, selfID string, secret, publicKey []byte, name, directAddr string, network transport.NetworkConfig) error {
+	tr := newDialTransport(cert, directAddr, network)
 	conn, err := tr.Dial(ctx, transport.DialOptions{PeerID: machineID, DirectAddr: directAddr})
 	if err != nil {
 		return fmt.Errorf("mobile: dialling %s: %w", machineID, err)

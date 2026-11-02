@@ -317,6 +317,10 @@ type Session struct {
 	directAddr     string
 	timeoutSeconds int
 
+	// network is the machine's choice of relay and discovery servers,
+	// which came in its pairing link; the zero value is the public ones.
+	network transport.NetworkConfig
+
 	conn        transport.Conn
 	machineName string
 	kid         []byte
@@ -342,6 +346,25 @@ func (s *Session) SetDirectAddr(addr string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.directAddr = addr
+}
+
+// SetNetwork makes Connect look the machine up on the given discovery
+// server instead of the public one, for a machine whose owner runs
+// their own. relayPool is accepted so the pair can be stored and passed
+// as they came in the pairing link; a dialling phone joins the relay
+// the machine announced and does not consult a pool. Either may be
+// empty, meaning the public default. A value that is not an http(s)
+// URL (or, for relayPool, a relay:// URL with the relay's id) is
+// refused here, not at connect time, and changes nothing.
+func (s *Session) SetNetwork(relayPool, discovery string) error {
+	network, err := transport.ParseNetworkConfig(relayPool, discovery, "")
+	if err != nil {
+		return fmt.Errorf("mobile: %w", err)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.network = network
+	return nil
 }
 
 // SetTimeoutSeconds bounds Connect. Zero or negative restores the
@@ -474,13 +497,14 @@ const connectRetryInterval = 2 * time.Second
 // MulticastLease in the Kotlin sources). Without it this simply falls
 // back to behaving as it did before, which is why the lock's absence
 // degrades rather than breaks.
-func newDialTransport(cert tls.Certificate, directAddr string) transport.Transport {
+func newDialTransport(cert tls.Certificate, directAddr string, network transport.NetworkConfig) transport.Transport {
+	relay := network.NewSyncthingRelay(cert)
 	if directAddr != "" {
-		return transport.NewSyncthingRelay(cert)
+		return relay
 	}
 	return &transport.Multi{Transports: []transport.Transport{
 		&transport.LocalDiscovery{Cert: cert},
-		transport.NewSyncthingRelay(cert),
+		relay,
 	}}
 }
 
@@ -488,7 +512,7 @@ func newDialTransport(cert tls.Certificate, directAddr string) transport.Transpo
 // recovery request. Any failure leaves the session with no connection, so
 // the next attempt starts clean.
 func (s *Session) connectOnceLocked(ctx context.Context, cert tls.Certificate) error {
-	tr := newDialTransport(cert, s.directAddr)
+	tr := newDialTransport(cert, s.directAddr, s.network)
 	conn, err := tr.Dial(ctx, transport.DialOptions{
 		PeerID:     s.machineID,
 		DirectAddr: s.directAddr,
