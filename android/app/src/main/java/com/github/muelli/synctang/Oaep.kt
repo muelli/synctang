@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 package com.github.muelli.synctang
 
+import java.security.KeyFactory
 import java.security.PrivateKey
 import java.security.PublicKey
+import java.security.interfaces.RSAPublicKey
+import java.security.spec.X509EncodedKeySpec
 import java.security.spec.MGF1ParameterSpec
 import javax.crypto.Cipher
 import javax.crypto.spec.OAEPParameterSpec
@@ -32,6 +35,15 @@ internal object Oaep {
     private fun parameters() =
         OAEPParameterSpec("SHA-256", "MGF1", MGF1ParameterSpec.SHA1, PSource.PSpecified.DEFAULT)
 
+    /**
+     * The same key as an ordinary RSA public key. The certificate's key from the
+     * Keystore is a handle that the Keystore's own provider would accept, and so
+     * would wrap through the Keystore daemon, sending it the scalar for no reason.
+     * Rebuilt from its encoding, only a provider in this process can take it.
+     */
+    internal fun plainRsaKey(publicKey: PublicKey): RSAPublicKey =
+        KeyFactory.getInstance("RSA").generatePublic(X509EncodedKeySpec(publicKey.encoded)) as RSAPublicKey
+
     /** Wraps a 32-byte scalar for [publicKey]. */
     fun wrap(publicKey: PublicKey, scalar: ByteArray): ByteArray {
         require(scalar.size == SCALAR_LENGTH) { "a scalar is $SCALAR_LENGTH bytes, got ${scalar.size}" }
@@ -39,11 +51,11 @@ internal object Oaep {
     }
 
     /** Wraps anything. Only for a test that needs a blob of the wrong length. */
-    internal fun wrapUnchecked(publicKey: PublicKey, bytes: ByteArray): ByteArray =
-        Cipher.getInstance(TRANSFORMATION).run {
-            init(Cipher.ENCRYPT_MODE, publicKey, parameters())
-            doFinal(bytes)
-        }
+    internal fun wrapUnchecked(publicKey: PublicKey, bytes: ByteArray): ByteArray = wrapCipher(publicKey).doFinal(bytes)
+
+    /** The cipher that wraps for [publicKey], and which provider it runs in is the point of [plainRsaKey]. */
+    internal fun wrapCipher(publicKey: PublicKey): Cipher =
+        Cipher.getInstance(TRANSFORMATION).apply { init(Cipher.ENCRYPT_MODE, plainRsaKey(publicKey), parameters()) }
 
     /**
      * A cipher ready to decrypt with [privateKey], not yet used. This is what goes to

@@ -188,6 +188,17 @@ class KeyWrappingTest {
         assertEquals(emptyList<String>(), directory.list()?.toList() ?: emptyList<String>())
     }
 
+    // The scalar is wrapped inside this process, by a provider that lives here, not
+    // by the Keystore daemon, which would be sent a scalar it has no use for.
+    @Test
+    fun theScalarIsWrappedInThisProcessNotByTheKeystore() {
+        val publicKey = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+            .getCertificate(alias).publicKey
+        val provider = Oaep.wrapCipher(publicKey).provider.name
+        Log.i("KeyWrappingTest", "the wrapping cipher runs in provider $provider")
+        assertFalse("wrapped by $provider", provider.startsWith("AndroidKeyStore"))
+    }
+
     // A creation that stopped after the wrapped key never showed a public point, so
     // nothing is enrolled on it and it is made again, with a new public point.
     @Test

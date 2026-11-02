@@ -33,13 +33,37 @@ class KeyUseTimedOut(val seconds: Long) :
  * abandoned, not stopped. The thread is a daemon so it cannot keep the
  * process alive. Whatever [block] throws reaches the caller as itself,
  * because the flow tells an invalidated key from an expired window by type.
+ *
+ * A result that [block] produces only after the wait is over is given to
+ * [discard] instead of being left in a task nobody reads.
  */
-internal fun <T> runWithin(seconds: Long, block: () -> T): T {
-    val task = FutureTask(block)
+internal fun <T> runWithin(seconds: Long, discard: (T) -> Unit = {}, block: () -> T): T {
+    // A result that arrives after the caller gave up has nobody to wipe it, so
+    // whichever of the two comes second hands it to [discard]. Under one lock, so
+    // that exactly one of them does.
+    val lock = Any()
+    var gaveUp = false
+    var late: T? = null
+    var arrived = false
+    val task = FutureTask {
+        val result = block()
+        synchronized(lock) {
+            if (gaveUp) discard(result) else {
+                late = result
+                arrived = true
+            }
+        }
+        result
+    }
     Thread(task, KEY_USE_THREAD_NAME).apply { isDaemon = true }.start()
     try {
         return task.get(seconds, TimeUnit.SECONDS)
     } catch (e: TimeoutException) {
+        synchronized(lock) {
+            gaveUp = true
+            @Suppress("UNCHECKED_CAST")
+            if (arrived) discard(late as T)
+        }
         throw KeyUseTimedOut(seconds)
     } catch (e: ExecutionException) {
         throw e.cause ?: e

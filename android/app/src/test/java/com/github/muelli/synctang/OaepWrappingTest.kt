@@ -35,6 +35,32 @@ class OaepWrappingTest {
 
     private fun scalar() = ByteArray(32).also { SecureRandom().nextBytes(it) }
 
+    /**
+     * Wrapping must happen in the app's own process, under a plain RSA key: the
+     * certificate's key from the Keystore is a handle the Keystore's own provider
+     * would take, sending the scalar to the Keystore daemon to be wrapped. Nothing
+     * there needs the scalar for that, so it is not sent.
+     */
+    @Test
+    fun theKeyUsedToWrapIsAPlainRsaKeyNotAHandle() {
+        val handle = object : java.security.interfaces.RSAPublicKey by (pair.public as java.security.interfaces.RSAPublicKey) {
+            override fun toString() = "a handle"
+        }
+        val plain = Oaep.plainRsaKey(handle)
+        assertEquals(java.security.interfaces.RSAPublicKey::class.java.isInstance(plain), true)
+        assertNotEquals(handle.javaClass, plain.javaClass)
+        assertEquals((pair.public as java.security.interfaces.RSAPublicKey).modulus, plain.modulus)
+        assertEquals((pair.public as java.security.interfaces.RSAPublicKey).publicExponent, plain.publicExponent)
+    }
+
+    @Test
+    fun aScalarWrappedThroughAHandleStillUnwraps() {
+        val handle = object : java.security.interfaces.RSAPublicKey by (pair.public as java.security.interfaces.RSAPublicKey) {}
+        val s = scalar()
+        val wrapped = Oaep.wrap(handle, s)
+        assertArrayEquals(s, Oaep.unwrap(Oaep.decryptCipher(pair.private), wrapped))
+    }
+
     @Test
     fun aWrappedScalarComesBackUnchanged() {
         val s = scalar()

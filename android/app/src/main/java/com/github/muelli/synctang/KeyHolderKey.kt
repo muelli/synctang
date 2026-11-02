@@ -5,7 +5,6 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
-import android.security.keystore.StrongBoxUnavailableException
 import java.io.File
 import java.security.GeneralSecurityException
 import java.security.KeyFactory
@@ -13,6 +12,7 @@ import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.PrivateKey
+import java.security.ProviderException
 import javax.crypto.Cipher
 import mobile.Mobile
 
@@ -153,9 +153,11 @@ class KeyHolderKey(
             generator.initialize(spec(strongBox = true))
             generator.generateKeyPair()
             made = canBeUsed("StrongBox")
-        } catch (e: StrongBoxUnavailableException) {
-            // No secure element on this phone, or none that will hold this kind of
-            // key. Logged because the reason matters.
+        } catch (e: ProviderException) {
+            // No secure element on this phone (StrongBoxUnavailableException, which
+            // is one of these), or one that errors instead of saying so, or none that
+            // will hold this kind of key. Logged because the reason matters. Only the
+            // StrongBox attempt is read this way: the TEE's own failures stay fatal.
             android.util.Log.w(LOG_TAG, "StrongBox cannot hold the wrapping key", e)
         }
         if (!made) {

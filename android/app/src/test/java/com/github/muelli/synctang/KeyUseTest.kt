@@ -53,6 +53,36 @@ class KeyUseTest {
         assertTrue("waited ${waited}ms for a 1s limit", waited in 900..4000)
     }
 
+    /**
+     * An abandoned unwrapping that finishes later would leave a scalar in a
+     * task nobody reads. Whoever gave up is not there to wipe it, so it is
+     * handed to the discard function the moment it arrives.
+     */
+    @Test
+    fun aResultThatArrivesAfterTheCallerGaveUpIsDiscarded() {
+        val release = CountDownLatch(1)
+        val discarded = CountDownLatch(1)
+        val result = ByteArray(4) { 7 }
+        try {
+            runWithin(1, discard = { it.fill(0); discarded.countDown() }) { release.await(); result }
+            fail("expected a timeout")
+        } catch (e: KeyUseTimedOut) {
+            // expected
+        }
+        release.countDown()
+        assertTrue("the late result was never discarded", discarded.await(5, TimeUnit.SECONDS))
+        assertEquals(listOf<Byte>(0, 0, 0, 0), result.toList())
+    }
+
+    @Test
+    fun aResultThatArrivedInTimeIsNotDiscarded() {
+        val result = ByteArray(4) { 7 }
+        var discards = 0
+        val got = runWithin(5, discard = { discards++ }) { result }
+        assertSame(result, got)
+        assertEquals(0, discards)
+    }
+
     @Test
     fun theAbandonedKeyUseDoesNotKeepTheProcessAlive() {
         val hung = CountDownLatch(1)

@@ -528,7 +528,7 @@ class UnlockFlow(
             }
 
             try {
-                withContext(io) { active.answer { runWithin(keyUseTimeoutSeconds) { unwrapKey(cipher) } } }
+                withContext(io) { active.answer { runWithin(keyUseTimeoutSeconds, discard = { it.fill(0) }) { unwrapKey(cipher) } } }
                 _state.value = UnlockUiState.Done(machine)
             } catch (e: KeyInvalidated) {
                 retireInvalidatedKey(machine, active, e)
