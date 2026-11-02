@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"net/url"
 	"os"
 	"strings"
 
@@ -73,12 +72,6 @@ func loadNetworkConfig(confPath, cmdlinePath string) (transport.NetworkConfig, e
 		}
 	}
 
-	// A discovery server from the command line is a different server,
-	// so an announce endpoint from the file, which belongs to the file's
-	// server, must go with it.
-	if cmd.Discovery != "" {
-		file.Discovery, file.DiscoveryAnnounce = "", ""
-	}
 	return file.Override(cmd), nil
 }
 
@@ -107,35 +100,6 @@ func parseCmdlineNetwork(cmdline string) (transport.NetworkConfig, error) {
 	return c, nil
 }
 
-// networkSummary says, in a line for a console, which servers will be
-// used and in which form the relay setting was understood. Empty when
-// everything is the public default, which needs no remark.
-func networkSummary(c transport.NetworkConfig) string {
-	if c.IsZero() {
-		return ""
-	}
-	part := func(kind, value string) string {
-		if value == "" {
-			return kind + " public"
-		}
-		return kind + " " + hostOf(value)
-	}
-	relay := "relay public"
-	if c.RelayPool != "" {
-		relay = c.RelayKind() + " " + hostOf(c.RelayPool)
-	}
-	return fmt.Sprintf("using %s, %s", relay, part("discovery", c.Discovery))
-}
-
-// hostOf is the host (and port) of a URL, which is all a summary needs;
-// the full URL, query and all, is in the file for anyone who wants it.
-func hostOf(s string) string {
-	if u, err := url.Parse(s); err == nil && u.Host != "" {
-		return u.Host
-	}
-	return s
-}
-
 // resolveNetwork is what agent, pair and open do at startup: load the
 // settings, say which non-default servers are in use, and report a
 // setting that is wrong rather than carry on with the defaults. The
@@ -146,7 +110,7 @@ func resolveNetwork(confPath string, stdout, stderr io.Writer) (transport.Networ
 		fmt.Fprintf(stderr, "unlocker: network settings: %v\n", err)
 		return transport.NetworkConfig{}, false
 	}
-	if s := networkSummary(c); s != "" {
+	if s := c.Summary(); s != "" {
 		fmt.Fprintf(stdout, "unlocker: %s\n", s)
 	}
 	return c, true

@@ -123,13 +123,16 @@ func (c NetworkConfig) IsZero() bool {
 }
 
 // Override returns c with every setting that o has set replacing c's.
-// It is how a command line wins over a file.
+// It is how a command line wins over a file. A discovery server that
+// replaces another is a different server, so the announce endpoint that
+// belonged to the old one is dropped with it (unless o names its own):
+// announcing to one server and looking up on another finds nothing.
 func (c NetworkConfig) Override(o NetworkConfig) NetworkConfig {
 	if o.RelayPool != "" {
 		c.RelayPool = o.RelayPool
 	}
 	if o.Discovery != "" {
-		c.Discovery = o.Discovery
+		c.Discovery, c.DiscoveryAnnounce = o.Discovery, ""
 	}
 	if o.DiscoveryAnnounce != "" {
 		c.DiscoveryAnnounce = o.DiscoveryAnnounce
@@ -219,4 +222,33 @@ func ParseNetworkConf(r io.Reader) (NetworkConfig, error) {
 		return NetworkConfig{}, err
 	}
 	return ParseNetworkConfig(vals[NetworkKeyRelayPool], vals[NetworkKeyDiscovery], vals[NetworkKeyDiscoveryAnnounce])
+}
+
+// Summary says, in a line for a console, which servers will be
+// used and in which form the relay setting was understood. Empty when
+// everything is the public default, which needs no remark.
+func (c NetworkConfig) Summary() string {
+	if c.IsZero() {
+		return ""
+	}
+	part := func(kind, value string) string {
+		if value == "" {
+			return kind + " public"
+		}
+		return kind + " " + hostOf(value)
+	}
+	relay := "relay public"
+	if c.RelayPool != "" {
+		relay = c.RelayKind() + " " + hostOf(c.RelayPool)
+	}
+	return fmt.Sprintf("using %s, %s", relay, part("discovery", c.Discovery))
+}
+
+// hostOf is the host (and port) of a URL, which is all a summary needs;
+// the full URL, query and all, is in the file for anyone who wants it.
+func hostOf(s string) string {
+	if u, err := url.Parse(s); err == nil && u.Host != "" {
+		return u.Host
+	}
+	return s
 }

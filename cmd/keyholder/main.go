@@ -150,6 +150,10 @@ func runUnlock(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	directAddr := fs.String("direct-addr", "", "dial this address directly, bypassing relay and discovery (testing only)")
 	yes := fs.Bool("yes", false, "skip the approval prompt")
 	timeout := fs.Duration("timeout", defaultUnlockTimeout, "give up dialling the machine after this long")
+	relayPool := fs.String("relay-pool", "", "relay pool URL, or relay://host:port/?id=... for one relay, instead of the public pool")
+	discovery := fs.String("discovery", "", "discovery server URL, instead of the public one; the machine must announce to the same one")
+	discoveryAnnounce := fs.String("discovery-announce", "", "discovery announce URL, if it differs from --discovery")
+	configFile := fs.String("config", "", "file with relay-pool, discovery and discovery-announce settings (default: keyholder/config in the user config directory)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -158,6 +162,20 @@ func runUnlock(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 	machineID := fs.Arg(0)
+
+	configPath, explicitConfig := *configFile, *configFile != ""
+	if !explicitConfig {
+		// No default is not fatal: the file is optional.
+		configPath, _ = defaultConfigFile()
+	}
+	network, err := loadNetworkConfig(configPath, explicitConfig, *relayPool, *discovery, *discoveryAnnounce)
+	if err != nil {
+		fmt.Fprintf(stderr, "keyholder: network settings: %v\n", err)
+		return 2
+	}
+	if s := network.Summary(); s != "" {
+		fmt.Fprintf(stderr, "keyholder: %s\n", s)
+	}
 
 	if *keyFile == "" {
 		fmt.Fprintln(stderr, "keyholder: --key-file is required (could not determine a default)")
@@ -196,7 +214,7 @@ func runUnlock(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// than repeating the same mismatch.
 	var lastErr error
 	for {
-		lastErr = runUnlockOnce(ctx, s, cert, machineID, *directAddr, transport.NetworkConfig{}, *yes, stdin, stdout)
+		lastErr = runUnlockOnce(ctx, s, cert, machineID, *directAddr, network, *yes, stdin, stdout)
 		if lastErr == nil {
 			return 0
 		}

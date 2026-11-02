@@ -170,23 +170,6 @@ func TestLoadNetworkConfigRefusesBadSettings(t *testing.T) {
 	}
 }
 
-func TestNetworkSummary(t *testing.T) {
-	if got := networkSummary(transport.NetworkConfig{}); got != "" {
-		t.Errorf("defaults need no remark, got %q", got)
-	}
-	c, _ := transport.ParseNetworkConfig("relay://10.0.0.5:22067/?id="+testRelayID, "https://disco.example.net/v2/", "")
-	got := networkSummary(c)
-	for _, want := range []string{"single relay", "10.0.0.5:22067", "disco.example.net"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("summary %q should mention %q", got, want)
-		}
-	}
-	c, _ = transport.ParseNetworkConfig("https://pool.example.net/endpoint", "", "")
-	if got := networkSummary(c); !strings.Contains(got, "pool") || !strings.Contains(got, "public") {
-		t.Errorf("summary %q should say a pool is used and that discovery stays public", got)
-	}
-}
-
 func TestResolveNetwork(t *testing.T) {
 	oldCmdline := procCmdline
 	defer func() { procCmdline = oldCmdline }()

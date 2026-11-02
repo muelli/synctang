@@ -209,3 +209,42 @@ func TestNetworkConfigOverride(t *testing.T) {
 		t.Errorf("a set override must win: %+v", got)
 	}
 }
+
+// A discovery server that replaces another is a different server, so
+// the announce endpoint that belonged to the old one must go with it:
+// announcing to one and looking up on another finds nothing.
+func TestNetworkConfigOverrideDiscoveryReplacesItsAnnounce(t *testing.T) {
+	base, _ := ParseNetworkConfig("", "https://file.example.net/v2/", "https://file-announce.example.net/v2/")
+	over, _ := ParseNetworkConfig("", "https://cmd.example.net/v2/", "")
+	got := base.Override(over)
+	if got.DiscoveryAnnounce != "" {
+		t.Errorf("announce endpoint of the replaced server survived: %+v", got)
+	}
+	// An override that names its own announce endpoint keeps it.
+	over, _ = ParseNetworkConfig("", "https://cmd.example.net/v2/", "https://cmd-announce.example.net/v2/")
+	if got := base.Override(over); got.DiscoveryAnnounce != "https://cmd-announce.example.net/v2/" {
+		t.Errorf("got %+v", got)
+	}
+	// Overriding something else leaves the announce endpoint alone.
+	over, _ = ParseNetworkConfig("https://pool.example.net/endpoint", "", "")
+	if got := base.Override(over); got.DiscoveryAnnounce != "https://file-announce.example.net/v2/" {
+		t.Errorf("got %+v", got)
+	}
+}
+
+func TestNetworkConfigSummary(t *testing.T) {
+	if got := (NetworkConfig{}).Summary(); got != "" {
+		t.Errorf("defaults need no remark, got %q", got)
+	}
+	c, _ := ParseNetworkConfig("relay://10.0.0.5:22067/?id="+testRelayID, "https://disco.example.net/v2/", "")
+	got := c.Summary()
+	for _, want := range []string{"single relay", "10.0.0.5:22067", "disco.example.net"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("summary %q should mention %q", got, want)
+		}
+	}
+	c, _ = ParseNetworkConfig("https://pool.example.net/endpoint", "", "")
+	if got := c.Summary(); !strings.Contains(got, "pool") || !strings.Contains(got, "public") {
+		t.Errorf("summary %q should say a pool is used and that discovery stays public", got)
+	}
+}
