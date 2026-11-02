@@ -29,18 +29,23 @@ import (
 // (transport.Multi), so unlock keeps working on a LAN with no
 // Internet route without the caller having to know in advance which
 // situation it is in.
-func newDialTransport(cert tls.Certificate, directAddr string) transport.Transport {
+//
+// network chooses the discovery server the machine is looked up on
+// (and the relay pool, which a dialer does not use: it joins the relay
+// the machine announced); its zero value is the public Syncthing ones.
+func newDialTransport(cert tls.Certificate, directAddr string, network transport.NetworkConfig) transport.Transport {
+	relay := network.NewSyncthingRelay(cert)
 	if directAddr != "" {
-		return transport.NewSyncthingRelay(cert)
+		return relay
 	}
 	return &transport.Multi{Transports: []transport.Transport{
 		&transport.LocalDiscovery{Cert: cert},
-		transport.NewSyncthingRelay(cert),
+		relay,
 	}}
 }
 
-func runUnlockOnce(ctx context.Context, s []byte, cert tls.Certificate, machineID, directAddr string, yes bool, stdin io.Reader, stdout io.Writer) error {
-	tr := newDialTransport(cert, directAddr)
+func runUnlockOnce(ctx context.Context, s []byte, cert tls.Certificate, machineID, directAddr string, network transport.NetworkConfig, yes bool, stdin io.Reader, stdout io.Writer) error {
+	tr := newDialTransport(cert, directAddr, network)
 	conn, err := tr.Dial(ctx, transport.DialOptions{PeerID: machineID, DirectAddr: directAddr})
 	if err != nil {
 		return fmt.Errorf("dialing %s: %w", machineID, err)

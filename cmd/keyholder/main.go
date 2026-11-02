@@ -196,7 +196,7 @@ func runUnlock(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// than repeating the same mismatch.
 	var lastErr error
 	for {
-		lastErr = runUnlockOnce(ctx, s, cert, machineID, *directAddr, *yes, stdin, stdout)
+		lastErr = runUnlockOnce(ctx, s, cert, machineID, *directAddr, transport.NetworkConfig{}, *yes, stdin, stdout)
 		if lastErr == nil {
 			return 0
 		}

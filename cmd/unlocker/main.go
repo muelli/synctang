@@ -264,7 +264,7 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer cancel()
 
-	tr := newAgentTransport(cert, logger, *directAddr)
+	tr := newAgentTransport(cert, logger, *directAddr, transport.NetworkConfig{})
 	// The last reason discovery failed, so a person at the console is told
 	// once why nothing is happening (several devices and no way to tell them
 	// apart, say) instead of never, or on every retry.
@@ -335,13 +335,18 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 // either side needing to know in advance which situation it is in.
 // LocalDiscovery needs no DNS resolver, unlike SyncthingRelay, so it
 // keeps working even when ensureResolver above never finds one.
-func newAgentTransport(cert tls.Certificate, logger *slog.Logger, directAddr string) transport.Transport {
+//
+// network chooses the relay pool and discovery servers; its zero value
+// is the public Syncthing ones.
+func newAgentTransport(cert tls.Certificate, logger *slog.Logger, directAddr string, network transport.NetworkConfig) transport.Transport {
+	relay := network.NewSyncthingRelay(cert)
+	relay.Logger = logger
 	if directAddr != "" {
-		return &transport.SyncthingRelay{Cert: cert, Logger: logger}
+		return relay
 	}
 	return &transport.Multi{Transports: []transport.Transport{
 		&transport.LocalDiscovery{Cert: cert, Logger: logger},
-		&transport.SyncthingRelay{Cert: cert, Logger: logger},
+		relay,
 	}}
 }
 

@@ -164,7 +164,7 @@ func openOnDemand(device, name, machineName string, cert tls.Certificate, timeou
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	tr := newAgentTransport(cert, nil, directAddr)
+	tr := newAgentTransport(cert, nil, directAddr, transport.NetworkConfig{})
 	deliver := func(key []byte) error {
 		if err := openVolume(device, name, key); err != nil {
 			return fmt.Errorf("unlocker: opening %s: %w", device, err)

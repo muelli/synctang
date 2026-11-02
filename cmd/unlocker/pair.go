@@ -50,6 +50,10 @@ type pairOptions struct {
 
 	listenOpts transport.ListenOptions
 	logger     *slog.Logger
+
+	// network chooses the relay pool and discovery servers; the zero
+	// value is the public ones.
+	network transport.NetworkConfig
 }
 
 // runPairOnce accepts exactly one pairing attempt and returns when it
@@ -70,7 +74,7 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 
 	machineID := protocol.NewDeviceID(opts.machineCert.Certificate[0]).String()
 
-	tr := newAgentTransport(opts.machineCert, logger, opts.listenOpts.DirectAddr)
+	tr := newAgentTransport(opts.machineCert, logger, opts.listenOpts.DirectAddr, opts.network)
 	listenOpts := opts.listenOpts
 	listenOpts.AuthorizedPeers = nil
 
