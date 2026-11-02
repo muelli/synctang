@@ -5,6 +5,7 @@ import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import javax.crypto.Cipher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -47,6 +48,7 @@ class UnlockFlowTest {
 
     private val identity = Identity("PHONE-ID", "04ab", KeyHolderKey.Backing.TEE)
     @Volatile private var prepareFails: Exception? = null
+    @Volatile private var prepareBlocksOn: CountDownLatch? = null
     @Volatile private var unwrapFails: Exception? = null
     private val preparedCiphers = Collections.synchronizedList(mutableListOf<Cipher>())
     private val unwrappedWith = Collections.synchronizedList(mutableListOf<Cipher>())
@@ -68,6 +70,7 @@ class UnlockFlowTest {
         newPairing = { nextPairing().also { pairings += it } },
         prepareKey = {
             prepareFails?.let { throw it }
+            prepareBlocksOn?.await()
             Cipher.getInstance("AES").also { preparedCiphers += it }
         },
         unwrapKey = { cipher ->
@@ -81,6 +84,7 @@ class UnlockFlowTest {
             "OLD-PHONE-ID"
         },
         approveWindowMillis = 1_500,
+        keyUseTimeoutSeconds = 1,
         strings = object : Strings {
             override fun get(id: Int, vararg args: Any) =
                 "res:$id" + if (args.isEmpty()) "" else args.joinToString(",", "(", ")")
@@ -510,6 +514,56 @@ class UnlockFlowTest {
         assertFalse(session.answered)
         assertTrue("the session was never closed", awaitClosed(session))
         assertEquals("the key is kept: nothing says it is broken", 0, identityResets)
+    }
+
+    /**
+     * Starting the operation is the Keystore call that is known to hang, so it
+     * is bounded like the unwrapping is: past the limit the machine is told
+     * no and the person is told why, instead of a Working screen with no way
+     * out.
+     */
+    @Test
+    fun aKeyThatDoesNotStartDeclinesAndSaysSo() {
+        val session = connectToARequest()
+        val stuck = CountDownLatch(1)
+        prepareBlocksOn = stuck
+
+        try {
+            onMain { flow.approve { _, _, _ -> AuthOutcome.SUCCEEDED } }
+            val failed = await<UnlockUiState.Failed>()
+            assertEquals("res:${R.string.failure_key_timed_out}", failed.message)
+            assertEquals(1, session.declines.size)
+            assertFalse(session.answered)
+            assertTrue("the session was never closed", awaitClosed(session))
+            assertEquals("the key is kept: nothing says it is broken", 0, identityResets)
+        } finally {
+            stuck.countDown()
+        }
+    }
+
+    /** A second press, queued behind the first, must not start a second prompt. */
+    @Test
+    fun aSecondApproveWhileOneIsUnderWayIsIgnored() {
+        connectToARequest()
+        val prompts = AtomicInteger()
+        val release = CountDownLatch(1)
+        val gate = BiometricGate { _, _, _ ->
+            prompts.incrementAndGet()
+            release.await()
+            AuthOutcome.SUCCEEDED
+        }
+
+        onMain {
+            flow.approve(gate)
+            flow.approve(gate)
+        }
+        await<UnlockUiState.Working>()
+        Thread.sleep(300)
+        release.countDown()
+        await<UnlockUiState.Done>()
+
+        assertEquals(1, prompts.get())
+        assertEquals(1, preparedCiphers.size)
     }
 
     // An Approve screen cannot stay up for ever. The machine ended one session

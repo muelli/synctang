@@ -246,6 +246,9 @@ class UnlockFlow(
     private val resetIdentity: () -> String,
     private val allowSoftwareKey: () -> Unit = {},
     private val approveWindowMillis: Long = APPROVE_WINDOW_MILLIS,
+    // How long either Keystore call may take: a stuck one cannot be
+    // interrupted, only left behind, so each runs on a thread of its own.
+    private val keyUseTimeoutSeconds: Long = KEY_USE_TIMEOUT_SECONDS,
     private val strings: Strings,
     private val log: (String, Throwable) -> Unit = { _, _ -> },
 ) {
@@ -452,6 +455,10 @@ class UnlockFlow(
      * unwrapping throw.
      */
     fun approve(gate: BiometricGate) {
+        // One approval per request: a second press, or a key, queued
+        // behind the first would start a second prompt over the same
+        // session.
+        if (_state.value !is UnlockUiState.Approve) return
         val machine = store.machine() ?: return
         val active = session ?: return
         disarmApproveExpiry()
@@ -462,7 +469,7 @@ class UnlockFlow(
             // here, and nobody is asked to touch the sensor for an answer that
             // cannot be given.
             val cipher = try {
-                withContext(io) { prepareKey() }
+                withContext(io) { runWithin(keyUseTimeoutSeconds) { prepareKey() } }
             } catch (e: KeyInvalidated) {
                 retireInvalidatedKey(machine, active, e)
                 return@launch
@@ -495,7 +502,7 @@ class UnlockFlow(
             }
 
             try {
-                withContext(io) { active.answer { unwrapKey(cipher) } }
+                withContext(io) { active.answer { runWithin(keyUseTimeoutSeconds) { unwrapKey(cipher) } } }
                 _state.value = UnlockUiState.Done(machine)
             } catch (e: KeyInvalidated) {
                 retireInvalidatedKey(machine, active, e)

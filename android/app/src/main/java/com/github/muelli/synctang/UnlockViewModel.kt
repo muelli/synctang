@@ -50,9 +50,7 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
         newSession = { machine -> GoSession(machine, store.identitySeed(), multicastLock) },
         newPairing = { GoPairing(store.identitySeed(), multicastLock) },
         prepareKey = key::prepareUnwrap,
-        // On its own thread with a limit: a Keystore call can hang, and a
-        // hung one cannot be interrupted, only left behind.
-        unwrapKey = { cipher -> runWithin(KEY_USE_TIMEOUT_SECONDS) { key.unwrap(cipher) } },
+        unwrapKey = key::unwrap,
         resetIdentity = ::resetIdentity,
         allowSoftwareKey = store::allowSoftwareKey,
         strings = object : Strings {
