@@ -225,6 +225,54 @@ class UnlockFlowTest {
         assertNull(store.saved)
     }
 
+    // A link with a setting the app does not understand is refused out loud, and nothing is
+    // saved or dialled: ignoring it would pair against servers the owner chose not to use.
+    @Test
+    fun aLinkWithAnUnknownParameterIsRefusedAndSaysWhich() {
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        onMain { flow.startPairing() }
+        await<UnlockUiState.NeedsPairing>()
+
+        var accepted = false
+        onMain { accepted = flow.pair(payload(machineB) + "&tor=1") }
+        assertTrue("the refusal is shown as a failure, not as a mistyped link", accepted)
+        val failed = await<UnlockUiState.Failed>()
+        assertEquals(Retry.SCAN_AGAIN, failed.retry)
+        assertEquals("res:${R.string.pair_unknown_parameters}(tor)", failed.message)
+        assertEquals(machineA, store.saved)
+        assertTrue(pairings.isEmpty())
+    }
+
+    @Test
+    fun aLinkWithABadSettingIsRefusedAndSaysWhich() {
+        onMain { flow.refresh() }
+        await<UnlockUiState.NeedsPairing>()
+        onMain { flow.pair(payload(machineB) + "&discovery=ftp%3A%2F%2Fx.example.net%2F") }
+        val failed = await<UnlockUiState.Failed>()
+        assertEquals("res:${R.string.pair_bad_setting}(discovery)", failed.message)
+        assertNull(store.saved)
+        assertTrue(pairings.isEmpty())
+    }
+
+    // The machine's servers are stored with it and handed to the pairing and to every
+    // later unlock, which is the point of carrying them in the link.
+    @Test
+    fun theMachinesServersReachThePairingAndAreSavedWithIt() {
+        onMain { flow.refresh() }
+        await<UnlockUiState.NeedsPairing>()
+
+        onMain { flow.pair(payload(machineB) + "&discovery=https%3A%2F%2Fd.example.net%2Fv2%2F") }
+        await<UnlockUiState.Pairing>()
+        pairings.awaitOne().started.await(5, TimeUnit.SECONDS)
+        assertEquals("https://d.example.net/v2/", pairings.single().machine?.discovery)
+
+        pairings.single().finish()
+        await<UnlockUiState.Ready>()
+        assertEquals("https://d.example.net/v2/", store.saved?.discovery)
+    }
+
     // Undoing a replacement
 
     @Test
@@ -1021,7 +1069,10 @@ private class FakePairing(private val failWith: Exception? = null) : PairingAtte
         release.countDown()
     }
 
+    @Volatile var machine: Machine? = null
+
     override fun pair(machine: Machine, code: String, identity: Identity) {
+        this.machine = machine
         started.countDown()
         failWith?.let { throw it }
         if (!release.await(10, TimeUnit.SECONDS)) throw Exception("fake pairing timed out")

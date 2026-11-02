@@ -57,6 +57,62 @@ class PairingPayloadTest {
         assertEquals(id, PairingPayload.parse(compact)?.deviceId)
     }
 
+    // A machine with its own relay pool and discovery server says so in the link, so the
+    // phone looks it up where the machine announces. The link is what "unlocker pair" prints,
+    // with the URLs escaped as java.net.URLEncoder does.
+    @Test
+    fun aLinkCanCarryTheMachinesRelayAndDiscoveryServer() {
+        val link = "synctang://pair?machine=$id&name=study&relay=relay%3A%2F%2F10.0.0.5%3A22067%2F%3Fid%3DP56IOI7-MZJNU2Y" +
+            "&discovery=https%3A%2F%2Fdisco.example.net%3A8443%2Fv2%2F&psk=KMAXCD654UPFOAB2ICWOPBDUUQ"
+        val machine = PairingPayload.parse(link)
+        assertEquals("relay://10.0.0.5:22067/?id=P56IOI7-MZJNU2Y", machine?.relayPool)
+        assertEquals("https://disco.example.net:8443/v2/", machine?.discovery)
+        val plan = planPairing(link) as PairingPlan.Enrol
+        assertEquals("https://disco.example.net:8443/v2/", plan.machine.discovery)
+    }
+
+    @Test
+    fun aLinkWithoutThemMeansThePublicServers() {
+        val machine = PairingPayload.parse("synctang://pair?machine=$id&name=study&psk=ABC")
+        assertEquals("", machine?.relayPool)
+        assertEquals("", machine?.discovery)
+        assertEquals("", PairingPayload.parse(id)?.discovery)
+    }
+
+    // A setting this app does not know is not ignorable: ignoring, say, a future "relay-only=1"
+    // would pair the phone against servers the owner chose not to use.
+    @Test
+    fun aLinkWithAParameterTheAppDoesNotKnowIsRefused() {
+        val link = "synctang://pair?machine=$id&name=study&psk=ABC&tor=1&relay-only=yes"
+        val plan = planPairing(link)
+        assertTrue("got $plan", plan is PairingPlan.UnknownParameters)
+        assertEquals(listOf("tor", "relay-only"), (plan as PairingPlan.UnknownParameters).names)
+    }
+
+    @Test
+    fun theParametersTheAppKnowAreNotUnknown() {
+        val link = "synctang://pair?machine=$id&name=study&psk=ABC&relay=https%3A%2F%2Fp.example.net%2Fendpoint" +
+            "&discovery=https%3A%2F%2Fd.example.net%2Fv2%2F"
+        assertTrue(planPairing(link) is PairingPlan.Enrol)
+    }
+
+    @Test
+    fun theNamesOfUnknownParametersAreMadeSafeToShow() {
+        val link = "synctang://pair?machine=$id&" + "x".repeat(200) + "=1&a%0Ab%20c=2"
+        val names = (planPairing(link) as PairingPlan.UnknownParameters).names
+        assertTrue(names.all { it.length <= 24 })
+        assertTrue(names.all { name -> name.all { it.isLetterOrDigit() || it in "_.-" } })
+    }
+
+    @Test
+    fun aSettingThatIsNotAUrlIsRefused() {
+        for (bad in listOf("discovery=ftp%3A%2F%2Fx.example.net%2F", "discovery=disco.example.net", "relay=gopher%3A%2F%2Fx.example.net%2F")) {
+            val plan = planPairing("synctang://pair?machine=$id&psk=ABC&$bad")
+            assertTrue("$bad gave $plan", plan is PairingPlan.BadSetting)
+            assertEquals(bad.substringBefore('='), (plan as PairingPlan.BadSetting).name)
+        }
+    }
+
     @Test
     fun rejectsAnythingThatIsNotADeviceId() {
         assertNull(PairingPayload.parse(""))

@@ -131,6 +131,9 @@ internal const val APPROVAL_TIMED_OUT = "key holder did not answer in time"
  */
 internal const val APPROVE_WINDOW_MILLIS = 90_000L
 
+/** How many unknown parameter names a refusal lists, so a hostile link cannot fill the screen. */
+private const val MAX_NAMES_SHOWN = 3
+
 /** Which machine this phone is paired with. [PairingStore] is the real one. */
 interface MachineStore {
     fun machine(): Machine?
@@ -223,10 +226,19 @@ sealed interface PairingPlan {
 
     /** A one-time code: enrol over the network, then remember the machine. */
     data class Enrol(val machine: Machine, val code: String) : PairingPlan
+
+    /** The link asks for something this app does not know: refuse, saying what. */
+    data class UnknownParameters(val names: List<String>) : PairingPlan
+
+    /** The link's [name] setting (relay or discovery) is not a server URL. */
+    data class BadSetting(val name: String) : PairingPlan
 }
 
 fun planPairing(scanned: String): PairingPlan {
     val machine = PairingPayload.parse(scanned) ?: return PairingPlan.Invalid
+    PairingPayload.unknownParameters(scanned).takeIf { it.isNotEmpty() }
+        ?.let { return PairingPlan.UnknownParameters(it) }
+    PairingPayload.badSetting(scanned)?.let { return PairingPlan.BadSetting(it) }
     val code = PairingPayload.pairingCode(scanned) ?: return PairingPlan.Remember(machine)
     return PairingPlan.Enrol(machine, code)
 }
@@ -450,6 +462,18 @@ class UnlockFlow(
             PairingPlan.Invalid -> return false
             is PairingPlan.Remember -> scope.launch { adopt(plan.machine) }
             is PairingPlan.Enrol -> enrol(plan.machine, plan.code)
+            // Shown as a failure rather than as "not a pairing link": it is one, and
+            // the person needs to hear that this version of the app cannot honour it.
+            is PairingPlan.UnknownParameters -> _state.value = UnlockUiState.Failed(
+                null,
+                strings.get(R.string.pair_unknown_parameters, plan.names.take(MAX_NAMES_SHOWN).joinToString(", ")),
+                Retry.SCAN_AGAIN,
+            )
+            is PairingPlan.BadSetting -> _state.value = UnlockUiState.Failed(
+                null,
+                strings.get(R.string.pair_bad_setting, plan.name),
+                Retry.SCAN_AGAIN,
+            )
         }
         return true
     }

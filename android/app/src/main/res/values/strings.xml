@@ -15,6 +15,8 @@
     <string name="pair_manual_label">Pairing link or machine device ID</string>
     <string name="pair_manual_action">Pair</string>
     <string name="pair_invalid">That is not a pairing link or a machine device ID.</string>
+    <string name="pair_unknown_parameters">This pairing link asks for something this version of the app does not understand (%1$s), so nothing was paired. Update the app, or pair with a link made without it.</string>
+    <string name="pair_bad_setting">This pairing link names a server in its \"%1$s\" setting that is not a web address, so nothing was paired.</string>
     <string name="enrol_manual_title">Enrol by hand</string>
     <string name="enrol_manual_hint">Only for a machine that cannot show a pairing code. Run this on the machine, once, to let this phone unlock it.</string>
     <string name="pair_copied">Copied to the clipboard.</string>

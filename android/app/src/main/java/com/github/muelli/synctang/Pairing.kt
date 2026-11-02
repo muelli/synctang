@@ -14,8 +14,18 @@ import java.security.SecureRandom
  * The name is a label the machine chose for itself and is not
  * authenticated by anything. [deviceId] is, so the two are always shown
  * together.
+ *
+ * [relayPool] and [discovery] are the servers this machine's owner runs
+ * in place of the public Syncthing ones, as the machine's pairing link
+ * gave them; empty means the public default. A phone has to look the
+ * machine up where it announces, so they are kept with the machine.
  */
-data class Machine(val deviceId: String, val name: String)
+data class Machine(
+    val deviceId: String,
+    val name: String,
+    val relayPool: String = "",
+    val discovery: String = "",
+)
 
 /**
  * What the app persists between runs.
@@ -57,7 +67,12 @@ class PairingStore(context: Context) : MachineStore {
 
     override fun machine(): Machine? {
         val id = prefs.getString(KEY_MACHINE_ID, null) ?: return null
-        return Machine(id, prefs.getString(KEY_MACHINE_NAME, null).orEmpty())
+        return Machine(
+            id,
+            prefs.getString(KEY_MACHINE_NAME, null).orEmpty(),
+            prefs.getString(KEY_MACHINE_RELAY, null).orEmpty(),
+            prefs.getString(KEY_MACHINE_DISCOVERY, null).orEmpty(),
+        )
     }
 
     /**
@@ -71,6 +86,8 @@ class PairingStore(context: Context) : MachineStore {
             .remove(KEY_SEED)
             .remove(KEY_MACHINE_ID)
             .remove(KEY_MACHINE_NAME)
+            .remove(KEY_MACHINE_RELAY)
+            .remove(KEY_MACHINE_DISCOVERY)
             .commit()
     }
 
@@ -89,6 +106,8 @@ class PairingStore(context: Context) : MachineStore {
         prefs.edit()
             .putString(KEY_MACHINE_ID, machine.deviceId)
             .putString(KEY_MACHINE_NAME, machine.name)
+            .putString(KEY_MACHINE_RELAY, machine.relayPool)
+            .putString(KEY_MACHINE_DISCOVERY, machine.discovery)
             .apply()
     }
 
@@ -96,6 +115,8 @@ class PairingStore(context: Context) : MachineStore {
         const val KEY_SEED = "identity-seed"
         const val KEY_MACHINE_ID = "machine-device-id"
         const val KEY_MACHINE_NAME = "machine-name"
+        const val KEY_MACHINE_RELAY = "machine-relay-pool"
+        const val KEY_MACHINE_DISCOVERY = "machine-discovery"
         const val KEY_SOFTWARE_ALLOWED = "software-key-allowed"
     }
 }
@@ -107,8 +128,12 @@ class PairingStore(context: Context) : MachineStore {
  * security boundary: whatever is scanned is only a Device ID to dial,
  * and the dial itself verifies that identity cryptographically.
  *
- *  - `synctang://pair?machine=<device-id>&name=<label>`
+ *  - `synctang://pair?machine=<device-id>&name=<label>`, which may also carry
+ *    `psk` (the one-time code), and `relay` and `discovery` (URLs of the
+ *    machine owner's own servers, instead of the public ones)
  *  - a bare Syncthing Device ID, with or without its dashes
+ *
+ * A parameter not listed here is not ignored: see [unknownParameters].
  */
 object PairingPayload {
 
@@ -119,7 +144,7 @@ object PairingPayload {
         if (text.startsWith(SCHEME, ignoreCase = true)) {
             val fields = fields(text)
             val id = normaliseDeviceId(fields["machine"].orEmpty()) ?: return null
-            return Machine(id, fields["name"].orEmpty())
+            return Machine(id, fields["name"].orEmpty(), fields["relay"].orEmpty(), fields["discovery"].orEmpty())
         }
 
         val id = normaliseDeviceId(text) ?: return null
@@ -148,6 +173,42 @@ object PairingPayload {
     }
 
     /**
+     * The names of the parameters in a scanned link that this app does
+     * not know, made safe to put on a screen (they come from a QR code
+     * anyone can print): letters, digits, `_`, `.` and `-`, at most 24
+     * of them. Empty when there are none, or for a bare Device ID.
+     *
+     * The caller refuses the pairing when this is not empty. Ignoring an
+     * unknown parameter would pair the phone as if the machine had asked
+     * for nothing, when what it asked for may be exactly the thing that
+     * keeps the phone from finding it, or from keeping to the servers its
+     * owner chose.
+     */
+    fun unknownParameters(scanned: String): List<String> {
+        val text = scanned.trim()
+        if (!text.startsWith(SCHEME, ignoreCase = true)) return emptyList()
+        return fields(text).keys.filter { it !in KNOWN }.map { name ->
+            name.filter { it.isLetterOrDigit() || it in "_.-" }.take(MAX_NAME).ifEmpty { "?" }
+        }
+    }
+
+    /**
+     * The name of the first of `relay` and `discovery` in a scanned link
+     * whose value cannot be a server URL, or null if both are fine or
+     * absent. A light check: the Go side validates for real when the
+     * value is used, but a link that can never work is better refused
+     * where it is scanned than at the first unlock.
+     */
+    fun badSetting(scanned: String): String? {
+        val text = scanned.trim()
+        if (!text.startsWith(SCHEME, ignoreCase = true)) return null
+        val fields = fields(text)
+        fields["relay"]?.takeIf { it.isNotEmpty() && !RELAY_URL.matches(it) }?.let { return "relay" }
+        fields["discovery"]?.takeIf { it.isNotEmpty() && !HTTP_URL.matches(it) }?.let { return "discovery" }
+        return null
+    }
+
+    /**
      * Accepts a Device ID in any of the shapes a human might paste it
      * in, and returns the canonical dashed upper-case form, or null if
      * it is not a Device ID at all.
@@ -172,6 +233,10 @@ object PairingPayload {
             value
         }
 
+    private val KNOWN = setOf("machine", "name", "psk", "relay", "discovery")
+    private const val MAX_NAME = 24
+    private val HTTP_URL = Regex("https?://[^/\\s]+\\S*", RegexOption.IGNORE_CASE)
+    private val RELAY_URL = Regex("((dynamic\\+)?https?|relay)://[^/\\s]+\\S*", RegexOption.IGNORE_CASE)
     private const val SCHEME = "synctang://pair"
     private const val BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
     private const val GROUP = 7
