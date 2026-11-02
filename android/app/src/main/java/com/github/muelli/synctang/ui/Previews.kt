@@ -10,6 +10,7 @@ import com.github.muelli.synctang.CameraAccess
 import com.github.muelli.synctang.CameraPermissionPrompt
 import com.github.muelli.synctang.Identity
 import com.github.muelli.synctang.KeyHolderKey
+import com.github.muelli.synctang.KeyProblem
 import com.github.muelli.synctang.Machine
 import com.github.muelli.synctang.R
 import com.github.muelli.synctang.Retry
@@ -67,6 +68,12 @@ private fun CameraDeniedPreview() = Frame {
 @Composable
 private fun AboutPreview() = Frame(aboutOpen = true) {
     AboutScreen(identity, "42")
+}
+
+@Preview(name = "Key needs attention", widthDp = 360, heightDp = 640)
+@Composable
+private fun KeyNeedsReplacingPreview() = Frame {
+    KeyNeedsReplacingScreen(KeyProblem.HARDWARE_HALF_MISSING, {}, {})
 }
 
 @Preview(name = "Ready", widthDp = 360, heightDp = 640)

@@ -24,5 +24,6 @@ internal fun screenTitle(state: UnlockUiState, aboutOpen: Boolean): Int = when {
         is UnlockUiState.Done -> R.string.done_title
         is UnlockUiState.Failed -> R.string.error_title
         is UnlockUiState.SoftwareKeyRefused -> R.string.software_key_title
+        is UnlockUiState.KeyNeedsReplacing -> R.string.key_attention_title
     }
 }

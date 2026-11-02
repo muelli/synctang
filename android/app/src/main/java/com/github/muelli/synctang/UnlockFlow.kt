@@ -85,6 +85,13 @@ sealed interface UnlockUiState {
     object SoftwareKeyRefused : UnlockUiState
 
     /**
+     * The phone's key is not whole ([KeyHolderKey.ensureKey]), and what to do
+     * about it is the person's call: try again, in case it was a passing fault,
+     * or make a new key ([UnlockFlow.replaceKey]).
+     */
+    data class KeyNeedsReplacing(val problem: KeyProblem) : UnlockUiState
+
+    /**
      * [message] is in words for a person; [detail], when there is one,
      * is the machine's own reason. [technical] is the raw error text,
      * shown only on request.
@@ -199,7 +206,7 @@ fun backAction(state: UnlockUiState): BackAction = when (state) {
     is UnlockUiState.NeedsPairing ->
         if (state.previous != null) BackAction.KEEP_CURRENT_MACHINE else BackAction.EXIT
     is UnlockUiState.Ready, is UnlockUiState.Done, is UnlockUiState.Failed,
-    is UnlockUiState.SoftwareKeyRefused -> BackAction.EXIT
+    is UnlockUiState.SoftwareKeyRefused, is UnlockUiState.KeyNeedsReplacing -> BackAction.EXIT
     is UnlockUiState.Connecting, is UnlockUiState.Pairing,
     is UnlockUiState.Approve -> BackAction.CANCEL
     is UnlockUiState.Working -> BackAction.IGNORE
@@ -286,6 +293,22 @@ class UnlockFlow(
     fun keepCurrentMachine() = refresh()
 
     /**
+     * The person has chosen to throw away a key that was not whole and make a
+     * new one, with a new transport identity ([resetIdentity]); the screen then
+     * says which Device ID to revoke on the machines that trusted the old one.
+     */
+    fun replaceKey() {
+        scope.launch {
+            val oldDeviceId = withContext(io) { resetIdentity() }
+            _state.value = UnlockUiState.Failed(
+                null,
+                strings.get(R.string.failure_key_replaced, oldDeviceId),
+                Retry.REFRESH,
+            )
+        }
+    }
+
+    /**
      * The owner has accepted a software-backed key on this phone. Recorded
      * by [allowSoftwareKey]; the flow then carries on as if the key had
      * been fine.
@@ -335,6 +358,9 @@ class UnlockFlow(
             }
         } catch (e: SoftwareKeyRefused) {
             UnlockUiState.SoftwareKeyRefused
+        } catch (e: KeyNeedsReplacing) {
+            log("the key is not whole", e)
+            UnlockUiState.KeyNeedsReplacing(e.problem)
         } catch (e: BiometricEnrolmentRequired) {
             UnlockUiState.Failed(null, strings.get(R.string.error_no_biometric))
         } catch (e: Exception) {
@@ -511,6 +537,16 @@ class UnlockFlow(
                 // machine is told, rather than left to its own timeout.
                 declineQuietly(active)
                 _state.value = failed(machine, e)
+            } catch (e: MachineFailure) {
+                if (e.kind == FailureKind.KEY_MISMATCH) {
+                    // Nothing was sent: this phone's own two files disagree. Not the
+                    // machine's doing, and not the app's to repair by deleting.
+                    log("the saved key does not match its public point", e)
+                    declineQuietly(active)
+                    _state.value = UnlockUiState.KeyNeedsReplacing(KeyProblem.FILES_DO_NOT_MATCH)
+                } else {
+                    _state.value = failed(machine, e)
+                }
             } catch (e: Exception) {
                 _state.value = failed(machine, e)
             } finally {

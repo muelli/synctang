@@ -80,6 +80,7 @@ class UnlockFlowTest {
         },
         resetIdentity = {
             identityResets++
+            identityFails = null
             store.saved = null
             "OLD-PHONE-ID"
         },
@@ -705,6 +706,76 @@ class UnlockFlowTest {
         assertEquals(machineA, await<UnlockUiState.Ready>().machine)
     }
 
+    // A key that is half there is the person's to decide about, never the app's
+
+    /**
+     * The wrapped scalar and the public point are two files. When they do not belong
+     * together the Go side sends nothing, and the flow says so as the phone's own
+     * problem, with the same choice as for any key that is not whole, rather than
+     * telling someone the machine refused.
+     */
+    @Test
+    fun aSavedKeyThatDoesNotMatchItsPublicPointAsksInsteadOfBlamingTheMachine() {
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        val mismatch = MachineFailure(FailureKind.KEY_MISMATCH, "", "mobile: saved key does not match", null)
+        nextSession = { FakeSession(connectReturnsAtOnce = true, answerFailsWith = mismatch) }
+        onMain { flow.connect() }
+        await<UnlockUiState.Approve>()
+        val session = sessions.single()
+
+        onMain { flow.approve { _, _, _ -> AuthOutcome.SUCCEEDED } }
+        val stopped = await<UnlockUiState.KeyNeedsReplacing>()
+        assertEquals(KeyProblem.FILES_DO_NOT_MATCH, stopped.problem)
+        assertEquals("the machine was told no", 1, session.declines.size)
+        assertTrue(awaitClosed(session))
+        assertEquals("nothing is deleted until the person says so", 0, identityResets)
+        assertEquals(machineA, store.saved)
+    }
+
+    @Test
+    fun aKeyWithOneHalfMissingStopsAtAScreenThatAsks() {
+        store.saved = machineA
+        identityFails = KeyNeedsReplacing(KeyProblem.HARDWARE_HALF_MISSING)
+        onMain { flow.refresh() }
+        val stopped = await<UnlockUiState.KeyNeedsReplacing>()
+        assertEquals(KeyProblem.HARDWARE_HALF_MISSING, stopped.problem)
+        assertEquals(BackAction.EXIT, backAction(stopped))
+        assertNull(com.github.muelli.synctang.ui.aboutIdentity(stopped))
+        assertEquals("nothing may be deleted until the person says so", 0, identityResets)
+        assertEquals("the paired machine is kept", machineA, store.saved)
+    }
+
+    @Test
+    fun tryingAgainAfterAPassingFaultCarriesOn() {
+        store.saved = machineA
+        identityFails = KeyNeedsReplacing(KeyProblem.HARDWARE_HALF_MISSING)
+        onMain { flow.refresh() }
+        await<UnlockUiState.KeyNeedsReplacing>()
+
+        identityFails = null
+        onMain { flow.refresh() }
+        assertEquals(machineA, await<UnlockUiState.Ready>().machine)
+        assertEquals(0, identityResets)
+    }
+
+    @Test
+    fun makingANewKeyRetiresTheOldIdentityAndSaysWhichOne() {
+        identityFails = KeyNeedsReplacing(KeyProblem.FILES_DAMAGED)
+        onMain { flow.refresh() }
+        await<UnlockUiState.KeyNeedsReplacing>()
+
+        onMain { flow.replaceKey() }
+        val failed = await<UnlockUiState.Failed>()
+        assertEquals("res:${R.string.failure_key_replaced}(OLD-PHONE-ID)", failed.message)
+        assertEquals(1, identityResets)
+        assertEquals(Retry.REFRESH, failed.retry)
+
+        onMain { flow.refresh() }
+        await<UnlockUiState.NeedsPairing>()
+    }
+
     @Test
     fun anApprovedRequestIsAnswered() {
         val session = connectToARequest()
@@ -756,6 +827,7 @@ private class FakeSession(
     private val connectReturnsAtOnce: Boolean = false,
     private val cancelEndsConnectWithSuccess: Boolean = false,
     private val failWith: Exception? = null,
+    private val answerFailsWith: Exception? = null,
 ) : MachineSession {
     val started = CountDownLatch(1)
     private val release = CountDownLatch(1)
@@ -792,6 +864,7 @@ private class FakeSession(
     override fun requestKidHex() = "ab"
     override fun answer(unwrap: () -> ByteArray) {
         unwrap()
+        answerFailsWith?.let { throw it }
         answered = true
     }
 }

@@ -22,6 +22,7 @@ package mobile
 
 import (
 	"context"
+	"crypto/subtle"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -205,6 +206,18 @@ func PublicPointOf(scalar []byte) ([]byte, error) {
 		return nil, fmt.Errorf("mobile: not a valid scalar: %w", err)
 	}
 	return point, nil
+}
+
+// checkKeyPair says whether scalar is the private half of expectedPublic.
+func checkKeyPair(scalar, expectedPublic []byte) error {
+	got, err := PublicPointOf(scalar)
+	if err != nil {
+		return err
+	}
+	if subtle.ConstantTimeCompare(got, expectedPublic) != 1 {
+		return errors.New("mobile: this phone's saved key does not belong to its public point")
+	}
+	return nil
 }
 
 // xOnlyAnswer is x(scalar . point), the 32-byte answer an x-only key
@@ -547,10 +560,18 @@ func (s *Session) HasRequest() bool {
 // long-term scalar: it computes x(scalar . X) for the machine's challenge
 // point X, sends that, and waits for the machine's verdict. The scalar is
 // wiped before this returns, whatever happens; the caller wipes its own copy.
-func (s *Session) AnswerWithScalar(scalar []byte) (err error) {
+//
+// expectedPublic is the public point this phone was enrolled with, kept in a
+// file of its own beside the wrapped scalar. The scalar has to be the one that
+// point belongs to; otherwise nothing is sent, and the failure says that this
+// phone's own key is at fault, not the machine.
+func (s *Session) AnswerWithScalar(scalar, expectedPublic []byte) (err error) {
 	defer mrcore.Wipe(scalar)
 	defer func() { s.failure.record(err) }()
 
+	if err := checkKeyPair(scalar, expectedPublic); err != nil {
+		return withKind(FailureKeyMismatch, err)
+	}
 	point := s.RequestPoint()
 	if len(point) == 0 {
 		return errors.New("mobile: no recovery request to answer")

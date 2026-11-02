@@ -14,6 +14,7 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.platform.app.InstrumentationRegistry
 import com.github.muelli.synctang.ui.AboutScreen
@@ -23,6 +24,7 @@ import com.github.muelli.synctang.ui.ApproveScreen
 import com.github.muelli.synctang.ui.Busy
 import com.github.muelli.synctang.ui.DoneScreen
 import com.github.muelli.synctang.ui.FailedScreen
+import com.github.muelli.synctang.ui.KeyNeedsReplacingScreen
 import com.github.muelli.synctang.ui.LocalShortcuts
 import com.github.muelli.synctang.ui.PairingScreen
 import com.github.muelli.synctang.ui.ReadyScreen
@@ -213,6 +215,17 @@ class ScreenShortcutsTest {
         assertEquals(listOf(AppAction.ALLOW_SOFTWARE_KEY), bound)
         assertEquals(emptyList<AppAction>(), registry.available.filter { it.chord != null })
         assertTrue(calls.isEmpty())
+    }
+
+    @Test
+    fun aKeyThatIsNotWholeOffersTryingAgainByKeyAndMakingANewOneOnlyByHand() {
+        show { KeyNeedsReplacingScreen(KeyProblem.FILES_DAMAGED, { calls += "retry" }, { calls += "replace" }) }
+        assertOffers(AppAction.RETRY, AppAction.REPLACE_KEY)
+        press(AppAction.RETRY)
+        assertEquals(listOf("retry"), calls)
+        assertEquals(null, AppAction.REPLACE_KEY.chord)
+        rule.onNodeWithText("Make a new key").performClick()
+        assertEquals(listOf("retry", "replace"), calls)
     }
 
     @Test

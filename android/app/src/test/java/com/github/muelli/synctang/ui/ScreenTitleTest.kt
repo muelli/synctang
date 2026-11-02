@@ -2,6 +2,7 @@
 package com.github.muelli.synctang.ui
 
 import com.github.muelli.synctang.Identity
+import com.github.muelli.synctang.KeyProblem
 import com.github.muelli.synctang.KeyHolderKey
 import com.github.muelli.synctang.Machine
 import com.github.muelli.synctang.R
@@ -30,6 +31,7 @@ class ScreenTitleTest {
         UnlockUiState.Working(machine),
         UnlockUiState.Done(machine),
         UnlockUiState.SoftwareKeyRefused,
+        UnlockUiState.KeyNeedsReplacing(KeyProblem.FILES_DAMAGED),
         UnlockUiState.Failed(machine, "message", Retry.REFRESH),
     )
 

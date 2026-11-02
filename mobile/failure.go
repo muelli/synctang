@@ -49,6 +49,10 @@ const (
 	// FailureProtocol: the machine sent something this phone will not
 	// act on.
 	FailureProtocol = 12
+	// FailureKeyMismatch: this phone's own saved key does not match its
+	// public point, so the answer was not sent. Nothing is wrong with the
+	// machine.
+	FailureKeyMismatch = 13
 )
 
 // kindError attaches a failure kind, and optionally a detail for the

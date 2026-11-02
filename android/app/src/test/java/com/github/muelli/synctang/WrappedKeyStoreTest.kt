@@ -35,6 +35,56 @@ class WrappedKeyStoreTest {
     }
 
     @Test
+    fun theStateOfAnEmptyDirectoryIsAbsent() {
+        assertEquals(FilesState.ABSENT, store().state())
+    }
+
+    @Test
+    fun theStateOfASavedPairIsComplete() {
+        store().save(wrapped, public)
+        assertEquals(FilesState.COMPLETE, store().state())
+    }
+
+    /** What a crash between the two writes leaves: no public point, so nothing was ever enrolled on it. */
+    @Test
+    fun aWrappedKeyWithNoPublicPointIsIncomplete() {
+        File(folder.root, "alias.wrapped").writeBytes(wrapped)
+        assertEquals(FilesState.INCOMPLETE, store().state())
+    }
+
+    @Test
+    fun aPublicPointWithNoWrappedKeyIsDamaged() {
+        File(folder.root, "alias.public").writeBytes(public)
+        assertEquals(FilesState.DAMAGED, store().state())
+    }
+
+    /** What a power cut after a rename but before the data reached the disk looks like. */
+    @Test
+    fun emptyFilesAreDamaged() {
+        store().save(wrapped, public)
+        File(folder.root, "alias.wrapped").writeBytes(ByteArray(0))
+        assertEquals(FilesState.DAMAGED, store().state())
+
+        store().save(wrapped, public)
+        File(folder.root, "alias.public").writeBytes(ByteArray(0))
+        assertEquals(FilesState.DAMAGED, store().state())
+    }
+
+    @Test
+    fun aPublicPointOfTheWrongShapeIsDamaged() {
+        store().save(wrapped, public)
+        File(folder.root, "alias.public").writeBytes(ByteArray(65) { 7 })
+        assertEquals(FilesState.DAMAGED, store().state())
+    }
+
+    @Test
+    fun leftoverTemporaryFilesAreNotAKey() {
+        File(folder.root, "alias.wrapped.tmp").writeBytes(wrapped)
+        File(folder.root, "alias.public.tmp").writeBytes(public)
+        assertEquals(FilesState.ABSENT, store().state())
+    }
+
+    @Test
     fun nothingExistsBeforeASave() {
         assertFalse(store().exists())
     }

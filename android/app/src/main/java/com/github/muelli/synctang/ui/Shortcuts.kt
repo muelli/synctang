@@ -99,6 +99,9 @@ internal enum class AppAction(val role: Role, val chord: Chord?, @StringRes val 
      */
     ALLOW_SOFTWARE_KEY(Role.OTHER, null, R.string.software_key_allow),
 
+    /** No key, for the same reason: it throws a key away. */
+    REPLACE_KEY(Role.OTHER, null, R.string.key_attention_replace),
+
     DISMISS(Role.BACK, Chord.ESCAPE, R.string.pair_undo_dismiss),
 }
 

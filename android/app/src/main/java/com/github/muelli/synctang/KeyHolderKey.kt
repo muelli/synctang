@@ -73,20 +73,28 @@ class KeyHolderKey(
     /** Whether a complete key, hardware half and wrapped half, is there. */
     fun exists(): Boolean = keyStore.containsAlias(alias) && files.exists()
 
+    private fun plan(): KeyPlan = keyPlan(hardwareHalf = keyStore.containsAlias(alias), files = files.state())
+
     /**
      * Makes the key if there is none yet, and reports where its hardware half
      * ended up. StrongBox is tried first and its absence is not an error: most phones
      * do not have it, and a TEE-backed key is just as non-exportable.
      *
-     * Half a key (one of the two halves without the other, which only a failed
-     * creation or a restored backup can leave) is cleared and made again: a new
-     * public point, so the machines enrolled against the old one need pairing again,
-     * which the person is told when the machine refuses the answer.
+     * A key that is half there is not cleared by the app. The Keystore reports
+     * almost every error as "no such key", so a half that seems to be missing may
+     * only have failed to answer, and deleting the other half would destroy a key
+     * every enrolled machine depends on. [KeyNeedsReplacing] is thrown instead, and
+     * the person decides ([delete] is theirs to ask for). Only what cannot hold
+     * anything yet, nothing at all or an unfinished creation, is made afresh.
      */
     fun ensureKey(): Backing {
-        if (!exists()) {
-            delete()
-            create()
+        when (val plan = plan()) {
+            is KeyPlan.Keep -> Unit
+            is KeyPlan.Create -> {
+                delete()
+                create()
+            }
+            is KeyPlan.Stop -> throw KeyNeedsReplacing(plan.problem)
         }
         return backing()
     }
@@ -261,8 +269,8 @@ class KeyHolderKey(
 
     /**
      * Deletes the key, both halves. Every machine enrolled against it becomes
-     * unrecoverable through this phone, so the UI only offers this behind an explicit
-     * confirmation.
+     * unrecoverable through this phone, so the UI only reaches this through the
+     * screen that says so and asks (and the app clears a key it has only just made).
      */
     fun delete() {
         if (keyStore.containsAlias(alias)) keyStore.deleteEntry(alias)
@@ -362,4 +370,44 @@ internal fun Throwable.looksLikeMissingBiometricEnrolment(): Boolean {
         seen++
     }
     return false
+}
+
+/** What is wrong with a key that is not whole. */
+enum class KeyProblem {
+    /** The wrapped key is there and the Keystore does not say it has the key that unwraps it. */
+    HARDWARE_HALF_MISSING,
+
+    /** A file is missing, empty or not what it should be. */
+    FILES_DAMAGED,
+
+    /** Both files are there, and the saved key is not the one the public point belongs to. */
+    FILES_DO_NOT_MATCH,
+}
+
+/**
+ * The key is not whole and the app will not decide what to do about it: see
+ * [KeyHolderKey.ensureKey].
+ */
+class KeyNeedsReplacing(val problem: KeyProblem) : Exception("the key holder key is not whole: $problem")
+
+sealed interface KeyPlan {
+    /** A whole key is there. */
+    object Keep : KeyPlan
+
+    /** There is nothing that could be lost: make one. */
+    object Create : KeyPlan
+
+    /** Something that may be needed is missing or damaged. */
+    data class Stop(val problem: KeyProblem) : KeyPlan
+}
+
+/**
+ * What to do given whether the Keystore has the hardware half, which is only
+ * trusted when it says yes, and what the files are.
+ */
+fun keyPlan(hardwareHalf: Boolean, files: FilesState): KeyPlan = when (files) {
+    FilesState.DAMAGED -> KeyPlan.Stop(KeyProblem.FILES_DAMAGED)
+    FilesState.COMPLETE ->
+        if (hardwareHalf) KeyPlan.Keep else KeyPlan.Stop(KeyProblem.HARDWARE_HALF_MISSING)
+    FilesState.ABSENT, FilesState.INCOMPLETE -> KeyPlan.Create
 }

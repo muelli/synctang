@@ -23,6 +23,7 @@ enum class FailureKind {
     PAIR_DECLINED,
     PAIR_REFUSED,
     PROTOCOL,
+    KEY_MISMATCH,
 }
 
 /**
@@ -61,6 +62,7 @@ fun explain(e: Throwable): Explained {
             FailureKind.PAIR_DECLINED -> Explained(R.string.failure_pair_declined, null, raw)
             FailureKind.PAIR_REFUSED -> Explained(R.string.failure_pair_refused, e.detail.ifBlank { null }, raw)
             FailureKind.PROTOCOL -> Explained(R.string.failure_protocol, null, raw)
+            FailureKind.KEY_MISMATCH -> Explained(R.string.failure_key_mismatch, null, raw)
             FailureKind.OTHER, FailureKind.CANCELLED -> Explained(R.string.failure_other, null, raw)
         }
         is KeyUseTimedOut -> Explained(R.string.failure_key_timed_out, null, raw)

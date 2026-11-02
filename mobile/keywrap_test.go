@@ -106,11 +106,62 @@ func TestAnotherScalarDoesNotRecoverTheSecret(t *testing.T) {
 func TestAnsweringWithAScalarWipesTheCopyItWasGiven(t *testing.T) {
 	scalar, _ := NewKeyScalar()
 	given := append([]byte(nil), scalar...)
+	public, _ := PublicPointOf(scalar)
 	s := NewSession("MACHINE", "seed") // never connected: the call fails, and must still wipe
-	if err := s.AnswerWithScalar(given); err == nil {
+	if err := s.AnswerWithScalar(given, public); err == nil {
 		t.Fatal("expected an error without a request to answer")
 	}
 	if !bytes.Equal(given, make([]byte, len(given))) {
 		t.Fatalf("the scalar was left in memory: %x", given)
+	}
+}
+
+// The wrapped scalar and the public point are kept in two files, and an
+// answer made with a scalar that is not the one the point belongs to would
+// only be refused by the machine, which reads as the machine's fault. So the
+// phone checks its own pair first, and says which thing is wrong.
+func TestAnsweringWithAScalarThatDoesNotMatchTheStoredPointIsRefusedAtOnce(t *testing.T) {
+	scalar, _ := NewKeyScalar()
+	other, _ := NewKeyScalar()
+	otherPublic, _ := PublicPointOf(other)
+	given := append([]byte(nil), scalar...)
+
+	s := NewSession("MACHINE", "seed")
+	err := s.AnswerWithScalar(given, otherPublic)
+	if err == nil {
+		t.Fatal("a scalar that does not belong to the stored point was accepted")
+	}
+	if got := s.LastFailure(); got != FailureKeyMismatch {
+		t.Fatalf("LastFailure = %d, want FailureKeyMismatch (%d); error: %v", got, FailureKeyMismatch, err)
+	}
+	if !bytes.Equal(given, make([]byte, len(given))) {
+		t.Fatalf("the scalar was left in memory: %x", given)
+	}
+}
+
+func TestAStoredPointOfTheWrongShapeIsAMismatchToo(t *testing.T) {
+	scalar, _ := NewKeyScalar()
+	for name, bad := range map[string][]byte{
+		"empty": nil,
+		"short": {4, 1, 2, 3},
+		"zeros": make([]byte, 65),
+	} {
+		s := NewSession("MACHINE", "seed")
+		if err := s.AnswerWithScalar(append([]byte(nil), scalar...), bad); err == nil {
+			t.Fatalf("%s: accepted", name)
+		}
+		if got := s.LastFailure(); got != FailureKeyMismatch {
+			t.Fatalf("%s: LastFailure = %d, want FailureKeyMismatch", name, got)
+		}
+	}
+}
+
+func TestAMatchingPairGetsAsFarAsTheMissingRequest(t *testing.T) {
+	scalar, _ := NewKeyScalar()
+	public, _ := PublicPointOf(scalar)
+	s := NewSession("MACHINE", "seed")
+	err := s.AnswerWithScalar(append([]byte(nil), scalar...), public)
+	if err == nil || s.LastFailure() == FailureKeyMismatch {
+		t.Fatalf("a matching pair was called a mismatch: %v (kind %d)", err, s.LastFailure())
 	}
 }

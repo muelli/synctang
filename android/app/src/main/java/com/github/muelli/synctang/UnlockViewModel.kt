@@ -47,7 +47,7 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
         io = Dispatchers.IO,
         store = store,
         identity = ::identity,
-        newSession = { machine -> GoSession(machine, store.identitySeed(), multicastLock) },
+        newSession = { machine -> GoSession(machine, store.identitySeed(), multicastLock, key::publicPoint) },
         newPairing = { GoPairing(store.identitySeed(), multicastLock) },
         prepareKey = key::prepareUnwrap,
         unwrapKey = key::unwrap,
@@ -101,6 +101,7 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
     fun startPairing() = flow.startPairing()
     fun keepCurrentMachine() = flow.keepCurrentMachine()
     fun allowSoftwareKey() = flow.allowSoftwareKey()
+    fun replaceKey() = flow.replaceKey()
     fun undoReplace() = flow.undoReplace()
     fun dismissUndo() = flow.dismissUndo()
     fun pair(scanned: String): Boolean = flow.pair(scanned)
@@ -119,6 +120,9 @@ private class GoSession(
     machine: Machine,
     seed: String,
     private val multicastLock: MulticastLease.Lock?,
+    // The public point this phone was enrolled with, read when asked: the Go side
+    // checks the scalar it is given against it.
+    private val publicPoint: () -> ByteArray,
 ) : MachineSession {
 
     private val session = Session(machine.deviceId, seed).apply {
@@ -147,7 +151,7 @@ private class GoSession(
         try {
             // The Go side multiplies the machine's challenge point by the scalar and
             // wipes its copy; this wipes the app's, whatever happens.
-            classified(session::lastFailure, session::lastFailureDetail) { session.answerWithScalar(scalar) }
+            classified(session::lastFailure, session::lastFailureDetail) { session.answerWithScalar(scalar, publicPoint()) }
         } finally {
             scalar.fill(0)
         }
@@ -222,6 +226,7 @@ private inline fun <T> classified(
         Mobile.FailurePairDeclined -> FailureKind.PAIR_DECLINED
         Mobile.FailurePairRefused -> FailureKind.PAIR_REFUSED
         Mobile.FailureProtocol -> FailureKind.PROTOCOL
+        Mobile.FailureKeyMismatch -> FailureKind.KEY_MISMATCH
         else -> FailureKind.OTHER
     }
     throw MachineFailure(kind, lastDetail(), e.message, e)

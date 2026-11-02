@@ -127,6 +127,8 @@ private fun SynctangScreens(gate: BiometricGate, model: UnlockViewModel) {
                 is UnlockUiState.Done -> DoneScreen(current, model::refresh)
                 is UnlockUiState.Failed -> FailedScreen(current, model::refresh, model::startPairing)
                 is UnlockUiState.SoftwareKeyRefused -> SoftwareKeyScreen(model::allowSoftwareKey)
+                is UnlockUiState.KeyNeedsReplacing ->
+                    KeyNeedsReplacingScreen(current.problem, model::refresh, model::replaceKey)
             }
         }
     }

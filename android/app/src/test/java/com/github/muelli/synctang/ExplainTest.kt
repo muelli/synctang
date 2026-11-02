@@ -33,6 +33,7 @@ class ExplainTest {
             FailureKind.PAIR_DECLINED to R.string.failure_pair_declined,
             FailureKind.PAIR_REFUSED to R.string.failure_pair_refused,
             FailureKind.PROTOCOL to R.string.failure_protocol,
+            FailureKind.KEY_MISMATCH to R.string.failure_key_mismatch,
             FailureKind.OTHER to R.string.failure_other,
         )
         for ((kind, message) in expected) {

@@ -2,6 +2,7 @@
 package com.github.muelli.synctang
 
 import java.io.File
+import java.io.FileOutputStream
 
 /**
  * Where the long-term key is kept: the private scalar wrapped by a key in the
@@ -19,7 +20,27 @@ class WrappedKeyStore(private val directory: File, private val name: String) {
     private val publicFile get() = File(directory, "$name.public")
 
     /** Whether a complete pair is there. */
-    fun exists(): Boolean = wrappedFile.isFile && publicFile.isFile
+    fun exists(): Boolean = state() == FilesState.COMPLETE
+
+    /**
+     * What is on disk. Only the wrapped key without the public point is
+     * [FilesState.INCOMPLETE]: that is what a crash between the two writes leaves,
+     * and the public point, the only thing a machine is ever enrolled against, was
+     * never shown. The public point alone, or either file empty or the wrong shape,
+     * is [FilesState.DAMAGED]: it may have been enrolled, so it is not for the app
+     * to clear.
+     */
+    fun state(): FilesState {
+        val hasWrapped = wrappedFile.isFile
+        val hasPublic = publicFile.isFile
+        return when {
+            !hasWrapped && !hasPublic -> FilesState.ABSENT
+            hasWrapped && !hasPublic -> if (wrappedFile.length() > 0) FilesState.INCOMPLETE else FilesState.DAMAGED
+            !hasWrapped -> FilesState.DAMAGED
+            wrappedFile.length() == 0L || !isUncompressedP256Point(publicFile.readBytes()) -> FilesState.DAMAGED
+            else -> FilesState.COMPLETE
+        }
+    }
 
     /**
      * Writes both files, each through a temporary file and a rename, the wrapped
@@ -51,9 +72,17 @@ class WrappedKeyStore(private val directory: File, private val name: String) {
 
     private fun replace(target: File, bytes: ByteArray) {
         val temporary = File(directory, "${target.name}.tmp")
-        temporary.writeBytes(bytes)
+        // Written through to the disk before the rename: a rename that survives a
+        // power cut while the data does not leaves an empty file under the real name.
+        FileOutputStream(temporary).use {
+            it.write(bytes)
+            it.fd.sync()
+        }
         check(temporary.renameTo(target)) { "could not move ${temporary.name} into place" }
     }
 
     private fun isUncompressedP256Point(bytes: ByteArray) = bytes.size == 65 && bytes[0] == 4.toByte()
 }
+
+/** What [WrappedKeyStore] finds on disk. */
+enum class FilesState { ABSENT, INCOMPLETE, COMPLETE, DAMAGED }

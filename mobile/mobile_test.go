@@ -215,10 +215,14 @@ func runSession(t *testing.T, v vectors) {
 	// Answer with the key holder's long-term scalar, as the app does after
 	// unwrapping it; a second answer to the same request must be refused.
 	scalar := mustHex(t, v.Recipient.SScalar)
-	if err := session.AnswerWithScalar(append([]byte(nil), scalar...)); err != nil {
+	public, err := PublicPointOf(scalar)
+	if err != nil {
+		t.Fatalf("PublicPointOf: %v", err)
+	}
+	if err := session.AnswerWithScalar(append([]byte(nil), scalar...), public); err != nil {
 		t.Fatalf("AnswerWithScalar: %v", err)
 	}
-	if err := session.AnswerWithScalar(append([]byte(nil), scalar...)); err == nil {
+	if err := session.AnswerWithScalar(append([]byte(nil), scalar...), public); err == nil {
 		t.Fatal("expected the second answer to be refused")
 	}
 

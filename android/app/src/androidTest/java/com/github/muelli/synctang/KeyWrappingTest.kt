@@ -188,13 +188,49 @@ class KeyWrappingTest {
         assertEquals(emptyList<String>(), directory.list()?.toList() ?: emptyList<String>())
     }
 
-    // Half a key (a restored backup, a failed creation) is not a key: it is
-    // cleared and made again, with a new public point.
+    // A creation that stopped after the wrapped key never showed a public point, so
+    // nothing is enrolled on it and it is made again, with a new public point.
     @Test
-    fun halfAKeyIsMadeAgainAsANewOne() {
+    fun anUnfinishedCreationIsMadeAgainAsANewOne() {
+        val before = key.publicPoint()
+        File(directory, "$alias.public").delete()
+        assertFalse(key.exists())
+        key.ensureKey()
+        assertTrue(key.exists())
+        assertNotEquals(before.toList(), key.publicPoint().toList())
+    }
+
+    // Anything else that is half there may be a key machines are enrolled on, and a
+    // Keystore that fails to answer looks the same as one with no key. The app does
+    // not delete it; the person decides, and delete() is their choice.
+    @Test
+    fun aMissingWrappedKeyIsNotClearedBehindThePersonsBack() {
         val before = key.publicPoint()
         File(directory, "$alias.wrapped").delete()
-        assertFalse(key.exists())
+        try {
+            key.ensureKey()
+            fail("expected the key to need replacing")
+        } catch (e: KeyNeedsReplacing) {
+            assertEquals(KeyProblem.FILES_DAMAGED, e.problem)
+        }
+        assertArrayEquals(before, key.publicPoint())
+        assertTrue(KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.containsAlias(alias))
+    }
+
+    @Test
+    fun aMissingHardwareKeyIsNotClearedBehindThePersonsBack() {
+        val before = key.publicPoint()
+        KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(alias)
+        try {
+            key.ensureKey()
+            fail("expected the key to need replacing")
+        } catch (e: KeyNeedsReplacing) {
+            assertEquals(KeyProblem.HARDWARE_HALF_MISSING, e.problem)
+        }
+        assertArrayEquals("the wrapped half was kept", before, key.publicPoint())
+
+        // The person's choice: delete, and the next ensureKey makes a new one.
+        key.delete()
         key.ensureKey()
         assertTrue(key.exists())
         assertNotEquals(before.toList(), key.publicPoint().toList())

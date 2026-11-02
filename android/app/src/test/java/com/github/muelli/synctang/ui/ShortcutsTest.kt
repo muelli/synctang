@@ -40,14 +40,17 @@ class ShortcutsTest {
     }
 
     /**
-     * Allowing a key that Android would hold in software is the one
-     * decision here that weakens a protection. It has to be chosen on
-     * purpose, by reaching the button, never by a chord remembered from
-     * another screen.
+     * Allowing a key that Android would hold in software weakens a
+     * protection, and making a new key throws the old one away. Each has to be
+     * chosen on purpose, by reaching the button, never by a chord remembered
+     * from another screen.
      */
     @Test
-    fun onlyAllowingASoftwareKeyHasNoShortcut() {
-        assertEquals(listOf(AppAction.ALLOW_SOFTWARE_KEY), AppAction.entries.filter { it.chord == null })
+    fun onlyTheDestructiveOrWeakeningChoicesHaveNoShortcut() {
+        assertEquals(
+            listOf(AppAction.ALLOW_SOFTWARE_KEY, AppAction.REPLACE_KEY),
+            AppAction.entries.filter { it.chord == null },
+        )
     }
 
     @Test

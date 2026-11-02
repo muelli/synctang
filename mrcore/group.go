@@ -7,6 +7,7 @@
 package mrcore
 
 import (
+	"crypto/ecdh"
 	"crypto/elliptic"
 	"crypto/rand"
 	"errors"
@@ -82,8 +83,10 @@ func ValidatePrivateScalar(scalar []byte) error {
 	if len(scalar) != 32 {
 		return fmt.Errorf("mrcore: a P-256 scalar is 32 bytes, got %d", len(scalar))
 	}
-	v := new(big.Int).SetBytes(scalar)
-	if v.Sign() == 0 || v.Cmp(elliptic.P256().Params().N) >= 0 {
+	// The standard library's check, which compares without branching on the
+	// value: the scalar is a secret, and a big.Int would copy it into the heap
+	// and compare it word by word.
+	if _, err := ecdh.P256().NewPrivateKey(scalar); err != nil {
 		return fmt.Errorf("mrcore: scalar is not in [1, n-1]")
 	}
 	return nil
