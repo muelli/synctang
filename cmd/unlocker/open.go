@@ -91,7 +91,7 @@ func runOpen(args []string, stdout, stderr io.Writer) int {
 	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, "path to this machine's persistent transport identity")
 	timeout := fs.Duration("timeout", defaultOpenTimeout, "give up waiting for a key holder after this long")
 	directAddr := fs.String("direct-addr", "", "listen on this address directly, bypassing relay and discovery (testing only)")
-	networkConf := fs.String("network-conf", defaultNetworkConfFile, "file naming the relay pool and discovery servers to use instead of the public ones (the kernel arguments rd.unlocker.relay= and rd.unlocker.discovery= override it)")
+	networkConf := fs.String("network-conf", defaultNetworkConfFile, "file naming the relay pool and discovery servers to use instead of the public ones (the kernel arguments rd.synctang.relay= and rd.synctang.discovery= override it)")
 	fs.Usage = func() { fmt.Fprint(stderr, openUsage); fs.PrintDefaults() }
 	// Flags may come after the positional arguments, as people type them.
 	var positional []string

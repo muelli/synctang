@@ -14,11 +14,11 @@ import (
 )
 
 // defaultNetworkConfFile is where an owner who does not want the public
-// Syncthing relay pool and discovery servers says which ones to use. It
-// sits beside machine.pem, and the dracut module carries it into the
-// initrd the same way, because the agent there has no other place to
-// read it from.
-const defaultNetworkConfFile = "/etc/unlocker/network.conf"
+// Syncthing relay pool and discovery servers says which ones to use. The
+// dracut module carries it into the initrd, because the agent there has
+// no other place to read it from. It is named for the project, not the
+// binary; the older machine.pem stays under /etc/unlocker for now.
+const defaultNetworkConfFile = "/etc/synctang/network.conf"
 
 // procCmdline is the kernel command line. A variable so tests can point
 // it elsewhere.
@@ -29,8 +29,8 @@ var procCmdline = "/proc/cmdline"
 // path is what is broken, as rd.unlocker=0 is the way to switch the
 // agent off.
 const (
-	cmdlineRelay     = "rd.unlocker.relay="
-	cmdlineDiscovery = "rd.unlocker.discovery="
+	cmdlineRelay     = "rd.synctang.relay="
+	cmdlineDiscovery = "rd.synctang.discovery="
 )
 
 // loadNetworkConfig reads the settings from confPath and from the
@@ -75,7 +75,7 @@ func loadNetworkConfig(confPath, cmdlinePath string) (transport.NetworkConfig, e
 	return file.Override(cmd), nil
 }
 
-// parseCmdlineNetwork picks rd.unlocker.relay= and rd.unlocker.discovery=
+// parseCmdlineNetwork picks rd.synctang.relay= and rd.synctang.discovery=
 // out of a kernel command line. Arguments are split on white space, as
 // the kernel does; neither value can contain any.
 func parseCmdlineNetwork(cmdline string) (transport.NetworkConfig, error) {

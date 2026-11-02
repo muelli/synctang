@@ -177,7 +177,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 	window := fs.Duration("timeout", defaultPairWindow, "how long to accept a pairing for")
 	yes := fs.Bool("yes", false, "enrol whoever answers the code without asking for confirmation")
 	directAddr := fs.String("direct-addr", "", "listen on this address directly, bypassing relay and discovery (testing only)")
-	networkConf := fs.String("network-conf", defaultNetworkConfFile, "file naming the relay pool and discovery servers to use instead of the public ones (the kernel arguments rd.unlocker.relay= and rd.unlocker.discovery= override it)")
+	networkConf := fs.String("network-conf", defaultNetworkConfFile, "file naming the relay pool and discovery servers to use instead of the public ones (the kernel arguments rd.synctang.relay= and rd.synctang.discovery= override it)")
 	qrMode := fs.String("qr", "auto", "how to draw the QR code: "+strings.Join(qrModes, ", ")+"; auto uses an image where the terminal is known to show one")
 	if err := fs.Parse(args); err != nil {
 		return 2

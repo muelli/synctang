@@ -50,18 +50,20 @@ place `[V]` (unit test `TestNetworkConfigPrivateDiscoveryNeverAnnouncesPublicly`
 
 ## Where they are set
 
-- **Machine:** `/etc/unlocker/network.conf`, one `key=value` per line, `#`
+- **Machine:** `/etc/synctang/network.conf`, one `key=value` per line, `#`
   comments. Read by `unlocker agent`, `pair` and `open` (`--network-conf`
   names another file). The dracut module copies it into the initrd when it
   exists, so after changing it rebuild the initrd (for example
   `sudo dracut --force`). `[V]` that the module's helper finds the file and
   skips a missing or dangling one (`scripts/test-network-conf.sh`); `[U]`
   that a real initrd build carries it and the agent reads it at boot.
-- **Kernel command line**, which wins over the file: `rd.unlocker.relay=URL`
-  and `rd.unlocker.discovery=URL`. The agent reads `/proc/cmdline` itself, so
+- **Kernel command line**, which wins over the file: `rd.synctang.relay=URL`
+  and `rd.synctang.discovery=URL`. The agent reads `/proc/cmdline` itself, so
   nothing is installed for this. It is the setting a person can change at the
   boot prompt when the network path is what is broken, as `rd.unlocker=0` is
-  for switching the agent off. A discovery server given here replaces the
+  for switching the agent off. (The new settings are named for the project,
+  `synctang`, while `rd.unlocker=0` and `/etc/unlocker/machine.pem` keep the
+  older `unlocker` name for now.) A discovery server given here replaces the
   file's discovery server and its announce endpoint together `[V]`.
 - **Laptop:** `keyholder unlock --relay-pool URL --discovery URL
   [--discovery-announce URL]`, or the same keys in `~/.config/keyholder/config`

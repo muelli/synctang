@@ -151,9 +151,11 @@ Kernel command line options:
 
 - `rd.unlocker=0` does not start the agent; the escape hatch for when the
   network path is what is broken.
-- `rd.unlocker.relay=URL` and `rd.unlocker.discovery=URL` use your own relay
+- `rd.synctang.relay=URL` and `rd.synctang.discovery=URL` use your own relay
   and discovery server instead of the public ones, for this boot; see
-  "Use your own relay and discovery server" below.
+  "Use your own relay and discovery server" below. (The older `rd.unlocker=0`
+  and `/etc/unlocker/machine.pem` keep the `unlocker` name for now; the new
+  settings are named for the project.)
 
 Off the local network the phone needs Internet access; on the same
 network it does not. Both sides try local discovery (a multicast on the
@@ -164,7 +166,7 @@ network at once, and use whichever finds the other first. Details in
 ### Use your own relay and discovery server
 
 The public Syncthing relay pool and discovery servers are the default. To use
-your own, on the machine put them in `/etc/unlocker/network.conf` and rebuild
+your own, on the machine put them in `/etc/synctang/network.conf` and rebuild
 the initrd (for example `sudo dracut --force`):
 
     relay-pool=relay://192.0.2.10:22067/?id=<the relay's Device ID>

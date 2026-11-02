@@ -101,7 +101,7 @@ func TestLoadNetworkConfigFile(t *testing.T) {
 
 func TestLoadNetworkConfigCmdlineWinsOverFile(t *testing.T) {
 	conf := writeFile(t, "relay-pool=https://file.example.net/endpoint\ndiscovery=https://file.example.net/v2/\n")
-	cmdline := writeFile(t, "BOOT_IMAGE=/vmlinuz root=/dev/mapper/x quiet rd.unlocker.discovery=https://cmd.example.net/v2/ rd.neednet=1\n")
+	cmdline := writeFile(t, "BOOT_IMAGE=/vmlinuz root=/dev/mapper/x quiet rd.synctang.discovery=https://cmd.example.net/v2/ rd.neednet=1\n")
 	c, err := loadNetworkConfig(conf, cmdline)
 	if err != nil {
 		t.Fatalf("loadNetworkConfig: %v", err)
@@ -120,7 +120,7 @@ func TestLoadNetworkConfigCmdlineWinsOverFile(t *testing.T) {
 // another finds nothing.
 func TestLoadNetworkConfigCmdlineDiscoveryDropsFileAnnounce(t *testing.T) {
 	conf := writeFile(t, "discovery=https://file.example.net/v2/\ndiscovery-announce=https://file-announce.example.net/v2/\n")
-	cmdline := writeFile(t, "rd.unlocker.discovery=https://cmd.example.net/v2/\n")
+	cmdline := writeFile(t, "rd.synctang.discovery=https://cmd.example.net/v2/\n")
 	c, err := loadNetworkConfig(conf, cmdline)
 	if err != nil {
 		t.Fatalf("loadNetworkConfig: %v", err)
@@ -131,7 +131,7 @@ func TestLoadNetworkConfigCmdlineDiscoveryDropsFileAnnounce(t *testing.T) {
 }
 
 func TestLoadNetworkConfigCmdlineRelay(t *testing.T) {
-	cmdline := writeFile(t, "ro rd.unlocker.relay=relay://10.0.0.5:22067/?id="+testRelayID+" quiet\n")
+	cmdline := writeFile(t, "ro rd.synctang.relay=relay://10.0.0.5:22067/?id="+testRelayID+" quiet\n")
 	c, err := loadNetworkConfig("", cmdline)
 	if err != nil {
 		t.Fatalf("loadNetworkConfig: %v", err)
@@ -143,7 +143,7 @@ func TestLoadNetworkConfigCmdlineRelay(t *testing.T) {
 
 func TestLoadNetworkConfigIgnoresOtherCmdlineArguments(t *testing.T) {
 	// rd.unlocker=0 and lookalikes are not settings of this kind.
-	cmdline := writeFile(t, "rd.unlocker=0 rd.unlocker.relayx=junk xrd.unlocker.relay=junk\n")
+	cmdline := writeFile(t, "rd.unlocker=0 rd.synctang.relayx=junk xrd.synctang.relay=junk rd.unlocker.relay=junk\n")
 	c, err := loadNetworkConfig("", cmdline)
 	if err != nil {
 		t.Fatalf("loadNetworkConfig: %v", err)
@@ -161,8 +161,8 @@ func TestLoadNetworkConfigRefusesBadSettings(t *testing.T) {
 	if _, err := loadNetworkConfig(badConf, ""); err == nil || !strings.Contains(err.Error(), badConf) {
 		t.Errorf("a bad file must be refused, naming the file; got %v", err)
 	}
-	badCmdline := writeFile(t, "rd.unlocker.relay=gopher://x.example.net/\n")
-	if _, err := loadNetworkConfig("", badCmdline); err == nil || !strings.Contains(err.Error(), "rd.unlocker.relay") {
+	badCmdline := writeFile(t, "rd.synctang.relay=gopher://x.example.net/\n")
+	if _, err := loadNetworkConfig("", badCmdline); err == nil || !strings.Contains(err.Error(), "rd.synctang.relay") {
 		t.Errorf("a bad command line setting must be refused, naming it; got %v", err)
 	}
 	if _, err := loadNetworkConfig(t.TempDir(), ""); err == nil {
@@ -198,5 +198,18 @@ func TestResolveNetwork(t *testing.T) {
 	out.Reset()
 	if _, ok := resolveNetwork(filepath.Join(t.TempDir(), "none"), &out, &errOut); !ok || out.Len() != 0 {
 		t.Errorf("no file, no remark: ok %v stdout %q", ok, out.String())
+	}
+}
+
+// The settings are named for the project, not for the binary: the file is
+// /etc/synctang/network.conf and the kernel arguments are rd.synctang.*. The
+// older machine identity stays under /etc/unlocker, so the two prefixes differ
+// on purpose.
+func TestNetworkSettingsAreNamedForTheProject(t *testing.T) {
+	if defaultNetworkConfFile != "/etc/synctang/network.conf" {
+		t.Errorf("defaultNetworkConfFile = %q", defaultNetworkConfFile)
+	}
+	if cmdlineRelay != "rd.synctang.relay=" || cmdlineDiscovery != "rd.synctang.discovery=" {
+		t.Errorf("kernel arguments are %q and %q", cmdlineRelay, cmdlineDiscovery)
 	}
 }
