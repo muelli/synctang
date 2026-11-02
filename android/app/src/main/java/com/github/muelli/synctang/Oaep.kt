@@ -21,9 +21,10 @@ import javax.crypto.spec.PSource
  * well.)
  *
  * The digests are SHA-256 for OAEP and SHA-1 for MGF1. That odd pairing is not a
- * preference: the Android Keystore on a Keymaster 4 phone uses SHA-1 for the mask
- * whatever is asked for, and the two sides have to agree. MGF1 with SHA-1 is not
- * the weak point of OAEP; the hash that matters is the first one.
+ * preference: Android's Keystore provider fixes the mask at SHA-1 (read in the AOSP
+ * `android12-release` keystore2 Java layer and in `main`, not tried on every
+ * version), so the two sides have to agree. MGF1 with SHA-1 is not the weak point
+ * of OAEP; the hash that matters is the first one.
  */
 internal object Oaep {
 

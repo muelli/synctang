@@ -20,8 +20,9 @@ data class Machine(val deviceId: String, val name: String)
 /**
  * What the app persists between runs.
  *
- * Deliberately not here: the MR-1 private scalar, which never leaves
- * the Keystore. What is here is the machine's identity and this
+ * Deliberately not here: the MR-1 private scalar, which is kept
+ * wrapped in files of its own ([KeyHolderKey]), the wrapping key being
+ * in the Keystore. What is here is the machine's identity and this
  * phone's own transport identity seed. Neither unlocks anything on its
  * own, but rewriting the machine's Device ID would redirect an unlock
  * at an attacker's machine, so this uses EncryptedSharedPreferences

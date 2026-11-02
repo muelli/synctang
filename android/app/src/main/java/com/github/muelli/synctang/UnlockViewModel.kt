@@ -12,7 +12,7 @@ import mobile.Session
 
 /**
  * Drives one unlock from the phone's side: dial, show who is asking,
- * gate on a biometric, do the one ECDH in the Keystore, answer.
+ * gate on a biometric, unwrap the key with the Keystore, answer.
  *
  * Nothing here holds the volume secret, or anything from which it
  * could be derived. The machine's challenge point is blinded by an

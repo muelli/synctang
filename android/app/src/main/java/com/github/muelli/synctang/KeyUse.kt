@@ -7,7 +7,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 
 /**
- * How long the app waits for the Keystore to do the one ECDH. It takes tens
+ * How long the app waits for the Keystore to start or finish one unwrapping. It takes tens
  * of milliseconds when it works, so this is only ever reached when the
  * Keystore is stuck (BACKEND_BUSY on a Pixel 3a XL, intermittently, was
  * seen to hang for as long as anyone waited).

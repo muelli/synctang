@@ -6,7 +6,8 @@ app is what it does not have: it never holds the machine's disk passphrase, or
 anything from which the passphrase could be worked out. It holds one long-term
 key, kept encrypted by a key in the phone's secure hardware that cannot leave
 it and opens the long-term key only for your fingerprint, once for each unlock.
-While an unlock is under way the key is briefly in the app's memory. Where the
+While an unlock is under way the key is in the app's memory, and traces of it
+can stay there afterwards. Where the
 phone has no secure hardware for it, the app stops and says so, and will go on
 only if you allow it.
 The machine sends a blinded challenge point; the phone does one elliptic curve
@@ -14,8 +15,8 @@ agreement against that point and sends back the result; the machine, and only
 the machine, turns that into the key that opens the disk.
 
 The protocol is McCallum-Relyea key agreement, the same idea behind Tang and
-Clevis, with the key holder's half moved into a phone's Keystore and put
-behind a biometric. A recording of the whole exchange tells an eavesdropper
+Clevis, with the key holder's half kept on a phone, wrapped by a hardware
+key that opens only for a fingerprint. A recording of the whole exchange tells an eavesdropper
 nothing, and answering a challenge tells the phone nothing about the disk.
 
 How it works:
@@ -24,13 +25,11 @@ How it works:
   public key on the machine.
 - When the machine boots, it waits at its prompt and asks. The phone shows the
   machine's cryptographically verified identity, and the name it gave itself.
-- One Unlock button, behind a strong biometric. The key is created so that
-  Android, and on hardware-backed phones the secure hardware rather than this
-  app, refuses to use it without a recent biometric match.
-- Optionally, the machine can print a code on its own console that is checked
-  on the phone first, which shows you that the request comes from the machine
-  you are standing at. It does not protect you if someone has a copy of the
-  disk: approve an unlock only when you are rebooting that machine yourself.
+- One Unlock button, behind a strong biometric. The key is wrapped so that
+  the phone's secure hardware, not this app, refuses to unwrap it without a
+  fingerprint for that unlock.
+- Approve an unlock only when you are rebooting that machine yourself: someone
+  with a copy of its disk could pose as it.
 
 Machine and phone find each other over the public Syncthing relay network, so
 no port forwarding and no server of your own are needed. The relay sees two
@@ -39,7 +38,7 @@ identities, so the relay operator cannot read or alter the exchange.
 
 Deliberately not supported: unattended reboots. If a machine has to come back
 up on its own, use Tang directly. This project trades that away for a human
-approval and a key that lives in hardware.
+approval and a key that only hardware will open.
 
 No tracking, no analytics, no proprietary libraries. Free software under the
 GNU Affero General Public Licence, version 3 or later.

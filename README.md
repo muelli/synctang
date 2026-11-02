@@ -21,8 +21,9 @@ Work in progress; see `STATUS.md` for what is built and what is not.
 - `keyholder`: the laptop CLI. Subcommands: `init`, `export-pubkey`,
   `unlock`.
 - The Android app (`android/`): the phone key holder. Pairs by scanning a
-  QR code; unlocks behind a biometric prompt with its key in the Android
-  Keystore.
+  QR code; unlocks behind a biometric prompt. Its key is kept wrapped by a
+  key in the Android Keystore that opens only for a fingerprint, once for each
+  unlock.
 - `dracut/90unlocker`: the dracut module that starts the agent at boot.
 
 ## Threat model, in short

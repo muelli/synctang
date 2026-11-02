@@ -44,7 +44,7 @@ object TestMode {
 /**
  * A gate that never asks. Used only when [TestMode.noBiometric] is on,
  * where the Keystore key has no authentication requirement for it to
- * satisfy; with a gated key this would simply make the ECDH fail.
+ * satisfy; with a gated key this would simply make the unwrapping fail.
  */
 object OpenGate : BiometricGate {
     override suspend fun authenticate(title: String, subtitle: String, cipher: javax.crypto.Cipher): AuthOutcome =

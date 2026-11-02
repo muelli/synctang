@@ -195,8 +195,10 @@ class KeyHolderKey(
     private fun spec(strongBox: Boolean): KeyGenParameterSpec =
         KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_DECRYPT)
             .setKeySize(WRAPPING_KEY_BITS)
-            // SHA-256 for OAEP; SHA-1 is the digest the Keystore uses for the mask
-            // on a Keymaster 4 phone and has to be allowed for the two to agree.
+            // SHA-256 for OAEP. SHA-1 is allowed as well because the mask is SHA-1
+            // (see Oaep); the platform does not appear to check the mask against
+            // this set, so whether it is needed is not known. It is harmless: use
+            // of the key is gated by the fingerprint, not by the digest.
             .setDigests(KeyProperties.DIGEST_SHA256, KeyProperties.DIGEST_SHA1)
             .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_RSA_OAEP)
             .setUserAuthenticationRequired(requireUserAuthentication)

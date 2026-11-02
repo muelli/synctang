@@ -285,8 +285,11 @@ e048a46), on the Pixel 3a XL (Android 12), debug build (application id
 
 - **Instrumented tests, whole suite:** 37 of 38 passed; the one failure was
   `KeyboardNavigationTest.shiftTabMovesFocusBackwards`, which is flaky on this
-  phone (three reruns of the class passed). The 17 tests for the wrapped key
-  passed, including that a declined or failed prompt never unwraps.
+  phone (three reruns of the class passed). The 17 instrumented tests for the wrapped key
+  passed (the key's creation and fallback, wrapping and unwrapping, the refusal of
+  an operation nobody authenticated). That a declined or failed prompt never
+  unwraps is a unit test with a fake prompt (`UnlockFlowTest`), not a test on the
+  phone; no instrumented test shows a prompt.
 - **First launch:** the key took 16 seconds to appear. The log shows why: the
   StrongBox key was made, a trial use did not answer within 8 seconds
   (`KeyUseTimedOut`), and the app made the key in the TEE instead. No

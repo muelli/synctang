@@ -43,7 +43,7 @@
     <!-- Identity -->
     <string name="identity_device_id">This phone\'s device ID</string>
     <string name="identity_public_key">This phone\'s public key</string>
-    <string name="identity_backing_strongbox">This phone\'s key is locked by a key in StrongBox, the phone\'s security chip, which opens it only for your fingerprint, once for each unlock. While an unlock is under way the key is briefly in this app\'s memory.</string>
+    <string name="identity_backing_strongbox">This phone\'s key is locked by a key in StrongBox, the phone\'s security chip, which opens it only for your fingerprint, once for each unlock. While an unlock is under way the key is in this app\'s memory, and traces of it can stay there afterwards.</string>
     <string name="identity_backing_software">This phone has no secure hardware that will hold the key that locks this phone\'s key, so that key is only as safe as the phone itself. You have allowed that on this phone. Anything with root access to the phone could read it, and your fingerprint would not stop that.</string>
     <string name="software_key_title">This phone has no secure hardware for the key</string>
     <string name="software_key_body">The key that locks synctang\'s key could only be made in software, not in the phone\'s secure hardware. Anything with root access to the phone could read it, and your fingerprint would not stop that. synctang will not use it unless you allow it.</string>
@@ -56,7 +56,7 @@
     <string name="key_attention_consequence">Making a new key throws the old one away, and every machine paired with this phone will need pairing again.</string>
     <string name="key_attention_replace">Make a new key</string>
     <string name="software_key_leave_hint">Press back to leave without allowing it.</string>
-    <string name="identity_backing_tee">This phone\'s key is locked by a key in the phone\'s secure hardware (its trusted execution environment, not StrongBox), which opens it only for your fingerprint, once for each unlock. While an unlock is under way the key is briefly in this app\'s memory.</string>
+    <string name="identity_backing_tee">This phone\'s key is locked by a key in the phone\'s secure hardware (its trusted execution environment, not StrongBox), which opens it only for your fingerprint, once for each unlock. While an unlock is under way the key is in this app\'s memory, and traces of it can stay there afterwards.</string>
 
     <!-- Unlock -->
     <string name="unlock_machine">Machine</string>

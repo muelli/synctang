@@ -58,11 +58,15 @@ What the key holder does to help, cheapest first:
   biometric for every single use, bound to that one operation through a
   `BiometricPrompt.CryptoObject`: the secure hardware refuses to unwrap
   unless the sensor has just matched for exactly that operation. There is no
-  time window that any other fingerprint unlock of the phone could open, and
-  nothing between the prompt and the use can substitute another request `[V]`
-  (a key that needs a fingerprint refused to unwrap when none was presented,
-  Pixel 3a XL, 2026-11-01). What this does not do is keep the scalar out of the
-  app's memory while it is used: see the next section.
+  time window that any other fingerprint unlock of the phone could open. That a
+  key that needs a fingerprint refuses to unwrap when none was presented is `[V]`
+  (Pixel 3a XL, 2026-11-01). That a fingerprint given for one operation cannot be
+  spent on another is `[I]`: it is how the Keystore documents the setting, and what
+  the reference implementation does (`keymaster_enforcement.cpp` in AOSP
+  `android12-release`, read, not run); the Pixel's own Keymaster is closed code and
+  was not examined, and no test presents a fingerprint for one operation and uses it
+  for another. What this does not do is keep the scalar out of the app's memory
+  while it is used: see the next section.
 
 **Key holder compromise.** On the laptop, a plain key file is the weak
 point; a TPM2 ECDH backend (behind a build tag) is the intended fix.
@@ -94,13 +98,21 @@ Android does not back up.
 
 - **Protected:** the scalar at rest. A copy of the app's files, a backup or a
   disk image holds only the wrapped scalar, and the wrapping key cannot leave the
-  hardware, so another phone cannot unwrap it either. Each unlock needs a
-  fingerprint for that operation.
-- **Not protected:** the scalar while it is in use. For the moment of one
-  answer it is in the app's memory and then in Go's, both wiped afterwards, but a
-  process with root access to a running phone that waits for an unlock could take
-  it. A non-exportable hardware key agreement key would not have this weakness;
-  this phone cannot offer one. Whether a phone with KeyMint keeps such a key in
+  hardware, so another phone cannot unwrap it either `[I]` (non-exportability is the
+  Keystore's contract; no test tries to read the key out). Each unlock needs a
+  fingerprint for that operation. The scalar is wrapped inside the app's own
+  process, under a plain RSA key rebuilt from the certificate's, so that the
+  Keystore daemon is never sent it for that.
+- **Not protected:** the scalar while it is in use, and for some time after. During
+  one answer it is in the app's memory and then in Go's. The copies the code holds
+  are wiped afterwards, but not every copy is the code's: the Keystore's reply
+  passes through a native buffer, the Java and Go runtimes copy slices across their
+  boundary and arithmetic on the scalar leaves intermediate values, none of which
+  are cleared. A process with root access to the phone while the app is alive can
+  therefore find a scalar in freed memory after an unlock, not only during it
+  `[I]` (read from the source of gomobile and the P-256 library; not tried). A
+  non-exportable hardware key agreement key would not have this weakness; this
+  phone cannot offer one. Whether a phone with KeyMint keeps such a key in
   hardware, and whether the app should then use it, is `[U]`: none was tried.
 - **On the Pixel 3a XL:** the StrongBox chip creates a key and reports it at the
   StrongBox level, and then every use of it fails (`BACKEND_BUSY` from the key blob
@@ -109,9 +121,21 @@ Android does not back up.
   TEE. The wrapping key there is in the TEE (security level 1, inside secure
   hardware) `[V]`. The phone's security patch level is 2022-05-05: it no longer
   receives updates.
-- **A Keystore that does not answer:** each unwrap is limited to 20 seconds. Past
-  that the app stops waiting, tells the machine no and says so (a stuck Keystore
-  call cannot be interrupted, only abandoned).
+- **A Keystore that does not answer:** starting the operation, before the
+  fingerprint prompt, and the unwrapping afterwards are each limited to 20 seconds.
+  Past that the app stops waiting, tells the machine no and says so (a stuck
+  Keystore call cannot be interrupted, only abandoned; a late result is wiped when
+  it arrives) `[V]` (unit tests with a Keystore that never answers; the real
+  Keystore was never made to hang on the TEE key).
+- **A key that is not whole:** the Keystore reports almost every error as "no such
+  key", so a key found with one half missing may only have failed to answer. The
+  app does not delete it. Only nothing at all, or a creation that stopped before
+  the public point existed, is made afresh; anything else stops at a screen that
+  offers trying again or making a new key (which throws the old one away, and has
+  no keyboard shortcut). The same screen appears if the saved scalar does not
+  belong to the saved public point, which the Go side checks before answering.
+  `[V]` by unit tests of the decision and of the screen; the instrumented tests of
+  it have not been run on a phone yet `[U]`.
 - **Where the hardware half ends up in software** (an emulator, a phone with no
   secure hardware for it), the wrapping protects nothing the file would not, and
   the app refuses to go on unless the owner presses "Use a software key on this

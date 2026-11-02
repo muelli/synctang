@@ -587,9 +587,9 @@ func (s *Session) AnswerWithScalar(scalar, expectedPublic []byte) (err error) {
 // answerXOnly sends the x-coordinate of s.X back to the machine, which
 // is the whole of a hardware-bound key holder's contribution: the
 // machine lifts it back to a point and finishes the recovery itself.
-// xOnly is what java.security.KeyAgreement.generateSecret() returns
-// for an EC key, which is the raw coordinate and not a KDF output
-// (confirmed on device, see docs/wp0-keystore-ecdh.md).
+// xOnly is the raw x-coordinate of the shared point, which is what MR-1
+// asks of a key holder: Session.AnswerWithScalar computes it here from
+// the unwrapped scalar.
 func (s *Session) answerXOnly(xOnly []byte) (err error) {
 	defer func() { s.failure.record(err) }()
 	s.mu.Lock()
