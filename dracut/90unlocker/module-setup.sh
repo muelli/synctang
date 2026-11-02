@@ -37,6 +37,29 @@ unlocker_path() {
 	return 1
 }
 
+# unlocker_ca_bundles prints the CA bundles that exist, under the optional root
+# given as $1 (empty for the real system; the test points it at a temporary
+# tree). These are the paths Go's crypto/x509 looks the system trust store up
+# at, which differ between distributions: Debian and Ubuntu have
+# ca-certificates.crt, Fedora and RHEL have ca-bundle.crt (and a symlink at the
+# Debian name is not there), openSUSE and Alpine have their own. A bundle at
+# only one of them was all this module knew, so a Fedora initrd carried no
+# trust store and the agent could not verify the relay pool or discovery.
+unlocker_ca_bundles() {
+	local root=${1:-} candidate
+	for candidate in \
+		/etc/ssl/certs/ca-certificates.crt \
+		/etc/pki/tls/certs/ca-bundle.crt \
+		/etc/ssl/ca-bundle.pem \
+		/etc/pki/tls/cacert.pem \
+		/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem \
+		/etc/ssl/cert.pem; do
+		# -r follows symlinks, so a dangling one is not reported.
+		[ -r "$root$candidate" ] && echo "$candidate"
+	done
+	return 0
+}
+
 check() {
 	unlocker_path > /dev/null || return 1
 	return 0
@@ -62,11 +85,14 @@ install() {
 
 	# Discovery and the relay pool are reached over HTTPS, so the trust store has
 	# to come along.
-	if [ -r /etc/ssl/certs/ca-certificates.crt ]; then
-		inst_simple /etc/ssl/certs/ca-certificates.crt
-	else
-		dwarn "unlocker: /etc/ssl/certs/ca-certificates.crt is missing."
-		dwarn "unlocker: install ca-certificates, or discovery will fail at boot."
+	local bundle have_bundle=
+	for bundle in $(unlocker_ca_bundles); do
+		inst_simple "$bundle"
+		have_bundle=yes
+	done
+	if [ -z "$have_bundle" ]; then
+		dwarn "unlocker: no CA bundle found (looked for ca-certificates.crt, ca-bundle.crt and"
+		dwarn "unlocker: the other usual names). Install ca-certificates, or discovery will fail at boot."
 	fi
 
 	# The human who ran "unlocker enrol" already generated this machine's
