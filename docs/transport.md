@@ -15,7 +15,8 @@ finds the other first:
   route to the Internet, no third-party infrastructure.
 - `transport.SyncthingRelay`: the public Syncthing relay network and
   global discovery, for when the two sides are not on the same
-  network.
+  network. An owner can name a relay pool and discovery server of their
+  own instead; see [private-servers.md](private-servers.md).
 
 The Android app races the same two transports (`mobile/mobile.go`'s
 `newDialTransport`), so a phone can unlock a machine on the same

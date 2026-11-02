@@ -188,7 +188,9 @@ relay operator cannot read or inject into an unlock exchange, only
 observe that one happened between two identities and roughly how much
 data moved. Availability depends on the public relay pool; a
 project-run rendezvous server (transport implementation T2 in the
-design plan) would remove that dependency, and is not built.
+design plan) would remove that dependency, and is not built. Running
+your own relay and discovery server is possible and moves that dependency
+to the owner, without changing what is seen (`private-servers.md`).
 `[V]` `transport.LocalDiscovery` is a partial answer already built: on
 the same LAN, unlock needs no rendezvous infrastructure, no Internet
 route and no DNS at all. Its multicast announcement is unauthenticated

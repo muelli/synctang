@@ -151,12 +151,35 @@ Kernel command line options:
 
 - `rd.unlocker=0` does not start the agent; the escape hatch for when the
   network path is what is broken.
+- `rd.unlocker.relay=URL` and `rd.unlocker.discovery=URL` use your own relay
+  and discovery server instead of the public ones, for this boot; see
+  "Use your own relay and discovery server" below.
 
 Off the local network the phone needs Internet access; on the same
 network it does not. Both sides try local discovery (a multicast on the
 LAN, IPv4 only, same broadcast domain) and the public Syncthing relay
 network at once, and use whichever finds the other first. Details in
 `docs/transport.md`.
+
+### Use your own relay and discovery server
+
+The public Syncthing relay pool and discovery servers are the default. To use
+your own, on the machine put them in `/etc/unlocker/network.conf` and rebuild
+the initrd (for example `sudo dracut --force`):
+
+    relay-pool=relay://192.0.2.10:22067/?id=<the relay's Device ID>
+    discovery=https://discovery.example.org/v2/
+
+`relay-pool` is either a relay pool URL or, as here, one relay of your own;
+`discovery-announce=` is only needed when announcements go to a different
+URL than lookups. `unlocker pair` then puts both settings in the pairing
+link, so a phone paired by QR code follows the machine's choice and nobody
+types a URL on it (update the app first: an older one ignores them and looks
+on the public servers). On a laptop, give the discovery server with
+`keyholder unlock --discovery URL`, or in `~/.config/keyholder/config`. Both
+sides must use the same discovery server. A relay or discovery server sees
+two Device IDs and how much traffic passed, not what it carried. Details,
+and what was and was not tested, in `docs/private-servers.md`.
 
 ### Open a drive after boot
 
