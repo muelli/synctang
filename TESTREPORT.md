@@ -276,6 +276,41 @@ unlocker open /dev/vdb <name>` and approved by a key holder. `[V]`
   QR code scanned by the release build's camera, and a drive moved to a second
   computer.
 
+## The wrapped key on the phone, 2026-11-02
+
+The key holder's scalar made in Go and wrapped by a Keystore RSA key that
+needs a fingerprint for every use (branch `key-wrapping`, rebased on `main` at
+e048a46), on the Pixel 3a XL (Android 12), debug build (application id
+`com.github.muelli.synctang.debug`, a fresh install). `[V]`
+
+- **Instrumented tests, whole suite:** 37 of 38 passed; the one failure was
+  `KeyboardNavigationTest.shiftTabMovesFocusBackwards`, which is flaky on this
+  phone (three reruns of the class passed). The 17 tests for the wrapped key
+  passed, including that a declined or failed prompt never unwraps.
+- **First launch:** the key took 16 seconds to appear. The log shows why: the
+  StrongBox key was made, a trial use did not answer within 8 seconds
+  (`KeyUseTimedOut`), and the app made the key in the TEE instead. No
+  software-key refusal screen appeared, and About says the key is locked by a
+  key in the trusted execution environment, not StrongBox. There is no screen
+  for those 16 seconds beyond "Working".
+- **Pairing and an unlock with a real fingerprint:** a second LUKS2 volume on
+  the machine VM (`/dev/vdb`, a throwaway passphrase), `unlocker pair` with the
+  link typed into the app. The VM named the key holder by transport id and
+  public key prefix, both equal to what the phone's About screen showed, and
+  after `y` enrolled it at keyslot 1. `unlocker open /dev/vdb wrapped` was
+  then waiting; the app showed Approve for the paired machine, Approve was
+  tapped, and the person put a finger on the sensor. The VM printed
+  `unlocked: /dev/mapper/wrapped`, exit 0, and `cryptsetup status` showed an
+  active LUKS2 device. The phone logged no `BACKEND_BUSY` or Keystore errors.
+- **A dropped session:** the first session ended with
+  `reading recover response: mrcore: reading message length: EOF (still
+  waiting)` while the prompt was waiting for the finger, and `open` went on
+  waiting and was answered on the next connection. How long the first session
+  had waited is not recorded `[U]`.
+- Not tried: a wrong finger on this build, the phone's reaction to a new
+  fingerprint being enrolled (the key is meant to be invalidated), and a
+  reboot of the machine with this key.
+
 ## Deviations from the plan
 
 - Loopback LUKS2 tests (`cmd/unlocker`) do not need root or a privileged
