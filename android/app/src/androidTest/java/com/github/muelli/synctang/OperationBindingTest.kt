@@ -6,7 +6,8 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import java.util.concurrent.atomic.AtomicReference
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.launch
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -23,7 +24,7 @@ import org.junit.Test
  *       -e class com.github.muelli.synctang.OperationBindingTest \
  *       com.github.muelli.synctang.debug.test/androidx.test.runner.AndroidJUnitRunner
  *
- * then touch the sensor once when the prompt appears. The phone has to be awake and
+ * then touch the sensor once when the prompt appears (it waits 3 minutes). The phone has to be awake and
  * unlocked, with a fingerprint enrolled.
  */
 class OperationBindingTest {
@@ -67,13 +68,13 @@ class OperationBindingTest {
             val outcome = AtomicReference<AuthOutcome?>(null)
             scenario.onActivity { activity ->
                 val gate = BiometricGateImpl(activity)
-                // Not waited for here: onActivity runs on the main thread, which the
-                // prompt needs.
-                Thread {
-                    outcome.set(runBlocking { gate.authenticate("Operation binding test", "Touch the sensor once", cipherA) })
-                }.start()
+                // Started on the main thread, which the prompt requires, and not waited
+                // for here: the wait is below, on the test's own thread.
+                MainScope().launch {
+                    outcome.set(gate.authenticate("Operation binding test", "Touch the sensor once", cipherA))
+                }
             }
-            val end = System.currentTimeMillis() + 60_000
+            val end = System.currentTimeMillis() + 180_000
             while (outcome.get() == null && System.currentTimeMillis() < end) Thread.sleep(200)
             assertEquals("the fingerprint was not accepted: ${outcome.get()}", AuthOutcome.SUCCEEDED, outcome.get())
         }

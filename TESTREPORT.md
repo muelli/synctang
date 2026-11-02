@@ -343,9 +343,14 @@ Then, after the reviewer's advice on the items left open (`[V]` unless marked):
   flaky `shiftTabMovesFocusBackwards`. The refusal-without-a-fingerprint test now
   also checks that the Keystore's error is found by its code (-26) through
   reflection on this Android.
-- `OperationBindingTest` (one fingerprint cannot serve a second operation, nor the
-  same one twice) is written and compiles; it needs a finger and has not been run
-  `[U]`.
+- **One fingerprint serves one operation:** `OperationBindingTest` with a finger on
+  the sensor passed. Two operations were prepared on a key that needs a fingerprint
+  per use; one was authenticated through `BiometricPrompt` with its cipher as the
+  `CryptoObject`. The other was refused with the Keystore's "key user not
+  authenticated" (code -26), the authenticated one unwrapped 32 bytes, and a second
+  unwrapping with it was refused with -26 again. (The first two attempts at running
+  it failed in the test's own code, a prompt called off the main thread and a wait
+  that ended before the person touched the sensor.)
 - Not done, on the reviewer's advice: the abandoned call is left as it is, and the
   scalar is not returned from Go in a single call.
 
