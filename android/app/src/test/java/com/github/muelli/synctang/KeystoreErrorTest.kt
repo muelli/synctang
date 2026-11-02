@@ -13,26 +13,46 @@ import org.junit.Test
  */
 class KeystoreErrorTest {
 
+    private companion object {
+        // The test double's own full name, standing for android.security.KeyStoreException.
+        val FAKE = KeyStoreException::class.java.name
+    }
+
     @Test
     fun theCodeIsFoundAnywhereInTheCauseChain() {
         val chain = javax.crypto.IllegalBlockSizeException("wrapped").apply { initCause(KeyStoreException(-26)) }
-        assertTrue(chain.isUserNotAuthenticated())
+        assertTrue(chain.isUserNotAuthenticated(FAKE))
     }
 
     @Test
     fun anotherCodeIsNotIt() {
-        assertFalse(KeyStoreException(-1).isUserNotAuthenticated())
-        assertFalse(KeyStoreException(0).isUserNotAuthenticated())
+        assertFalse(KeyStoreException(-1).isUserNotAuthenticated(FAKE))
+        assertFalse(KeyStoreException(0).isUserNotAuthenticated(FAKE))
     }
 
     @Test
     fun aMessageThatSaysSoIsNotEnough() {
-        assertFalse(RuntimeException("Key user not authenticated").isUserNotAuthenticated())
-        assertFalse(java.security.KeyStoreException("Key user not authenticated").isUserNotAuthenticated())
+        assertFalse(RuntimeException("Key user not authenticated").isUserNotAuthenticated(FAKE))
+        assertFalse(java.security.KeyStoreException("Key user not authenticated").isUserNotAuthenticated(FAKE))
     }
 
     @Test
     fun aChainWithoutOneIsNotIt() {
-        assertFalse(IllegalStateException("x", RuntimeException("y")).isUserNotAuthenticated())
+        assertFalse(IllegalStateException("x", RuntimeException("y")).isUserNotAuthenticated(FAKE))
+    }
+
+    /** Only the platform's own class counts: a lookalike with the same simple name and accessor does not. */
+    @Test
+    fun aLookalikeIsNotThePlatformsClass() {
+        assertFalse(KeyStoreException(-26).isUserNotAuthenticated())
+    }
+
+    /** A cause cycle is legal to construct, and a loop that never ends would hang the screen it is asked on. */
+    @Test
+    fun aCauseCycleEndsTheSearch() {
+        val a = RuntimeException("a")
+        val b = RuntimeException("b", a)
+        a.initCause(b)
+        assertFalse(a.isUserNotAuthenticated(FAKE))
     }
 }

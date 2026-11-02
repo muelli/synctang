@@ -5,6 +5,7 @@ package mrcore
 import (
 	"bytes"
 	"crypto/elliptic"
+	"crypto/rand"
 	"math/big"
 	"testing"
 )
@@ -284,3 +285,48 @@ func TestValidatePrivateScalar(t *testing.T) {
 		}
 	}
 }
+
+// The range check is made without copying the scalar and without branching on
+// it, so it is checked against the obvious big.Int version over the edges and a
+// spread of random values, and for allocating nothing.
+func TestScalarInRangeAgreesWithBigInt(t *testing.T) {
+	n := elliptic.P256().Params().N
+	order := n.FillBytes(make([]byte, 32))
+	want := func(s []byte) bool {
+		v := new(big.Int).SetBytes(s)
+		return v.Sign() > 0 && v.Cmp(n) < 0
+	}
+	enc := func(v *big.Int) []byte { return v.FillBytes(make([]byte, 32)) }
+	one := big.NewInt(1)
+	cases := [][]byte{
+		make([]byte, 32), enc(one), enc(new(big.Int).Sub(n, one)), enc(n), enc(new(big.Int).Add(n, one)),
+		bytes.Repeat([]byte{0xff}, 32), enc(new(big.Int).Sub(n, big.NewInt(2))),
+	}
+	for i := 0; i < 20000; i++ {
+		s := make([]byte, 32)
+		if _, err := rand.Read(s); err != nil {
+			t.Fatal(err)
+		}
+		if i%3 == 0 { // share a long prefix with n, where a sloppy comparison goes wrong
+			copy(s, order[:1+i%31])
+		}
+		cases = append(cases, s)
+	}
+	for _, s := range cases {
+		if got := scalarInRange(s, order); got != want(s) {
+			t.Fatalf("scalarInRange(%x) = %v, want %v", s, got, want(s))
+		}
+	}
+	if scalarInRange(make([]byte, 31), order) || scalarInRange(make([]byte, 33), order) {
+		t.Fatal("a wrong length was accepted")
+	}
+}
+
+func TestValidatePrivateScalarAllocatesNothing(t *testing.T) {
+	s := enc32(1)
+	if got := testing.AllocsPerRun(100, func() { _ = ValidatePrivateScalar(s) }); got != 0 {
+		t.Fatalf("ValidatePrivateScalar allocated %v times; each allocation is a copy of the scalar", got)
+	}
+}
+
+func enc32(v int64) []byte { return big.NewInt(v).FillBytes(make([]byte, 32)) }

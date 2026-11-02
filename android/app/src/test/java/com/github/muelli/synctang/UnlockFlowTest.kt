@@ -50,6 +50,7 @@ class UnlockFlowTest {
     @Volatile private var prepareFails: Exception? = null
     @Volatile private var prepareBlocksOn: CountDownLatch? = null
     @Volatile private var keyCheckFails: Exception? = null
+    @Volatile private var keyCheckWaitsFor: CountDownLatch? = null
     private val keyChecks = AtomicInteger()
     @Volatile private var unwrapFails: Exception? = null
     private val preparedCiphers = Collections.synchronizedList(mutableListOf<Cipher>())
@@ -90,6 +91,7 @@ class UnlockFlowTest {
         keyUseTimeoutSeconds = 1,
         checkKey = {
             keyChecks.incrementAndGet()
+            keyCheckWaitsFor?.await()
             keyCheckFails?.let { throw it }
         },
         strings = object : Strings {
@@ -550,6 +552,80 @@ class UnlockFlowTest {
         await<UnlockUiState.NeedsPairing>()
         Thread.sleep(300)
         assertEquals(1, keyChecks.get())
+    }
+
+    /**
+     * Coming back to the app is when someone may have enrolled a finger in Settings,
+     * which retires the key; the check runs again there, and only there.
+     */
+    @Test
+    fun theKeyIsCheckedAgainWhenTheAppComesBackToTheForeground() {
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        Thread.sleep(300)
+        assertEquals(1, keyChecks.get())
+
+        keyCheckFails = KeyInvalidated(RuntimeException("Key permanently invalidated"))
+        onMain { flow.returnedToForeground() }
+        val failed = await<UnlockUiState.Failed>()
+        assertEquals("res:${R.string.failure_key_invalidated}(OLD-PHONE-ID)", failed.message)
+        assertEquals(2, keyChecks.get())
+    }
+
+    @Test
+    fun comingBackWhileARequestIsWaitingChecksNothing() {
+        connectToARequest()
+        val before = keyChecks.get()
+        onMain { flow.returnedToForeground() }
+        Thread.sleep(300)
+        assertEquals(before, keyChecks.get())
+        assertTrue(flow.state.value is UnlockUiState.Approve)
+    }
+
+    /**
+     * A dial the person starts while the start-up check is still running has its
+     * session; replacing the identity under it would only make the machine refuse
+     * an unknown peer, and overwrite the message. The approval finds the dead key.
+     */
+    @Test
+    fun aCheckThatFindsAnInvalidKeyAfterTheDialHasStartedLeavesItAlone() {
+        store.saved = machineA
+        val hold = CountDownLatch(1)
+        keyCheckWaitsFor = hold
+        keyCheckFails = KeyInvalidated(RuntimeException("Key permanently invalidated"))
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        nextSession = { FakeSession(connectReturnsAtOnce = true) }
+        onMain { flow.connect() }
+        await<UnlockUiState.Approve>()
+
+        hold.countDown()
+        Thread.sleep(500)
+        assertTrue("the check replaced the screen: ${flow.state.value}", flow.state.value is UnlockUiState.Approve)
+        assertEquals(0, identityResets)
+    }
+
+    @Test
+    fun aKeyThatIsNotWholeWhilePairingAsksInsteadOfFailingGenerically() {
+        identityFails = KeyNeedsReplacing(KeyProblem.HARDWARE_HALF_MISSING)
+        onMain { flow.refresh() }
+        await<UnlockUiState.KeyNeedsReplacing>()
+        identityFails = KeyNeedsReplacing(KeyProblem.FILES_DAMAGED)
+
+        onMain { flow.pair(payload(machineB)) }
+        assertEquals(KeyProblem.FILES_DAMAGED, await<UnlockUiState.KeyNeedsReplacing>().problem)
+        assertEquals(0, identityResets)
+    }
+
+    @Test
+    fun aRefusedSoftwareKeyWhilePairingStopsAtItsOwnScreen() {
+        onMain { flow.refresh() }
+        await<UnlockUiState.NeedsPairing>()
+        identityFails = SoftwareKeyRefused()
+
+        onMain { flow.pair(payload(machineB)) }
+        await<UnlockUiState.SoftwareKeyRefused>()
     }
 
     @Test

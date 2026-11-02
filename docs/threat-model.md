@@ -110,9 +110,13 @@ Android does not back up.
   runs in the `AndroidOpenSSL` provider, 2026-11-02).
 - **Not protected:** the scalar while it is in use, and for some time after. During
   one answer it is in the app's memory and then in Go's. The copies the code holds
-  are wiped afterwards, but not every copy is the code's: the Keystore's reply
-  passes through a native buffer, and the Java and Go runtimes copy slices across
-  their boundary (gomobile's C copy of a returned slice is freed, not zeroed). The
+  are wiped afterwards (a new key is made by one Go call, so its scalar crosses
+  into Java once, and Go's own copy is cleared with it; checking a scalar is in
+  range allocates nothing, `[V]` by a test that counts allocations), but not every
+  copy is the code's: the Keystore's reply passes through a native buffer, and the
+  Java and Go runtimes copy slices across their boundary (gomobile's C copy of a
+  returned slice is freed, not zeroed, and ART copies an array handed to native
+  code). The
   P-256 library's own copy of the scalar is on the stack, not the heap, and is not
   zeroed either, only overwritten by later calls on that goroutine `[V]` (the
   compiler's escape analysis, `filippo.io/nistec` v0.0.4, amd64 and arm64). A
@@ -145,11 +149,18 @@ Android does not back up.
   has just accepted, the machine is told no and the key is kept, because that is
   either an invalidation or a platform fault and the app cannot tell which; the next
   attempt starts an operation before the prompt, which says so for certain. Whether
-  a key was invalidated while the app was closed is checked once at start, in the
-  background, so a dead public point is not offered for enrolment (not on every
-  return to the home screen, because that check is a Keystore call and the one that
-  has hung). Both are `[V]` by unit tests with a fake Keystore; the refusal's code
+  a key was invalidated while the app was closed, or while it was in the background
+  (a finger enrolled in Settings), is checked at start and each time the app comes
+  back to the foreground, behind the screen that is showing, so a dead public point
+  is not offered for enrolment (not on every return to the home screen, because that
+  check is a Keystore call and the one that has hung). It is skipped while a request
+  is waiting. Enrolling a new kind of biometric (a face on a phone that had only
+  fingerprints) invalidates the key as well. Both are `[V]` by unit tests with a fake Keystore; the refusal's code
   is read from the real exception on the Pixel (-26, "key user not authenticated").
+- **A key judged unfinished is made again:** a wrapped key with no public file is
+  taken for a creation that stopped (no public point was ever shown), so someone who
+  can delete one file of a live key (root, or `run-as` on a debug build) turns it into
+  a silent re-creation. That needs the access that makes the key readable anyway.
 - **A key that is not whole:** the Keystore reports almost every error as "no such
   key", so a key found with one half missing may only have failed to answer. The
   app does not delete it. Only nothing at all, or a creation that stopped before

@@ -165,3 +165,42 @@ func TestAMatchingPairGetsAsFarAsTheMissingRequest(t *testing.T) {
 		t.Fatalf("a matching pair was called a mismatch: %v (kind %d)", err, s.LastFailure())
 	}
 }
+
+// A key pair is made in one call so the scalar crosses into Java once, going out,
+// and is never handed back in to be turned into a public point.
+func TestNewKeyPairHasMatchingHalves(t *testing.T) {
+	kp, err := NewKeyPair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kp.Wipe()
+	want, err := PublicPointOf(kp.Scalar())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(kp.PublicPoint(), want) {
+		t.Fatal("the public point does not belong to the scalar")
+	}
+}
+
+func TestKeyPairWipeClearsWhatItHolds(t *testing.T) {
+	kp, _ := NewKeyPair()
+	held := kp.scalar
+	kp.Wipe()
+	if !bytes.Equal(held, make([]byte, len(held))) {
+		t.Fatalf("the scalar was left in memory: %x", held)
+	}
+	if len(kp.Scalar()) != 0 {
+		t.Fatal("a wiped pair still hands out a scalar")
+	}
+}
+
+func TestKeyPairHandsOutCopies(t *testing.T) {
+	kp, _ := NewKeyPair()
+	defer kp.Wipe()
+	a := kp.Scalar()
+	a[0] ^= 0xff
+	if bytes.Equal(a, kp.Scalar()) {
+		t.Fatal("changing the returned scalar changed the pair's own")
+	}
+}

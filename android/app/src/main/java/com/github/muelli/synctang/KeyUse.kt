@@ -68,6 +68,12 @@ internal fun <T> runWithin(seconds: Long, discard: (T) -> Unit = {}, block: () -
     } catch (e: ExecutionException) {
         throw e.cause ?: e
     } catch (e: InterruptedException) {
+        // Whoever was waiting is gone as surely as after a timeout.
+        synchronized(lock) {
+            gaveUp = true
+            @Suppress("UNCHECKED_CAST")
+            if (arrived) discard(late as T)
+        }
         Thread.currentThread().interrupt()
         throw e
     }

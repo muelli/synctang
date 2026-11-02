@@ -186,8 +186,9 @@ reproducibility are untested and not claimed.
     available on the test phone `[V]`. Tested on a Pixel 3a XL: a key that needs
     a fingerprint refuses to unwrap without one, and a real unlock with a real
     fingerprint worked (`TESTREPORT.md`). That a fingerprint cannot be spent on a
-    different operation is `[I]`, from the Keystore's documentation and the
-    reference Keymaster source, not shown on the phone.
+    different operation is `[V]` (`OperationBindingTest`, 2026-11-02): of two
+    operations on one key only the authenticated one worked, and only once. Which
+    layer refuses is not observable.
     The old key is not migrated: a phone is paired again.
   - `[U]` A threshold (two key holders must both answer) is the second
     factor that would remove "one approval is enough". Parked for a

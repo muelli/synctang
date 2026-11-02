@@ -74,6 +74,28 @@ class KeyUseTest {
         assertEquals(listOf<Byte>(0, 0, 0, 0), result.toList())
     }
 
+    /** Interrupting the waiting thread ends the wait too, and what arrives later is just as unreadable. */
+    @Test
+    fun aResultThatArrivesAfterTheWaiterWasInterruptedIsDiscarded() {
+        val release = CountDownLatch(1)
+        val discarded = CountDownLatch(1)
+        val interrupted = CountDownLatch(1)
+        val waiter = Thread {
+            try {
+                runWithin(30, discard = { discarded.countDown() }) { release.await(); ByteArray(4) }
+            } catch (e: InterruptedException) {
+                interrupted.countDown()
+            }
+        }
+        waiter.start()
+        Thread.sleep(200)
+        waiter.interrupt()
+        assertTrue(interrupted.await(5, TimeUnit.SECONDS))
+
+        release.countDown()
+        assertTrue("the late result was never discarded", discarded.await(5, TimeUnit.SECONDS))
+    }
+
     @Test
     fun aResultThatArrivedInTimeIsNotDiscarded() {
         val result = ByteArray(4) { 7 }

@@ -289,16 +289,31 @@ class UnlockFlow(
     }
 
     private var keyChecked = false
+    private var keyCheckRunning = false
+
+    /**
+     * The app came back to the foreground, which is when someone may have enrolled a
+     * finger in Settings, retiring the key: check again, behind whatever is showing.
+     */
+    fun returnedToForeground() = runKeyCheck()
 
     private fun checkKeyOnce() {
+        if (!keyChecked) runKeyCheck()
+    }
+
+    private fun runKeyCheck() {
         val shown = _state.value
-        if (keyChecked || (shown !is UnlockUiState.Ready && shown !is UnlockUiState.NeedsPairing)) return
+        if (keyCheckRunning || (shown !is UnlockUiState.Ready && shown !is UnlockUiState.NeedsPairing)) return
         keyChecked = true
+        keyCheckRunning = true
         scope.launch {
             try {
                 withContext(io) { runWithin(keyUseTimeoutSeconds) { checkKey() } }
             } catch (e: KeyInvalidated) {
                 val now = _state.value
+                // Not while a dial is under way or a request is waiting (the screen is
+                // then Connecting or Approve): that session has this identity, and the
+                // approval finds the dead key for itself.
                 if (now is UnlockUiState.Ready || now is UnlockUiState.NeedsPairing) {
                     log("the key was found invalidated at start", e)
                     val oldDeviceId = withContext(io) { resetIdentity() }
@@ -312,6 +327,8 @@ class UnlockFlow(
                 // Not knowing is not a reason to show anything: the next Approve
                 // starts the same operation and reports what it finds.
                 log("could not check the key at start", e)
+            } finally {
+                keyCheckRunning = false
             }
         }
     }
@@ -458,6 +475,11 @@ class UnlockFlow(
             } catch (e: Exception) {
                 if (attempt.cancelled) {
                     _state.value = home(previous = previous, forcePairing = true)
+                } else if (e is SoftwareKeyRefused) {
+                    _state.value = UnlockUiState.SoftwareKeyRefused
+                } else if (e is KeyNeedsReplacing) {
+                    log("the key is not whole", e)
+                    _state.value = UnlockUiState.KeyNeedsReplacing(e.problem)
                 } else {
                     _state.value = failed(machine, e, Retry.SCAN_AGAIN)
                 }

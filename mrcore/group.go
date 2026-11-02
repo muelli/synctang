@@ -7,7 +7,6 @@
 package mrcore
 
 import (
-	"crypto/ecdh"
 	"crypto/elliptic"
 	"crypto/rand"
 	"errors"
@@ -83,13 +82,36 @@ func ValidatePrivateScalar(scalar []byte) error {
 	if len(scalar) != 32 {
 		return fmt.Errorf("mrcore: a P-256 scalar is 32 bytes, got %d", len(scalar))
 	}
-	// The standard library's check, which compares without branching on the
-	// value: the scalar is a secret, and a big.Int would copy it into the heap
-	// and compare it word by word.
-	if _, err := ecdh.P256().NewPrivateKey(scalar); err != nil {
+	// Compared without branching on the value and without copying it: the
+	// scalar is a secret, and both a big.Int and crypto/ecdh's NewPrivateKey
+	// (which clones its input into a key object nothing wipes) leave a copy
+	// on the heap.
+	if !scalarInRange(scalar, p256Order) {
 		return fmt.Errorf("mrcore: scalar is not in [1, n-1]")
 	}
 	return nil
+}
+
+// p256Order is n, the order of the group, big-endian. Public.
+var p256Order = elliptic.P256().Params().N.FillBytes(make([]byte, 32))
+
+// scalarInRange reports whether s, big-endian, is in [1, n-1], without
+// branching on s and without copying it. The subtraction s - n is done byte by
+// byte from the least significant end; a borrow out of the top means s < n.
+// The final test branches on two bits derived from s, which is the answer
+// itself and not the value.
+func scalarInRange(s, n []byte) bool {
+	if len(s) != len(n) {
+		return false
+	}
+	var nonzero byte
+	var borrow uint16
+	for i := len(s) - 1; i >= 0; i-- {
+		nonzero |= s[i]
+		d := uint16(s[i]) - uint16(n[i]) - borrow
+		borrow = (d >> 15) & 1
+	}
+	return nonzero != 0 && borrow == 1
 }
 
 func (p256Group) ScalarBaseMult(scalar []byte) ([]byte, error) {

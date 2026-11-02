@@ -8,6 +8,7 @@ import android.view.KeyboardShortcutInfo
 import android.view.Menu
 import androidx.activity.compose.setContent
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.ViewModelProvider
 import com.github.muelli.synctang.ui.ShortcutRegistry
 import com.github.muelli.synctang.ui.SynctangApp
 import com.github.muelli.synctang.ui.SynctangTheme
@@ -49,6 +50,15 @@ class MainActivity : FragmentActivity() {
      * just attached) and cannot be swallowed by a text field. A held
      * key does not repeat an action: Approve must take one press.
      */
+    /**
+     * Back from Settings, say, where a finger may have been enrolled and the key
+     * retired: the key is checked again, in the background.
+     */
+    override fun onStart() {
+        super.onStart()
+        ViewModelProvider(this)[UnlockViewModel::class.java].returnedToForeground()
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN &&
             event.repeatCount == 0 &&

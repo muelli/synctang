@@ -53,6 +53,25 @@ class OaepWrappingTest {
         assertEquals((pair.public as java.security.interfaces.RSAPublicKey).publicExponent, plain.publicExponent)
     }
 
+    /**
+     * The wrap must never be served by the Keystore's own provider: that would send
+     * it a scalar it has no use for. Checked on every wrap, not only on the phone
+     * this was observed on.
+     */
+    @Test
+    fun aCipherFromTheKeystoresProviderIsRefused() {
+        for (name in listOf("AndroidKeyStore", "AndroidKeyStoreBCWorkaround", "AndroidKeyStoreProvider")) {
+            try {
+                Oaep.requireInProcess(name)
+                fail("$name was accepted")
+            } catch (e: IllegalStateException) {
+                assertTrue(e.message!!.contains(name))
+            }
+        }
+        Oaep.requireInProcess("AndroidOpenSSL")
+        Oaep.requireInProcess("SunJCE")
+    }
+
     @Test
     fun aScalarWrappedThroughAHandleStillUnwraps() {
         val handle = object : java.security.interfaces.RSAPublicKey by (pair.public as java.security.interfaces.RSAPublicKey) {}

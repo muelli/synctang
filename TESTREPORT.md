@@ -354,6 +354,24 @@ Then, after the reviewer's advice on the items left open (`[V]` unless marked):
 - Not done, on the reviewer's advice: the abandoned call is left as it is, and the
   scalar is not returned from Go in a single call.
 
+### After the re-review, same day
+
+The fixes for the reviewer's second report (`R1` to `R6` and its advice). `[V]`
+
+- **Instrumented tests, whole suite on the Pixel:** 42 of 43, the failure again
+  `KeyboardNavigationTest.shiftTabMovesFocusBackwards` (now 4 of 7 whole-suite runs,
+  and never when its class runs alone, which suggests it depends on what ran before
+  it; not looked into).
+- JVM: 191 tests pass. Go: `mobile` and `mrcore` pass, including a comparison of the
+  new range check with a `big.Int` one over 20000 values and the edges, and a test
+  that validating a scalar allocates nothing.
+- New: the key is checked again when the app returns to the foreground (and not
+  while a request is waiting), a key that is not whole or a refused software key
+  while pairing reaches its own screen, the platform's error is recognised by its full
+  class name and by the numeric code on Android 13 and later (the 13 branch has not
+  been run on a device `[U]`), wrapping fails closed if the Keystore's provider would
+  do it, and a result arriving after an interrupt is discarded.
+
 ## Deviations from the plan
 
 - Loopback LUKS2 tests (`cmd/unlocker`) do not need root or a privileged

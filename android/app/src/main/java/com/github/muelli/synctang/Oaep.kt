@@ -56,7 +56,17 @@ internal object Oaep {
 
     /** The cipher that wraps for [publicKey], and which provider it runs in is the point of [plainRsaKey]. */
     internal fun wrapCipher(publicKey: PublicKey): Cipher =
-        Cipher.getInstance(TRANSFORMATION).apply { init(Cipher.ENCRYPT_MODE, plainRsaKey(publicKey), parameters()) }
+        Cipher.getInstance(TRANSFORMATION).apply {
+            init(Cipher.ENCRYPT_MODE, plainRsaKey(publicKey), parameters())
+            requireInProcess(provider.name)
+        }
+
+    /** Fails closed if the wrapping would be done by the Keystore's own provider. */
+    internal fun requireInProcess(providerName: String) {
+        check(!providerName.startsWith("AndroidKeyStore")) {
+            "the scalar would be wrapped by $providerName, which is the Keystore, not this process"
+        }
+    }
 
     /**
      * A cipher ready to decrypt with [privateKey], not yet used. This is what goes to

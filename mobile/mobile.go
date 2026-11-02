@@ -193,6 +193,40 @@ func NewKeyScalar() ([]byte, error) {
 	return mrcore.P256().RandomScalar()
 }
 
+// KeyPair is a freshly made key holder key: the private scalar and its
+// public point. Making them together means the scalar crosses into Java once,
+// on the way out, instead of being handed back in to be turned into a point.
+type KeyPair struct {
+	scalar, public []byte
+}
+
+// NewKeyPair makes a key pair. The caller reads the scalar, wraps it at once,
+// and calls Wipe.
+func NewKeyPair() (*KeyPair, error) {
+	scalar, err := mrcore.P256().RandomScalar()
+	if err != nil {
+		return nil, err
+	}
+	public, err := PublicPointOf(scalar)
+	if err != nil {
+		mrcore.Wipe(scalar)
+		return nil, err
+	}
+	return &KeyPair{scalar: scalar, public: public}, nil
+}
+
+// Scalar is a copy of the private scalar, for the caller to wrap and wipe.
+func (k *KeyPair) Scalar() []byte { return append([]byte(nil), k.scalar...) }
+
+// PublicPoint is the SEC1 uncompressed public point.
+func (k *KeyPair) PublicPoint() []byte { return append([]byte(nil), k.public...) }
+
+// Wipe clears the private scalar this pair holds.
+func (k *KeyPair) Wipe() {
+	mrcore.Wipe(k.scalar)
+	k.scalar = nil
+}
+
 // PublicPointOf returns the SEC1 uncompressed public point for a private
 // scalar, which is what a machine is enrolled against. It refuses
 // anything that is not a valid scalar: the wrong length, zero, or not

@@ -99,6 +99,7 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun refresh() = flow.refresh()
+    fun returnedToForeground() = flow.returnedToForeground()
     fun startPairing() = flow.startPairing()
     fun keepCurrentMachine() = flow.keepCurrentMachine()
     fun allowSoftwareKey() = flow.allowSoftwareKey()

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 package com.github.muelli.synctang
 
+import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyPermanentlyInvalidatedException
@@ -14,6 +15,7 @@ import java.security.MessageDigest
 import java.security.PrivateKey
 import java.security.ProviderException
 import javax.crypto.Cipher
+import mobile.KeyPair
 import mobile.Mobile
 
 /**
@@ -121,17 +123,21 @@ class KeyHolderKey(
 
         // Only the creation of the Keystore key is read as "no biometric": a failure
         // below, writing a file say, is its own failure and is reported as one.
+        // Made in one call, so the scalar crosses from Go once and is never handed
+        // back to be turned into a public point.
+        var pair: KeyPair? = null
         var scalar: ByteArray? = null
         try {
-            scalar = Mobile.newKeyScalar()
-            val publicPoint = Mobile.publicPointOf(scalar)
+            pair = Mobile.newKeyPair()
+            scalar = pair.scalar()
             val wrapped = Oaep.wrap(keyStore.getCertificate(alias).publicKey, scalar)
-            files.save(wrapped, publicPoint)
+            files.save(wrapped, pair.publicPoint())
         } catch (e: Exception) {
             delete()
             throw e
         } finally {
             scalar?.let(Oaep::wipe)
+            pair?.wipe()
         }
     }
 
@@ -388,11 +394,22 @@ private const val KM_ERROR_KEY_USER_NOT_AUTHENTICATED = -26
  * accessor is not in the public API on every version this app runs on (Android 12
  * has getErrorCode, later versions also getNumericErrorCode).
  */
-internal fun Throwable.isUserNotAuthenticated(): Boolean =
-    generateSequence(this) { it.cause }.any { it.keystoreErrorCode() == KM_ERROR_KEY_USER_NOT_AUTHENTICATED }
+internal fun Throwable.isUserNotAuthenticated(platformClass: String = PLATFORM_KEYSTORE_EXCEPTION): Boolean =
+    // Bounded, like the other walk of a cause chain here: a cycle is legal to build.
+    generateSequence(this) { it.cause }.take(16).any { it.keystoreErrorCode(platformClass) == KM_ERROR_KEY_USER_NOT_AUTHENTICATED }
 
-private fun Throwable.keystoreErrorCode(): Int? {
-    if (!javaClass.name.endsWith(".KeyStoreException")) return null
+internal const val PLATFORM_KEYSTORE_EXCEPTION = "android.security.KeyStoreException"
+
+private fun Throwable.keystoreErrorCode(platformClass: String): Int? {
+    if (javaClass.name != platformClass) return null
+    // From Android 13 the class is public API and says it in its own words.
+    if (platformClass == PLATFORM_KEYSTORE_EXCEPTION && Build.VERSION.SDK_INT >= 33 && this is android.security.KeyStoreException) {
+        return if (numericErrorCode == android.security.KeyStoreException.ERROR_USER_AUTHENTICATION_REQUIRED) {
+            KM_ERROR_KEY_USER_NOT_AUTHENTICATED
+        } else {
+            null
+        }
+    }
     val accessor = javaClass.methods.firstOrNull { it.name == "getErrorCode" && it.parameterCount == 0 }
         ?: return null
     return try {
