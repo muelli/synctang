@@ -91,6 +91,7 @@ func runOpen(args []string, stdout, stderr io.Writer) int {
 	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, "path to this machine's persistent transport identity")
 	timeout := fs.Duration("timeout", defaultOpenTimeout, "give up waiting for a key holder after this long")
 	directAddr := fs.String("direct-addr", "", "listen on this address directly, bypassing relay and discovery (testing only)")
+	networkConf := fs.String("network-conf", defaultNetworkConfFile, "file naming the relay pool and discovery servers to use instead of the public ones (the kernel arguments rd.unlocker.relay= and rd.unlocker.discovery= override it)")
 	fs.Usage = func() { fmt.Fprint(stderr, openUsage); fs.PrintDefaults() }
 	// Flags may come after the positional arguments, as people type them.
 	var positional []string
@@ -151,20 +152,24 @@ func runOpen(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "unlocker: %v\n", err)
 		return 1
 	}
-	return openOnDemand(device, name, *machineName, cert, *timeout, *directAddr, stdout, stderr)
+	network, ok := resolveNetwork(*networkConf, stdout, stderr)
+	if !ok {
+		return 1
+	}
+	return openOnDemand(device, name, *machineName, cert, *timeout, *directAddr, network, stdout, stderr)
 }
 
 // openOnDemand waits up to timeout for a key holder whose answer opens device.
 // An attempt that fails (a key holder that declines, one that answers with the
 // wrong key, a dropped connection) is reported and followed by another, as
 // "unlocker pair" does, until one works or the time is up.
-func openOnDemand(device, name, machineName string, cert tls.Certificate, timeout time.Duration, directAddr string, stdout, stderr io.Writer) int {
+func openOnDemand(device, name, machineName string, cert tls.Certificate, timeout time.Duration, directAddr string, network transport.NetworkConfig, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "waiting for a key holder to approve opening %s as /dev/mapper/%s\n", device, name)
 	fmt.Fprintf(stdout, "this machine's transport id: %s\n", protocol.NewDeviceID(cert.Certificate[0]))
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	tr := newAgentTransport(cert, nil, directAddr, transport.NetworkConfig{})
+	tr := newAgentTransport(cert, nil, directAddr, network)
 	deliver := func(key []byte) error {
 		if err := openVolume(device, name, key); err != nil {
 			return fmt.Errorf("unlocker: opening %s: %w", device, err)

@@ -241,8 +241,14 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 	askPasswordDir := fs.String("ask-password-dir", defaultAskPasswordDir, "systemd ask-password directory")
 	directAddr := fs.String("direct-addr", "", "listen on this address directly, bypassing relay and discovery (testing only)")
 	logLevelFlag := fs.String("log-level", string(logLevelInfo), "logging level: trace, debug, info, warn, error")
+	networkConf := fs.String("network-conf", defaultNetworkConfFile, "file naming the relay pool and discovery servers to use instead of the public ones (the kernel arguments rd.unlocker.relay= and rd.unlocker.discovery= override it)")
 	if err := fs.Parse(args); err != nil {
 		return 2
+	}
+
+	network, ok := resolveNetwork(*networkConf, stdout, stderr)
+	if !ok {
+		return 1
 	}
 
 	logLevel, err := parseLogLevel(*logLevelFlag)
@@ -264,7 +270,7 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer cancel()
 
-	tr := newAgentTransport(cert, logger, *directAddr, transport.NetworkConfig{})
+	tr := newAgentTransport(cert, logger, *directAddr, network)
 	// The last reason discovery failed, so a person at the console is told
 	// once why nothing is happening (several devices and no way to tell them
 	// apart, say) instead of never, or on every retry.

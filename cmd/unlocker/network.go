@@ -1,0 +1,153 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+package main
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"net/url"
+	"os"
+	"strings"
+
+	"github.com/muelli/synctang/mrcore/transport"
+)
+
+// defaultNetworkConfFile is where an owner who does not want the public
+// Syncthing relay pool and discovery servers says which ones to use. It
+// sits beside machine.pem, and the dracut module carries it into the
+// initrd the same way, because the agent there has no other place to
+// read it from.
+const defaultNetworkConfFile = "/etc/unlocker/network.conf"
+
+// procCmdline is the kernel command line. A variable so tests can point
+// it elsewhere.
+var procCmdline = "/proc/cmdline"
+
+// The kernel command line arguments that override network.conf. They
+// are the way to change the servers at the boot prompt, when the network
+// path is what is broken, as rd.unlocker=0 is the way to switch the
+// agent off.
+const (
+	cmdlineRelay     = "rd.unlocker.relay="
+	cmdlineDiscovery = "rd.unlocker.discovery="
+)
+
+// loadNetworkConfig reads the settings from confPath and from the
+// kernel command line at cmdlinePath, the command line winning. Either
+// path may be empty or name a file that is not there, which is not an
+// error: most machines use the public servers and have neither. A file
+// that is there and wrong is an error, never a quiet fall back to the
+// defaults, which would announce a machine on the public servers
+// whose owner had chosen otherwise.
+func loadNetworkConfig(confPath, cmdlinePath string) (transport.NetworkConfig, error) {
+	var file transport.NetworkConfig
+	if confPath != "" {
+		f, err := os.Open(confPath)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+		case err != nil:
+			return transport.NetworkConfig{}, fmt.Errorf("reading %s: %w", confPath, err)
+		default:
+			defer f.Close()
+			file, err = transport.ParseNetworkConf(f)
+			if err != nil {
+				return transport.NetworkConfig{}, fmt.Errorf("%s: %w", confPath, err)
+			}
+		}
+	}
+
+	var cmd transport.NetworkConfig
+	if cmdlinePath != "" {
+		raw, err := os.ReadFile(cmdlinePath)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+		case err != nil:
+			return transport.NetworkConfig{}, fmt.Errorf("reading %s: %w", cmdlinePath, err)
+		default:
+			cmd, err = parseCmdlineNetwork(string(raw))
+			if err != nil {
+				return transport.NetworkConfig{}, err
+			}
+		}
+	}
+
+	// A discovery server from the command line is a different server,
+	// so an announce endpoint from the file, which belongs to the file's
+	// server, must go with it.
+	if cmd.Discovery != "" {
+		file.Discovery, file.DiscoveryAnnounce = "", ""
+	}
+	return file.Override(cmd), nil
+}
+
+// parseCmdlineNetwork picks rd.unlocker.relay= and rd.unlocker.discovery=
+// out of a kernel command line. Arguments are split on white space, as
+// the kernel does; neither value can contain any.
+func parseCmdlineNetwork(cmdline string) (transport.NetworkConfig, error) {
+	var relay, discovery string
+	for _, arg := range strings.Fields(cmdline) {
+		switch {
+		case strings.HasPrefix(arg, cmdlineRelay):
+			relay = strings.TrimPrefix(arg, cmdlineRelay)
+		case strings.HasPrefix(arg, cmdlineDiscovery):
+			discovery = strings.TrimPrefix(arg, cmdlineDiscovery)
+		}
+	}
+	c, err := transport.ParseNetworkConfig(relay, discovery, "")
+	if err != nil {
+		// The setting's name in the error is the file's key; say
+		// which kernel argument it came from instead.
+		msg := err.Error()
+		msg = strings.Replace(msg, transport.NetworkKeyRelayPool+":", strings.TrimSuffix(cmdlineRelay, "=")+":", 1)
+		msg = strings.Replace(msg, transport.NetworkKeyDiscovery+":", strings.TrimSuffix(cmdlineDiscovery, "=")+":", 1)
+		return transport.NetworkConfig{}, errors.New(msg)
+	}
+	return c, nil
+}
+
+// networkSummary says, in a line for a console, which servers will be
+// used and in which form the relay setting was understood. Empty when
+// everything is the public default, which needs no remark.
+func networkSummary(c transport.NetworkConfig) string {
+	if c.IsZero() {
+		return ""
+	}
+	part := func(kind, value string) string {
+		if value == "" {
+			return kind + " public"
+		}
+		return kind + " " + hostOf(value)
+	}
+	relay := "relay public"
+	if c.RelayPool != "" {
+		relay = c.RelayKind() + " " + hostOf(c.RelayPool)
+	}
+	return fmt.Sprintf("using %s, %s", relay, part("discovery", c.Discovery))
+}
+
+// hostOf is the host (and port) of a URL, which is all a summary needs;
+// the full URL, query and all, is in the file for anyone who wants it.
+func hostOf(s string) string {
+	if u, err := url.Parse(s); err == nil && u.Host != "" {
+		return u.Host
+	}
+	return s
+}
+
+// resolveNetwork is what agent, pair and open do at startup: load the
+// settings, say which non-default servers are in use, and report a
+// setting that is wrong rather than carry on with the defaults. The
+// bool is false when the command should stop.
+func resolveNetwork(confPath string, stdout, stderr io.Writer) (transport.NetworkConfig, bool) {
+	c, err := loadNetworkConfig(confPath, procCmdline)
+	if err != nil {
+		fmt.Fprintf(stderr, "unlocker: network settings: %v\n", err)
+		return transport.NetworkConfig{}, false
+	}
+	if s := networkSummary(c); s != "" {
+		fmt.Fprintf(stdout, "unlocker: %s\n", s)
+	}
+	return c, true
+}

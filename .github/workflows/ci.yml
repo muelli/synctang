@@ -66,6 +66,7 @@ jobs:
       - run: ./scripts/test-ci-boot-emulator.sh
       - run: ./scripts/test-secure-initrd.sh
       - run: ./scripts/test-ca-bundles.sh
+      - run: ./scripts/test-network-conf.sh
       - run: ./scripts/emulator-vm/test-idle-shutdown.sh
       - run: SKIP_REAL_AWS_CHECK=1 ./scripts/emulator-vm/test-emu-ctl.sh
 

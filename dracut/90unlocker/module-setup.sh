@@ -60,6 +60,17 @@ unlocker_ca_bundles() {
 	return 0
 }
 
+# unlocker_network_conf prints /etc/unlocker/network.conf if there is one, under
+# the optional root given as $1 (as for unlocker_ca_bundles). It is the file that
+# names a private relay pool and discovery server, and the agent in the initrd has
+# no other place to read them from. -r follows symlinks, so a dangling one is not
+# reported, which inst_simple would turn into a failed initrd build.
+unlocker_network_conf() {
+	local root=${1:-} conf=/etc/unlocker/network.conf
+	[ -r "$root$conf" ] && echo "$conf"
+	return 0
+}
+
 check() {
 	unlocker_path > /dev/null || return 1
 	return 0
@@ -104,6 +115,16 @@ install() {
 	# entirely just means enrol has not run yet, so there is nothing to copy.
 	if [ -r /etc/unlocker/machine.pem ]; then
 		inst_simple /etc/unlocker/machine.pem
+	fi
+
+	# The owner's choice of relay pool and discovery server, if they made one.
+	# The kernel arguments rd.unlocker.relay= and rd.unlocker.discovery= override
+	# it and need nothing installed: the agent reads /proc/cmdline itself. Absent
+	# means the public Syncthing servers, so there is nothing to copy.
+	local network_conf
+	network_conf=$(unlocker_network_conf)
+	if [ -n "$network_conf" ]; then
+		inst_simple "$network_conf"
 	fi
 
 	# The initrd's own default network file is already "DHCP=yes" for every
