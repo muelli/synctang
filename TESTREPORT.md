@@ -372,6 +372,46 @@ The fixes for the reviewer's second report (`R1` to `R6` and its advice). `[V]`
   been run on a device `[U]`), wrapping fails closed if the Keystore's provider would
   do it, and a result arriving after an interrupt is discarded.
 
+## Fedora 44, 2026-11-02
+
+A second distribution: Fedora 44 (dracut 108, NetworkManager in the initrd,
+systemd 259, cryptsetup 2.8.4), installed unattended by Anaconda from a kickstart
+into a QEMU VM with a LUKS2 root (`/dev/vda3`, a throwaway passphrase), no
+packages of this project: the two binaries copied to `/usr/local/bin` and the
+dracut module copied to `/usr/lib/dracut/modules.d/90unlocker`, as the README's
+"without Debian packaging" paragraph says. The host's `keyholder` stood in for a
+laptop. `[V]`
+
+- **A bug found, and fixed:** with the module as it was, the agent started
+  (`unlocker: waiting for a key holder`) and the laptop's `keyholder unlock` timed
+  out after two minutes. The module installed only `/etc/ssl/certs/ca-certificates.crt`
+  into the initrd, the Debian name; Fedora has `/etc/pki/tls/certs/ca-bundle.crt`,
+  `dracut` printed the module's own warning that the first was missing, and an
+  initrd with no trust store cannot verify the relay pool. The cause was inferred
+  from the warning and the missing file, not observed in the agent's log (the agent
+  logged nothing about it to the journal; see below). The module now carries
+  whichever of the six paths Go reads the system roots from exist
+  (`scripts/test-ca-bundles.sh`, in CI).
+- **After the fix:** the laptop key holder unlocked the VM at its LUKS prompt, 18 to
+  22 seconds after power on, with nobody typing a passphrase, three times (SELinux
+  permissive, then enforcing, then with two key holders enrolled).
+- **SELinux enforcing:** no AVC naming `unlocker` after a boot and an unlock
+  (`ausearch -m avc -ts boot`); `unlocker enrol`, `status` and `open` ran as root
+  under enforcing.
+- **`unlocker open` on Fedora:** a loopback LUKS2 volume enrolled for the laptop and
+  opened as `/dev/mapper/fedopen` by `keyholder unlock`, exit 0.
+- **The phone (Pixel, debug build with the wrapped key):** paired by the link, the
+  VM named the key holder by a transport id equal to the app's About screen, and
+  enrolled it at keyslot 2. The boot unlock by the phone was tried once and **not
+  completed**: Approve was tapped, and nobody touched the sensor before the
+  machine's session ended (`reading recover response: mrcore: reading message
+  length: EOF`, as seen before after about 90 seconds). Open `[U]`: to be repeated
+  with the person ready.
+- **Noticed:** the agent's own log lines (joining the relay, errors) did not reach
+  the journal of the booted system; only `unlocker: password agent started` did. On
+  the Ubuntu VM they were seen on a second serial port. It makes a failure like the
+  first one hard to diagnose on a real machine `[U]` as to why.
+
 ## Deviations from the plan
 
 - Loopback LUKS2 tests (`cmd/unlocker`) do not need root or a privileged
