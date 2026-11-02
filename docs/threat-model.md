@@ -61,16 +61,15 @@ What the key holder does to help, cheapest first:
   time window that any other fingerprint unlock of the phone could open. That a
   key that needs a fingerprint refuses to unwrap when none was presented is `[V]`
   (Pixel 3a XL, 2026-11-01). That a fingerprint given for one operation cannot be
-  spent on another is also `[V]`, below; it is how the Keystore documents the setting, and what
-  the reference implementation does (`keymaster_enforcement.cpp` and keystore2's
-  token receiver map in AOSP `android12-release`, read, not run); the Pixel's own
-  Keymaster is closed code and was not examined. What was observed is the
-  property itself `[V]` (`OperationBindingTest`, Pixel 3a XL, 2026-11-02, a finger on
-  the sensor): of two prepared operations on the same key, one was authenticated;
-  the other was then refused with Keymaster's "key user not authenticated" (-26),
-  the authenticated one unwrapped, and a second unwrapping with it was refused too.
-  Which layer refused (keystore2's token map or Keymaster) cannot be told from the
-  outside. What this does not do is keep the scalar out of the app's memory
+  spent on another is `[V]` too (`OperationBindingTest`, Pixel 3a XL, 2026-11-02, a
+  finger on the sensor): of two prepared operations on the same key, one was
+  authenticated; the other was then refused with Keymaster's "key user not
+  authenticated" (-26), the authenticated one unwrapped, and a second unwrapping
+  with it was refused as well. That matches how the Keystore documents the setting
+  and what the reference implementation does (`keymaster_enforcement.cpp` and
+  keystore2's token receiver map in AOSP `android12-release`, read, not run); the
+  Pixel's own Keymaster is closed code and was not examined, and which layer refused
+  cannot be told from the outside. What this does not do is keep the scalar out of the app's memory
   while it is used: see the next section.
 
 **Key holder compromise.** On the laptop, a plain key file is the weak
