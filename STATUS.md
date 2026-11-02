@@ -4,7 +4,10 @@
 
 Current state only, kept up to date in place; not a session log. History
 lives in `git log`. Conventions and hard-won gotchas live in `AGENTS.md`,
-not here. See `TESTREPORT.md` for the acceptance table (A1-A11).
+not here. The acceptance table (A1-A11) and the dated test runs were in
+`TESTREPORT.md`, which is kept out of the repository now (decided 2026-11-02);
+its last version is `git show 6a5c646:TESTREPORT.md`. Mentions of it below and in
+`docs/` refer to that document.
 
 ## Work packages
 
