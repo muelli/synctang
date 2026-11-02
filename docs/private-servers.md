@@ -55,8 +55,15 @@ place `[V]` (unit test `TestNetworkConfigPrivateDiscoveryNeverAnnouncesPublicly`
   names another file). The dracut module copies it into the initrd when it
   exists, so after changing it rebuild the initrd (for example
   `sudo dracut --force`). `[V]` that the module's helper finds the file and
-  skips a missing or dangling one (`scripts/test-network-conf.sh`); `[U]`
-  that a real initrd build carries it and the agent reads it at boot.
+  skips a missing or dangling one (`scripts/test-network-conf.sh`). `[V]` on a
+  real initrd (Fedora 44, dracut 108, 2026-11-02): `dracut --force` put
+  `etc/synctang/network.conf` into the initrd (`lsinitrd`), and at boot the agent
+  printed `using relay public, discovery discovery.invalid.example`, an unreachable
+  server named in the file, after which a laptop key holder on the public servers
+  could not find the machine (its unlock timed out). With the kernel argument
+  `rd.synctang.discovery=` naming the public announce endpoint added, the agent
+  printed that server instead and the same laptop unlocked the machine, so the
+  command line beats the file in a real initrd too.
 - **Kernel command line**, which wins over the file: `rd.synctang.relay=URL`
   and `rd.synctang.discovery=URL`. The agent reads `/proc/cmdline` itself, so
   nothing is installed for this. It is the setting a person can change at the
