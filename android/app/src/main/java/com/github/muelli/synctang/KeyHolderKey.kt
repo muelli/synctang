@@ -182,7 +182,21 @@ class KeyHolderKey(
      */
     private fun canBeUsed(where: String): Boolean =
         try {
-            runWithin(TRIAL_SECONDS) { Oaep.decryptCipher(privateKey()) }
+            runWithin(TRIAL_SECONDS) {
+                // Logged from inside, so that the end of a trial that was given up on
+                // shows too: a key still being used when its alias is deleted should
+                // fail with "not found" and stop, and this is where that is seen.
+                val started = System.nanoTime()
+                try {
+                    Oaep.decryptCipher(privateKey())
+                } catch (e: Throwable) {
+                    android.util.Log.i(LOG_TAG, "the trial of the key made in $where failed with ${e.javaClass.name}: ${e.message}")
+                    throw e
+                } finally {
+                    val millis = (System.nanoTime() - started) / 1_000_000
+                    android.util.Log.i(LOG_TAG, "the trial of the key made in $where ended after ${millis}ms")
+                }
+            }
             true
         } catch (e: KeyUseTimedOut) {
             android.util.Log.w(LOG_TAG, "a key made in $where did not answer within ${TRIAL_SECONDS}s", e)
@@ -261,14 +275,19 @@ class KeyHolderKey(
 
     /**
      * Unwraps the scalar with a cipher the biometric prompt has authenticated. The
-     * caller hands it to the Go side and wipes it. Throws [KeyInvalidated] when the key
-     * has been retired for good.
+     * caller hands it to the Go side and wipes it. Throws [KeyRefusedFingerprint] when
+     * the hardware refuses the fingerprint it was just given.
      */
     fun unwrap(cipher: Cipher): ByteArray =
         try {
             Oaep.unwrap(cipher, files.loadWrapped())
-        } catch (e: KeyPermanentlyInvalidatedException) {
-            throw KeyInvalidated(e)
+        } catch (e: Exception) {
+            // Never KeyPermanentlyInvalidatedException from here: the platform makes
+            // that one when an operation is started ([prepareUnwrap]). A fingerprint
+            // refused at the end arrives as an IllegalBlockSizeException wrapping a
+            // KeyStoreException with Keymaster's code -26.
+            if (e.isUserNotAuthenticated()) throw KeyRefusedFingerprint(e)
+            throw e
         }
 
     /**
@@ -351,6 +370,37 @@ class BiometricEnrolmentRequired(cause: Throwable) :
  */
 class KeyInvalidated(cause: Throwable) :
     Exception("this phone's key was invalidated by a change to its biometrics", cause)
+
+/**
+ * The Keystore refused to unwrap with a fingerprint that had just been accepted. That
+ * is an invalidation, which the next operation will say outright, or a fault of the
+ * platform; the key is not retired on this evidence.
+ */
+class KeyRefusedFingerprint(cause: Throwable) :
+    Exception("the key refused the fingerprint it was given", cause)
+
+private const val KM_ERROR_KEY_USER_NOT_AUTHENTICATED = -26
+
+/**
+ * Whether the Keystore's own error, anywhere in this cause chain, is Keymaster's
+ * "key user not authenticated". By its code, never its message. The class is the
+ * platform's KeyStoreException, found by name and read by reflection because its
+ * accessor is not in the public API on every version this app runs on (Android 12
+ * has getErrorCode, later versions also getNumericErrorCode).
+ */
+internal fun Throwable.isUserNotAuthenticated(): Boolean =
+    generateSequence(this) { it.cause }.any { it.keystoreErrorCode() == KM_ERROR_KEY_USER_NOT_AUTHENTICATED }
+
+private fun Throwable.keystoreErrorCode(): Int? {
+    if (!javaClass.name.endsWith(".KeyStoreException")) return null
+    val accessor = javaClass.methods.firstOrNull { it.name == "getErrorCode" && it.parameterCount == 0 }
+        ?: return null
+    return try {
+        accessor.invoke(this) as? Int
+    } catch (e: ReflectiveOperationException) {
+        null
+    }
+}
 
 /**
  * Whether this failure is the Keystore refusing to create an authentication-bound key

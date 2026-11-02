@@ -66,6 +66,7 @@ fun explain(e: Throwable): Explained {
             FailureKind.OTHER, FailureKind.CANCELLED -> Explained(R.string.failure_other, null, raw)
         }
         is KeyUseTimedOut -> Explained(R.string.failure_key_timed_out, null, raw)
+        is KeyRefusedFingerprint -> Explained(R.string.failure_key_refused_fingerprint, null, raw)
         else -> Explained(R.string.failure_other, null, raw)
     }
 }

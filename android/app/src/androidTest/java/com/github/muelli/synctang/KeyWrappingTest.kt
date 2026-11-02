@@ -280,6 +280,12 @@ class KeyWrappingTest {
             val scalar = gated.unwrap(cipher)
             scalar.fill(0)
             fail("the key was unwrapped although no fingerprint was presented")
+        } catch (e: KeyRefusedFingerprint) {
+            // The platform's own error, found by its code through reflection: this is
+            // the one place that shows the real class has the accessor on this Android.
+            assertTrue(e.cause!!.isUserNotAuthenticated())
+            Log.i(tag, "refused without a fingerprint, as ${generateSequence<Throwable>(e) { it.cause }.map { it.javaClass.name }.toList()}")
+            return
         } catch (e: Exception) {
             // The Keystore reports "Key user not authenticated"; which exception
             // carries it differs between Android versions (here an

@@ -62,10 +62,12 @@ What the key holder does to help, cheapest first:
   key that needs a fingerprint refuses to unwrap when none was presented is `[V]`
   (Pixel 3a XL, 2026-11-01). That a fingerprint given for one operation cannot be
   spent on another is `[I]`: it is how the Keystore documents the setting, and what
-  the reference implementation does (`keymaster_enforcement.cpp` in AOSP
-  `android12-release`, read, not run); the Pixel's own Keymaster is closed code and
-  was not examined, and no test presents a fingerprint for one operation and uses it
-  for another. What this does not do is keep the scalar out of the app's memory
+  the reference implementation does (`keymaster_enforcement.cpp` and keystore2's
+  token receiver map in AOSP `android12-release`, read, not run); the Pixel's own
+  Keymaster is closed code and was not examined. A test that can show it exists
+  (`OperationBindingTest`: authenticate one of two prepared operations, expect the
+  other to be refused and the first to work exactly once) and needs a person at the
+  sensor; it has not been run `[U]`. What this does not do is keep the scalar out of the app's memory
   while it is used: see the next section.
 
 **Key holder compromise.** On the laptop, a plain key file is the weak
@@ -107,11 +109,14 @@ Android does not back up.
 - **Not protected:** the scalar while it is in use, and for some time after. During
   one answer it is in the app's memory and then in Go's. The copies the code holds
   are wiped afterwards, but not every copy is the code's: the Keystore's reply
-  passes through a native buffer, the Java and Go runtimes copy slices across their
-  boundary and arithmetic on the scalar leaves intermediate values, none of which
-  are cleared. A process with root access to the phone while the app is alive can
-  therefore find a scalar in freed memory after an unlock, not only during it
-  `[I]` (read from the source of gomobile and the P-256 library; not tried). A
+  passes through a native buffer, and the Java and Go runtimes copy slices across
+  their boundary (gomobile's C copy of a returned slice is freed, not zeroed). The
+  P-256 library's own copy of the scalar is on the stack, not the heap, and is not
+  zeroed either, only overwritten by later calls on that goroutine `[V]` (the
+  compiler's escape analysis, `filippo.io/nistec` v0.0.4, amd64 and arm64). A
+  process with root access to the phone while the app is alive can therefore find a
+  scalar in freed memory after an unlock, not only during it `[I]` (read from the
+  source of gomobile; memory was not examined). A
   non-exportable hardware key agreement key would not have this weakness; this
   phone cannot offer one. Whether a phone with KeyMint keeps such a key in
   hardware, and whether the app should then use it, is `[U]`: none was tried.
@@ -127,7 +132,22 @@ Android does not back up.
   Past that the app stops waiting, tells the machine no and says so (a stuck
   Keystore call cannot be interrupted, only abandoned; a late result is wiped when
   it arrives) `[V]` (unit tests with a Keystore that never answers; the real
-  Keystore was never made to hang on the TEE key).
+  Keystore was never made to hang on the TEE key). A StrongBox attempt that is
+  given up on is stopped by deleting its alias: the stuck call retries for a key id
+  that no longer exists and fails with "not found" (read from the keystore2 source,
+  `[I]`), which the platform reports as `KeyPermanentlyInvalidatedException`. On the
+  Pixel that is what was seen: in 20 of 20 key creations the abandoned StrongBox
+  trial ended with that exception 25 to 110 ms after the 8 second give-up and the
+  alias deletion `[V]` (logcat, 2026-11-02).
+- **A key that stopped working:** if the hardware refuses a fingerprint the prompt
+  has just accepted, the machine is told no and the key is kept, because that is
+  either an invalidation or a platform fault and the app cannot tell which; the next
+  attempt starts an operation before the prompt, which says so for certain. Whether
+  a key was invalidated while the app was closed is checked once at start, in the
+  background, so a dead public point is not offered for enrolment (not on every
+  return to the home screen, because that check is a Keystore call and the one that
+  has hung). Both are `[V]` by unit tests with a fake Keystore; the refusal's code
+  is read from the real exception on the Pixel (-26, "key user not authenticated").
 - **A key that is not whole:** the Keystore reports almost every error as "no such
   key", so a key found with one half missing may only have failed to answer. The
   app does not delete it. Only nothing at all, or a creation that stopped before

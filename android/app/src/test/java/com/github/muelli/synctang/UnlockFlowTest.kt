@@ -49,6 +49,8 @@ class UnlockFlowTest {
     private val identity = Identity("PHONE-ID", "04ab", KeyHolderKey.Backing.TEE)
     @Volatile private var prepareFails: Exception? = null
     @Volatile private var prepareBlocksOn: CountDownLatch? = null
+    @Volatile private var keyCheckFails: Exception? = null
+    private val keyChecks = AtomicInteger()
     @Volatile private var unwrapFails: Exception? = null
     private val preparedCiphers = Collections.synchronizedList(mutableListOf<Cipher>())
     private val unwrappedWith = Collections.synchronizedList(mutableListOf<Cipher>())
@@ -86,6 +88,10 @@ class UnlockFlowTest {
         },
         approveWindowMillis = 1_500,
         keyUseTimeoutSeconds = 1,
+        checkKey = {
+            keyChecks.incrementAndGet()
+            keyCheckFails?.let { throw it }
+        },
         strings = object : Strings {
             override fun get(id: Int, vararg args: Any) =
                 "res:$id" + if (args.isEmpty()) "" else args.joinToString(",", "(", ")")
@@ -483,9 +489,9 @@ class UnlockFlowTest {
      * under the old one would leave the dead key in front of the new.
      */
     @Test
-    fun anInvalidatedKeyDeclinesStartsAFreshIdentityAndSaysWhatToRevoke() {
+    fun anInvalidatedKeyFoundBeforeThePromptDeclinesStartsAFreshIdentityAndSaysWhatToRevoke() {
         val session = connectToARequest()
-        unwrapFails = KeyInvalidated(RuntimeException("Key permanently invalidated"))
+        prepareFails = KeyInvalidated(RuntimeException("Key permanently invalidated"))
 
         onMain { flow.approve { _, _, _ -> AuthOutcome.SUCCEEDED } }
         val failed = await<UnlockUiState.Failed>()
@@ -496,6 +502,65 @@ class UnlockFlowTest {
         assertEquals(1, session.declines.size)
         assertFalse(session.answered)
         assertTrue("the session was never closed", awaitClosed(session))
+    }
+
+    /**
+     * The hardware refusing a fingerprint it was just given (after a successful
+     * prompt) is an invalidation or a platform fault, and nothing here can tell which.
+     * The machine is told no, the key is kept, and the next attempt, which starts an
+     * operation before any prompt, finds out for certain.
+     */
+    @Test
+    fun aKeyThatRefusesTheFingerprintItWasGivenDeclinesAndKeepsTheKey() {
+        val session = connectToARequest()
+        unwrapFails = KeyRefusedFingerprint(RuntimeException("Key user not authenticated"))
+
+        onMain { flow.approve { _, _, _ -> AuthOutcome.SUCCEEDED } }
+        val failed = await<UnlockUiState.Failed>()
+        assertEquals("res:${R.string.failure_key_refused_fingerprint}", failed.message)
+        assertEquals(1, session.declines.size)
+        assertFalse(session.answered)
+        assertTrue("the session was never closed", awaitClosed(session))
+        assertEquals("the key is kept", 0, identityResets)
+    }
+
+    // A key that was invalidated while the app was closed is found when it starts,
+    // not at the first Approve, so a dead public point is not offered for enrolment.
+
+    @Test
+    fun anInvalidatedKeyIsFoundAtStartAndTheIdentityStartedAfresh() {
+        store.saved = machineA
+        keyCheckFails = KeyInvalidated(RuntimeException("Key permanently invalidated"))
+        onMain { flow.refresh() }
+
+        val failed = await<UnlockUiState.Failed>()
+        assertEquals("res:${R.string.failure_key_invalidated}(OLD-PHONE-ID)", failed.message)
+        assertEquals(Retry.SCAN_AGAIN, failed.retry)
+        assertEquals(1, identityResets)
+    }
+
+    @Test
+    fun theKeyIsCheckedOnceNotOnEveryReturnToTheHomeScreen() {
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        onMain { flow.startPairing() }
+        await<UnlockUiState.NeedsPairing>()
+        Thread.sleep(300)
+        assertEquals(1, keyChecks.get())
+    }
+
+    @Test
+    fun aCheckThatFailsForAnyOtherReasonLeavesTheScreenAlone() {
+        store.saved = machineA
+        keyCheckFails = IllegalStateException("the Keystore did not answer")
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        Thread.sleep(300)
+        assertTrue(flow.state.value is UnlockUiState.Ready)
+        assertEquals(0, identityResets)
     }
 
     /**

@@ -51,6 +51,7 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
         newPairing = { GoPairing(store.identitySeed(), multicastLock) },
         prepareKey = key::prepareUnwrap,
         unwrapKey = key::unwrap,
+        checkKey = { key.prepareUnwrap() },
         resetIdentity = ::resetIdentity,
         allowSoftwareKey = store::allowSoftwareKey,
         strings = object : Strings {

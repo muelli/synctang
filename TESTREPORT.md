@@ -331,6 +331,24 @@ The fixes for the review of `7134e8a` (`304f3fd` to `3b9a575`), on the same phon
 - Not tried: a Keystore that really fails to answer on the TEE key, a power cut
   during a save.
 
+Then, after the reviewer's advice on the items left open (`[V]` unless marked):
+
+- **The abandoned StrongBox trial ends when its alias is deleted.** The trial now
+  logs how it ended. In 20 of 20 creations it ended with
+  `KeyPermanentlyInvalidatedException: Key permanently invalidated` after 8025 to
+  8110 ms, that is 25 to 110 ms after the 8 second limit, when the alias was
+  deleted. It does not stay blocked, and the TEE key made next under the same alias
+  took 15 to 31 ms to start.
+- **Instrumented tests, whole suite:** 42 of 43 passed, the failure the same
+  flaky `shiftTabMovesFocusBackwards`. The refusal-without-a-fingerprint test now
+  also checks that the Keystore's error is found by its code (-26) through
+  reflection on this Android.
+- `OperationBindingTest` (one fingerprint cannot serve a second operation, nor the
+  same one twice) is written and compiles; it needs a finger and has not been run
+  `[U]`.
+- Not done, on the reviewer's advice: the abandoned call is left as it is, and the
+  scalar is not returned from Go in a single call.
+
 ## Deviations from the plan
 
 - Loopback LUKS2 tests (`cmd/unlocker`) do not need root or a privileged

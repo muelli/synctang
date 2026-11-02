@@ -256,6 +256,11 @@ class UnlockFlow(
     // How long either Keystore call may take: a stuck one cannot be
     // interrupted, only left behind, so each runs on a thread of its own.
     private val keyUseTimeoutSeconds: Long = KEY_USE_TIMEOUT_SECONDS,
+    // Starts and drops one operation with the key, which is how a key retired by a
+    // change to the phone's biometrics is found out (it throws [KeyInvalidated]).
+    // Run once per start, behind the home screen, so a key that died while the app
+    // was closed is not offered for enrolment.
+    private val checkKey: () -> Unit = {},
     private val strings: Strings,
     private val log: (String, Throwable) -> Unit = { _, _ -> },
 ) {
@@ -277,7 +282,38 @@ class UnlockFlow(
      * either the pairing screen or the unlock screen.
      */
     fun refresh() {
-        scope.launch { _state.value = home(previous = null) }
+        scope.launch {
+            _state.value = home(previous = null)
+            checkKeyOnce()
+        }
+    }
+
+    private var keyChecked = false
+
+    private fun checkKeyOnce() {
+        val shown = _state.value
+        if (keyChecked || (shown !is UnlockUiState.Ready && shown !is UnlockUiState.NeedsPairing)) return
+        keyChecked = true
+        scope.launch {
+            try {
+                withContext(io) { runWithin(keyUseTimeoutSeconds) { checkKey() } }
+            } catch (e: KeyInvalidated) {
+                val now = _state.value
+                if (now is UnlockUiState.Ready || now is UnlockUiState.NeedsPairing) {
+                    log("the key was found invalidated at start", e)
+                    val oldDeviceId = withContext(io) { resetIdentity() }
+                    _state.value = UnlockUiState.Failed(
+                        null,
+                        strings.get(R.string.failure_key_invalidated, oldDeviceId),
+                        Retry.SCAN_AGAIN,
+                    )
+                }
+            } catch (e: Exception) {
+                // Not knowing is not a reason to show anything: the next Approve
+                // starts the same operation and reports what it finds.
+                log("could not check the key at start", e)
+            }
+        }
     }
 
     /**
@@ -530,11 +566,13 @@ class UnlockFlow(
             try {
                 withContext(io) { active.answer { runWithin(keyUseTimeoutSeconds, discard = { it.fill(0) }) { unwrapKey(cipher) } } }
                 _state.value = UnlockUiState.Done(machine)
-            } catch (e: KeyInvalidated) {
-                retireInvalidatedKey(machine, active, e)
             } catch (e: KeyUseTimedOut) {
                 // The key is not known to be broken, so it is kept; the
                 // machine is told, rather than left to its own timeout.
+                declineQuietly(active)
+                _state.value = failed(machine, e)
+            } catch (e: KeyRefusedFingerprint) {
+                // Kept, and the machine told, for the same reason; see the class.
                 declineQuietly(active)
                 _state.value = failed(machine, e)
             } catch (e: MachineFailure) {

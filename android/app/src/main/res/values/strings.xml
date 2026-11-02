@@ -115,5 +115,6 @@
     <string name="failure_other">Something unexpected went wrong. Try again; if it keeps happening, the details below help a bug report.</string>
     <string name="failure_key_timed_out">This phone\'s key did not answer, so nothing was sent to the machine. Try again. If it keeps happening, restart the phone.</string>
     <string name="failure_key_replaced">This phone now has a new key, and the old one is gone. Pair with the machine again. On the machine, revoke this phone\'s old device ID, %1$s, with unlocker enrol --remove.</string>
-    <string name="failure_key_invalidated">This phone\'s key stopped working because the fingerprints or faces enrolled on the phone changed, and the machine was not answered. The phone now has a new key: pair with the machine again. On the machine, revoke this phone\'s old device ID, %1$s, with unlocker enrol --remove.</string>
+    <string name="failure_key_refused_fingerprint">This phone\'s key refused the fingerprint it was given, so nothing was sent to the machine. Try again. If the key was invalidated, the next attempt will say so and make a new one.</string>
+    <string name="failure_key_invalidated">This phone\'s key stopped working because the fingerprints or faces enrolled on the phone, or its screen lock, changed, and the machine was not answered. The phone now has a new key: pair with the machine again. On the machine, revoke this phone\'s old device ID, %1$s, with unlocker enrol --remove.</string>
 </resources>

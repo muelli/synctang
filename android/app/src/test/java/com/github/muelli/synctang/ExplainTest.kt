@@ -43,6 +43,14 @@ class ExplainTest {
     }
 
     @Test
+    fun aKeyThatRefusedTheFingerprintHasItsOwnMessage() {
+        assertEquals(
+            R.string.failure_key_refused_fingerprint,
+            explain(KeyRefusedFingerprint(RuntimeException("x"))).message,
+        )
+    }
+
+    @Test
     fun theMachinesOwnReasonIsKeptAsTheDetail() {
         val explained = explain(failure(FailureKind.ANSWER_REJECTED, "recovered secret does not open /dev/vda3"))
         assertEquals("recovered secret does not open /dev/vda3", explained.detail)
