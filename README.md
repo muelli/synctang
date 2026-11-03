@@ -180,7 +180,11 @@ link, so a phone paired by QR code follows the machine's choice and nobody
 types a URL on it (update the app first: an older one ignores it and looks
 on the public servers). On a laptop, give the discovery server with
 `keyholder unlock --discovery URL`, or in `~/.config/keyholder/config`. Both
-sides must use the same discovery server. A relay or discovery server sees
+sides must use the same discovery server. A private discovery server with a
+self-signed certificate is trusted by its Device ID, written in the URL as
+`?id=<Device ID>` (or `?insecure` to skip the check); with neither, the
+system's certificate authorities decide. Plain `http://` is for lookups only,
+never for announcing. A relay or discovery server sees
 two Device IDs and how much traffic passed, not what it carried. Details,
 and what was and was not tested, in `docs/private-servers.md`.
 

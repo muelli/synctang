@@ -34,8 +34,8 @@ and there is no `--relay-pool` flag (`TestRunUnlockHasNoRelayPoolFlag`).
 | Key | Meaning |
 | --- | --- |
 | `relay-pool` | An `http(s)` URL of a relay pool, or `relay://host:port/?id=<relay Device ID>` for one relay, which is then the only relay used. |
-| `discovery` | The discovery server, used to look a machine up and, unless `discovery-announce` is set, to announce to. |
-| `discovery-announce` | Where announcements are posted, if that differs from `discovery`. |
+| `discovery` | The discovery server, used to look a machine up and, unless `discovery-announce` is set, to announce to. May say how to trust the server, see below. |
+| `discovery-announce` | Where announcements are posted, if that differs from `discovery`. Always `https`. |
 
 Both forms of `relay-pool` are accepted `[V]` (the library's relay client
 takes `relay://` for one relay and `dynamic+http(s)://` for a pool, and the
@@ -52,6 +52,71 @@ the owner chose not to use, a machine the owner chose not to announce there.
 For the same reason a `discovery` with no `discovery-announce` is announced
 to as well as looked up on; the public announce servers are not left in
 place `[V]` (unit test `TestNetworkConfigPrivateDiscoveryNeverAnnouncesPublicly`).
+
+## Trusting a private discovery server
+
+A private discovery server usually has a self-signed certificate, which no
+certificate authority vouches for. The `discovery` URL says how to trust it,
+in Syncthing's own syntax (`lib/discover/global.go` in v1.30.0):
+
+| In the URL | Meaning |
+| --- | --- |
+| `?id=<Device ID>` | The server's certificate must be exactly that Device ID, the hash Syncthing derives from a certificate. `stdiscosrv` logs it at start-up as "Server device ID is ..." `[I]` (read in its `main.go`; the integration test computes it from the certificate file). No certificate authority is involved, so a self-signed one is fine. |
+| `?insecure` | Do not verify the server's certificate. Anyone on the path can then answer lookups. What they return is only a hint, because the machine is checked by its Device ID afterwards, so the cost is availability and a readable lookup, not a machine impersonated. |
+| neither | Verify against the system's certificate authorities, as before. A self-signed server fails. |
+
+Example: `discovery=https://192.0.2.20:8443/v2/?id=<the server's Device ID>`.
+`?id=` and `?insecure` are for the client and are taken out of the URL before
+anything is sent, as Syncthing does; any other query is kept. An id is checked
+on every connection, before the request is sent, so a wrong one is refused
+with an error naming both ids ("id mismatch") and the lookup is never made
+to that server. (Syncthing's own client checks after the response has come
+back `[I]`; this one checks during the TLS handshake, which also runs for a
+resumed session.)
+
+Plain `http://` is for looking up only, never for announcing: the setting a
+machine announces to must be `https`, and `unlocker` says so and stops when it
+is not. A dialling side (laptop, phone) may use `http://...?insecure` for its
+`discovery`. A machine may give a plain-`http` `discovery` (which is what its
+pairing link hands the phone) only together with an `https`
+`discovery-announce`. Announcements are made with the machine's own
+certificate as the client identity and do not verify the server's certificate,
+as before; `?id=` on the announce URL is stripped, not enforced for the
+announcement `[I]` (read in `syncthing_relay.go`).
+
+What is verified, with the tests that show it:
+
+- `[V]` An `?id=` that matches a self-signed TLS server is accepted, and the
+  record's `Seen` timestamp is still returned: `TestLookupPinnedByDeviceIDAcceptsASelfSignedServer`
+  (`mrcore/transport`, httptest TLS server).
+- `[V]` A wrong id is refused naming the mismatch and both ids, and the server
+  receives no request: `TestLookupPinnedToTheWrongDeviceIDIsRefusedBeforeAnythingIsSent`,
+  and through `Dial`: `TestDialRefusesADiscoveryServerWithTheWrongID`.
+  Mutation check: with the comparison disabled these tests and the integration
+  test below fail.
+- `[V]` `?insecure` is accepted, `?insecure=false` is not (`TestLookupInsecureAcceptsASelfSignedServer`);
+  neither id nor insecure refuses a self-signed server, no request sent
+  (`TestLookupWithNeitherUsesTheSystemCAs`).
+- `[V]` `id` and `insecure` are not sent to the server and other query
+  parameters are (`TestLookupSendsTheDeviceAndNotTheTrustOptions`); likewise on
+  an announce URL (`TestAnnounceDoesNotSendTheTrustOptions`).
+- `[V]` Nothing is announced over plain http (`TestAnnounceRefusesPlainHTTP`);
+  the machine's settings refuse an http `discovery` that it would announce to and
+  an http `discovery-announce` (`TestMachineDiscoveryRefusesPlainHTTP`); a
+  dialling side accepts `http` only with `?insecure`, and `?id=` only with https
+  and a well-formed Device ID (`TestDialerDiscoveryMayBePlainHTTPWithInsecure`,
+  `TestNetworkConfigDiscoveryIDIsValidated`).
+- `[V]` Against the real `stdiscosrv` v1.30.0, with the certificate it makes for
+  itself (`integration/private_servers_test.go`): a machine and a key holder
+  both given `?id=<its Device ID>` meet; a key holder given `?insecure` meets;
+  a key holder given a wrong id never connects and the error names the mismatch
+  (`TestAKeyHolderPinnedToTheWrongServerIDNeverConnects`); a key holder given
+  neither is refused with a certificate error
+  (`TestAKeyHolderWithNeitherIDNorInsecureRefusesASelfSignedServer`).
+- `[U]` The phone: its Go library is this code and the app passes it the link's
+  `discovery=` (JVM tests: `aLinkCanCarryTheMachinesDiscoveryServer`), but no
+  lookup was made from a phone, and the QR code carrying an `?id=` URL (longer)
+  was not scanned.
 
 ## Where they are set
 
@@ -128,16 +193,12 @@ fact that a machine is waiting from anyone who can see its traffic.
   `relay://127.0.0.1:...` is never stored and the machine is never found, with
   nothing but a "no addresses announced" on the dialling side `[V]`. Use the
   relay's LAN address.
-- **TLS to the discovery server and a pool URL is checked against the system
-  trust store** (the initrd carries the machine's bundle). A server whose
-  certificate that store does not trust fails the lookup. A private CA is out
-  of scope for now, and on the phone `[I]` there is no place to add one. Plain
-  `http://` is accepted for a server on a private network; what discovery
-  returns is only a hint about where to dial, and the identity is checked by
-  Device ID afterwards, so the cost is that the lookup is readable on the
-  wire. Announcements authenticate by the announcer's TLS client certificate,
-  and the announce client does not verify the server's certificate, as
-  before.
+- **A pool URL is fetched with the system trust store** (the initrd carries
+  the machine's bundle), by the library's own client, which has no option for
+  anything else. A relay pool whose certificate that store does not trust
+  fails `[I]` (read in `lib/relay/client/dynamic.go`, not run). The relay
+  itself is checked by its Device ID, from the `?id=` of a `relay://` URL or
+  from the pool's list, not by a certificate authority.
 - The relay URL in a record is the one the relay is configured to advertise;
   behind NAT use `strelaysrv -ext-address` `[I]`.
 
@@ -150,18 +211,32 @@ with a phone on the LAN. `[U]` None of that was done; what was run is below.
 
 ## What was run
 
-All in this branch, on one host, against the real `strelaysrv` and
-`stdiscosrv` v1.30.0 (the version the module pins), built outside the module
-as the comment at the top of `integration/private_servers_test.go` says:
+All in this branch, on one host. The integration tests use the real
+`strelaysrv` and `stdiscosrv` v1.30.0 (the version the module pins), built
+outside the module as the comment at the top of
+`integration/private_servers_test.go` says; the unit tests are in
+`mrcore/transport`, `mobile`, `cmd/keyholder`, `cmd/unlocker` and the Android
+app's JVM tests.
 
-- `[V]` A machine given a single relay and a discovery server, and a key
-  holder given only the discovery server, meet and exchange bytes both ways,
-  each seeing the other's Device ID. The same through a relay pool (a small
-  HTTP endpoint listing the relay).
+- `[V]` A machine given a single relay and a pinned discovery server, and a
+  key holder given only the discovery server (pinned, or `?insecure`), meet
+  and exchange bytes both ways, each seeing the other's Device ID; the same
+  through a relay pool (a small HTTP endpoint listing the relay):
+  `TestMeetingThroughAPrivateRelayAndDiscoveryServer`.
 - `[V]` A key holder on a different discovery server than the machine's does
-  not find it, and the error says no addresses were announced for the peer.
+  not find it, and the error says no addresses were announced for the peer
+  (`TestAKeyHolderOnAnotherDiscoveryServerDoesNotFindTheMachine`).
 - `[V]` With the machine's announce to the private server removed, the first
-  test fails (a mutation check).
+  test fails; with the id comparison disabled, the wrong-id tests fail
+  (mutation checks).
+- `[V]` On a real private relay the first session after an announcement
+  sometimes failed to complete (a debug log of one such run: the relay logged
+  "Failed to add ... to session" and the machine's control connection closed),
+  and the meeting only succeeded after the machine listened again, which is
+  what the agent does. Some meetings in the integration runs took 16 to 29
+  seconds for that reason. Not diagnosed further `[U]`; it is why the tests
+  listen again.
 - `[U]` The host was not cut off from the Internet while this ran, so "never
   contacts the public servers" is argued from the settings, not enforced.
-  The machine VM, the real initrd and the phone were not involved.
+  The machine VM, the real initrd (beyond the Fedora run noted above) and the
+  phone were not involved in the lookup and trust tests.
