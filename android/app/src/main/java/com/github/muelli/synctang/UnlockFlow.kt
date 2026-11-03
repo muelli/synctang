@@ -6,6 +6,7 @@ import javax.crypto.Cipher
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The outcome of a biometric prompt, as the unlock flow cares about it.
@@ -322,8 +324,10 @@ class UnlockFlow(
     private val checkKey: () -> Unit = {},
     // How the Ready screen finds out whether the machine looks like it is waiting: one lookup
     // on the discovery server, never a connection to the machine. Blocks; runs on [io].
-    private val checkStatus: (Machine) -> Readiness = { Readiness() },
+    private val checkStatus: (Machine) -> StatusAnswer = { StatusAnswer.Known(Readiness()) },
     private val readinessPollMillis: Long = READINESS_POLL_MILLIS,
+    private val readinessMinGapMillis: Long = READINESS_MIN_GAP_MILLIS,
+    private val readinessJitter: () -> Double = { kotlin.random.Random.nextDouble() },
     // How often the busy screens ask the Go side how far it has got, and the clock their
     // elapsed time is counted on.
     private val pollIntervalMillis: Long = POLL_INTERVAL_MILLIS,
@@ -364,12 +368,24 @@ class UnlockFlow(
         appForeground = false
     }
 
+    // When something other than the timer wants a check now: the app coming back, a tap.
+    // Conflated, so that any number of them while a check runs is one.
+    private val readinessNudges = Channel<Unit>(Channel.CONFLATED)
+
+    // Until when the discovery server has told us to leave it alone, by its address.
+    private val rateLimitedUntil = HashMap<String, Long>()
+
     /**
      * Starts asking about the machine while the Ready screen is showing, and stops the
-     * moment the state is anything else. Asks at once, then every [readinessPollMillis], not
-     * at all while the app is in the background, and one lookup at a time. Each answer goes
-     * into the Ready state (which never changes what Unlock does), is kept for a failed dial
-     * to quote, and is written to the log.
+     * moment the state is anything else. Asks at once, then every [readinessPollMillis] give
+     * or take 20 percent, not at all while the app is in the background, and one lookup at a
+     * time. Each answer goes into the Ready state (which never changes what Unlock does), is
+     * kept for a failed dial to quote, and is written to the log.
+     *
+     * Something that is not the timer (the app coming back to the foreground, a tap on Check
+     * again) asks at once too, but never within [readinessMinGapMillis] of the last check.
+     * And when the server answers that it is being asked too often, nothing asks again until
+     * its Retry-After is up, while the chip goes on showing what it showed.
      */
     private fun followReadiness(state: UnlockUiState) {
         if (state !is UnlockUiState.Ready) {
@@ -383,26 +399,56 @@ class UnlockFlow(
         readinessMachine = state.machine.deviceId
         val machine = state.machine
         readinessJob = scope.launch {
+            while (readinessNudges.tryReceive().isSuccess) { /* asked for before this screen was up */ }
+            var scheduled = true
+            var lastStart = Long.MIN_VALUE / 2
             while (true) {
-                if (appForeground) {
+                val t = clock()
+                val limitedUntil = rateLimitedUntil[machine.discovery] ?: 0L
+                val allowed = appForeground && t >= limitedUntil &&
+                    (scheduled || t - lastStart >= readinessMinGapMillis)
+                if (allowed) {
+                    lastStart = t
                     val answer = withContext(io) {
                         try {
                             checkStatus(machine)
                         } catch (e: Exception) {
-                            Readiness(ReadinessState.NO_NETWORK)
+                            StatusAnswer.Known(Readiness(ReadinessState.NO_NETWORK))
                         }
                     }
+                    readinessNudges.tryReceive() // asked for while this one ran: this is that answer
                     val now = _state.value
                     if (now !is UnlockUiState.Ready || now.machine.deviceId != machine.deviceId) return@launch
-                    lastReadiness[machine.deviceId] = answer
-                    appLog.d { "status ${answer.state.name.lowercase()} age=${answer.ageSeconds}" }
-                    if (now.readiness != answer) _state.value = now.copy(readiness = answer)
+                    when (answer) {
+                        is StatusAnswer.Known -> {
+                            lastReadiness[machine.deviceId] = answer.readiness
+                            appLog.d { "status ${answer.readiness.state.name.lowercase()} age=${answer.readiness.ageSeconds}" }
+                            if (now.readiness != answer.readiness) _state.value = now.copy(readiness = answer.readiness)
+                        }
+                        is StatusAnswer.RateLimited -> {
+                            rateLimitedUntil[machine.discovery] = clock() + answer.retryAfterMillis
+                            appLog.d { "status rate limited, not asking for ${answer.retryAfterMillis / 1000} s" }
+                        }
+                    }
                 }
-                delay(readinessPollMillis)
+                val untilAllowed = (rateLimitedUntil[machine.discovery] ?: 0L) - clock()
+                val wait = maxOf(readinessPollDelayMillis(readinessPollMillis, readinessJitter()), untilAllowed)
+                val nudged = withTimeoutOrNull(wait) { readinessNudges.receive(); true } ?: false
+                scheduled = !nudged
                 if (_state.value !is UnlockUiState.Ready) return@launch
             }
         }
     }
+
+    /**
+     * A tap on Check again: look the machine up now, if the last look was not just now and
+     * the discovery server has not asked to be left alone.
+     */
+    fun checkAgain() {
+        appLog.d { "action check again" }
+        readinessNudges.trySend(Unit)
+    }
+
     val state: StateFlow<UnlockUiState> = _state.asStateFlow()
 
     // A failure, to the log hook and to the log at warn, with its whole cause chain.
@@ -460,6 +506,7 @@ class UnlockFlow(
     fun returnedToForeground() {
         appLog.d { "action returned to foreground" }
         appForeground = true
+        readinessNudges.trySend(Unit)
         runKeyCheck()
     }
 

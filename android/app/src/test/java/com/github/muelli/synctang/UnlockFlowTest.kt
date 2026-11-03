@@ -67,11 +67,20 @@ class UnlockFlowTest {
     @Volatile private var statusAnswer = Readiness()
     private val statusCalls = AtomicInteger()
 
+    /** When above zero the check answers "rate limited, wait this long" instead of [statusAnswer]. */
+    @Volatile private var statusRateLimitedMillis = 0L
+
+    /** While set, the check does not return until it is released: a lookup that is in flight. */
+    @Volatile private var statusWaitsFor: CountDownLatch? = null
+
     /** Every line the flow writes through the facade, at the most verbose level. */
     private val logLines = Collections.synchronizedList(mutableListOf<String>())
     private val appLog = AppLog({ _, _, line, _ -> logLines += line }) { AppLog.Level.DEBUG }
 
-    private val flow = UnlockFlow(
+    private var flow = newFlow()
+
+    /** A flow whose readiness poll runs every [pollMillis] and whose checks are [minGapMillis] apart at least. */
+    private fun newFlow(pollMillis: Long = 20, minGapMillis: Long = 0) = UnlockFlow(
         scope = scope,
         io = Dispatchers.IO,
         store = store,
@@ -101,8 +110,14 @@ class UnlockFlowTest {
         },
         approveWindowMillis = 1_500,
         pollIntervalMillis = 20,
-        readinessPollMillis = 20,
-        checkStatus = { _ -> statusCalls.incrementAndGet(); statusAnswer },
+        readinessPollMillis = pollMillis,
+        readinessMinGapMillis = minGapMillis,
+        readinessJitter = { 0.5 },
+        checkStatus = { _ ->
+            statusCalls.incrementAndGet()
+            statusWaitsFor?.await()
+            if (statusRateLimitedMillis > 0) StatusAnswer.RateLimited(statusRateLimitedMillis) else StatusAnswer.Known(statusAnswer)
+        },
         keyUseTimeoutSeconds = 1,
         checkKey = {
             keyChecks.incrementAndGet()
@@ -399,6 +414,125 @@ class UnlockFlowTest {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
         while (statusCalls.get() <= calls && System.nanoTime() < deadline) Thread.sleep(5)
         assertTrue("polling did not resume in the foreground", statusCalls.get() > calls)
+    }
+
+    private fun awaitCalls(atLeast: Int) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (statusCalls.get() < atLeast && System.nanoTime() < deadline) Thread.sleep(5)
+        assertTrue("the status was asked ${statusCalls.get()} times, wanted $atLeast", statusCalls.get() >= atLeast)
+    }
+
+    @Test
+    fun theReadyScreenAsksAtOnceAndThenOnlyAtItsPollInterval() {
+        flow = newFlow(pollMillis = 60_000)
+        store.saved = machineA
+        statusAnswer = Readiness(ReadinessState.WAITING, 12)
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        awaitCalls(1)
+        Thread.sleep(300)
+        assertEquals("asked again long before its poll interval", 1, statusCalls.get())
+    }
+
+    @Test
+    fun comingBackToTheForegroundAsksAtOnceNotAtTheNextPoll() {
+        flow = newFlow(pollMillis = 60_000)
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        awaitCalls(1)
+        onMain { flow.movedToBackground() }
+        Thread.sleep(100)
+        onMain { flow.returnedToForeground() }
+        awaitCalls(2)
+    }
+
+    @Test
+    fun checkingAgainByHandAsksAtOnceButNotMoreOftenThanTheMinimumGap() {
+        flow = newFlow(pollMillis = 60_000, minGapMillis = 400)
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        awaitCalls(1)
+        onMain { flow.checkAgain() }
+        onMain { flow.checkAgain() }
+        Thread.sleep(150)
+        assertEquals("a tap within the gap asked again", 1, statusCalls.get())
+        Thread.sleep(400)
+        onMain { flow.checkAgain() }
+        awaitCalls(2)
+        Thread.sleep(150)
+        assertEquals("two taps made two checks", 2, statusCalls.get())
+    }
+
+    @Test
+    fun noMoreThanOneCheckIsInFlight() {
+        flow = newFlow(pollMillis = 60_000)
+        val release = CountDownLatch(1)
+        statusWaitsFor = release
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        awaitCalls(1)
+        repeat(5) { onMain { flow.checkAgain() } }
+        Thread.sleep(300)
+        assertEquals("a second check started while one was in flight", 1, statusCalls.get())
+        release.countDown()
+        // The taps made while it ran are answered by it, not by a second check straight after.
+        Thread.sleep(300)
+        assertEquals("a tap made during a check started another when it ended", 1, statusCalls.get())
+    }
+
+    @Test
+    fun aRateLimitedAnswerKeepsTheLastKnownStateAndSilencesTheChecksForItsWait() {
+        flow = newFlow(pollMillis = 20)
+        store.saved = machineA
+        statusAnswer = Readiness(ReadinessState.WAITING, 12)
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        awaitReadiness { it.state == ReadinessState.WAITING }
+
+        statusRateLimitedMillis = 600
+        val before = statusCalls.get()
+        awaitCalls(before + 1)
+        val limitedAt = System.nanoTime()
+        Thread.sleep(50) // the call that was told to wait has returned
+        statusRateLimitedMillis = 0
+        statusAnswer = Readiness(ReadinessState.ABSENT)
+        // Neither the poll, nor the foreground, nor a tap gets through until the wait is up.
+        onMain { flow.movedToBackground() }
+        onMain { flow.returnedToForeground() }
+        onMain { flow.checkAgain() }
+        val limitedCalls = statusCalls.get()
+        Thread.sleep(400)
+        assertEquals("asked while it had been told to wait", limitedCalls, statusCalls.get())
+        assertEquals(
+            "the last known state was dropped for a 429",
+            ReadinessState.WAITING,
+            (flow.state.value as UnlockUiState.Ready).readiness.state,
+        )
+        // And once it is up, the chip recovers.
+        awaitReadiness { it.state == ReadinessState.ABSENT }
+        val waited = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - limitedAt)
+        assertTrue("asked again after only $waited ms of 600", waited >= 500)
+    }
+
+    @Test
+    fun aRateLimitedAnswerBeforeAnyStateLeavesTheChipChecking() {
+        flow = newFlow(pollMillis = 20)
+        store.saved = machineA
+        statusRateLimitedMillis = 5_000
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        awaitCalls(1)
+        Thread.sleep(200)
+        assertEquals(ReadinessState.CHECKING, (flow.state.value as UnlockUiState.Ready).readiness.state)
+        assertEquals(1, statusCalls.get())
+        // And it is not mistaken for something to quote after a failed dial.
+        nextSession = { FakeSession(failWith = MachineFailure(FailureKind.UNREACHABLE, "", "mobile: gave up dialling", null)) }
+        onMain { flow.connect() }
+        val failed = await<UnlockUiState.Failed>()
+        assertFalse(failed.technical.orEmpty(), failed.technical.orEmpty().contains("res:${R.string.failure_last_status}"))
     }
 
     /** The last status goes in the technical details of an unreachable failure, never the headline. */

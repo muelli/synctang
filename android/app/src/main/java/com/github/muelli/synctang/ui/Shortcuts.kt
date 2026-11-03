@@ -82,6 +82,7 @@ internal enum class AppAction(val role: Role, val chord: Chord?, @StringRes val 
     CLOSE_ABOUT(Role.BACK, Chord.ESCAPE, R.string.about_close),
 
     PAIR_AGAIN(Role.OTHER, Chord.ctrl(KeyEvent.KEYCODE_P), R.string.pair_again),
+    CHECK_AGAIN(Role.OTHER, Chord.ctrl(KeyEvent.KEYCODE_R), R.string.readiness_check_again),
     OPEN_ABOUT(Role.OTHER, Chord.ctrl(KeyEvent.KEYCODE_I), R.string.about_title),
     ENROL_BY_HAND(Role.OTHER, Chord.ctrl(KeyEvent.KEYCODE_E), R.string.pair_by_hand),
     COPY_COMMAND(Role.OTHER, Chord.ctrlShift(KeyEvent.KEYCODE_C), R.string.pair_copy),

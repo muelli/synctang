@@ -26,7 +26,7 @@ import com.github.muelli.synctang.focusRing
 import com.github.muelli.synctang.rememberAutoFocusRequester
 
 @Composable
-internal fun ReadyScreen(state: UnlockUiState.Ready, onUnlock: () -> Unit, onPairAgain: () -> Unit) {
+internal fun ReadyScreen(state: UnlockUiState.Ready, onUnlock: () -> Unit, onPairAgain: () -> Unit, onCheckAgain: () -> Unit) {
     // The machine is the headline: on this screen it is the only thing
     // there is to act on.
     Column {
@@ -51,6 +51,14 @@ internal fun ReadyScreen(state: UnlockUiState.Ready, onUnlock: () -> Unit, onPai
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     ReadinessChip(state.readiness)
+    // Looks the machine up now. Never faster than the flow allows (it ignores a tap that comes
+    // right after a check), and nothing else on the screen waits for it.
+    TextButton(
+        onClick = onCheckAgain,
+        modifier = Modifier.shortcut(AppAction.CHECK_AGAIN, onInvoke = onCheckAgain).focusRing(),
+    ) {
+        Text(stringResource(R.string.readiness_check_again))
+    }
     Button(
         onClick = onUnlock,
         modifier = Modifier

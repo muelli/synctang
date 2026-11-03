@@ -94,5 +94,45 @@ private fun luminance(argb: Long): Double {
     return 0.2126 * channel(16) + 0.7152 * channel(8) + 0.0722 * channel(0)
 }
 
-/** How often the Ready screen asks, while it is showing and the app is in the foreground. */
-internal const val READINESS_POLL_MILLIS = 5_000L
+/**
+ * How often the Ready screen asks, while it is showing and the app is in the foreground:
+ * every 30 s, give or take [READINESS_JITTER]. The machine announces itself every 60 s and
+ * a record counts as fresh for 150 s, so asking more often cannot tell anything new, and
+ * the public discovery server is shared: it answers a client that asks every few seconds
+ * with HTTP 429 and a Retry-After of minutes. There is also one check at once when the
+ * screen appears or the app comes back, and a person may ask by hand.
+ */
+internal const val READINESS_POLL_MILLIS = 30_000L
+
+/** How far, as a fraction, one poll interval moves either way, so that phones do not ask together. */
+internal const val READINESS_JITTER = 0.2
+
+/**
+ * Two checks are never started closer together than this, whatever asked for them (a tap, the
+ * app coming back to the foreground): what was shown less than this long ago is not stale.
+ */
+internal const val READINESS_MIN_GAP_MILLIS = 10_000L
+
+/** [base] moved by up to [READINESS_JITTER] either way: [random] in [0, 1] picks where. */
+fun readinessPollDelayMillis(base: Long, random: Double): Long =
+    (base * (1 + READINESS_JITTER * (2 * random.coerceIn(0.0, 1.0) - 1))).toLong()
+
+/** The Go side's word for a discovery server that said to ask less often (HTTP 429). */
+internal const val GO_RATE_LIMITED = "RATE_LIMITED"
+
+/**
+ * How long to leave the discovery server alone after it said to. The Go side already bounds
+ * what it reports; this bounds it again where the wait is acted on: at least 30 s, at most
+ * 10 minutes.
+ */
+fun rateLimitWaitMillis(retryAfterSeconds: Int): Long =
+    (retryAfterSeconds.toLong() * 1000).coerceIn(30_000L, 600_000L)
+
+/**
+ * What a status check came back with: what the machine looks like, or "asked too often, wait
+ * this long" ([RateLimited], which is not a state of the machine and changes nothing shown).
+ */
+sealed interface StatusAnswer {
+    data class Known(val readiness: Readiness) : StatusAnswer
+    data class RateLimited(val retryAfterMillis: Long) : StatusAnswer
+}

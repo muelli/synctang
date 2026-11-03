@@ -98,11 +98,12 @@ class ScreenShortcutsTest {
 
     @Test
     fun ready() {
-        show { ReadyScreen(UnlockUiState.Ready(machine, identity), { calls += "unlock" }, { calls += "again" }) }
-        assertOffers(AppAction.UNLOCK, AppAction.PAIR_AGAIN)
+        show { ReadyScreen(UnlockUiState.Ready(machine, identity), { calls += "unlock" }, { calls += "again" }, { calls += "check" }) }
+        assertOffers(AppAction.UNLOCK, AppAction.PAIR_AGAIN, AppAction.CHECK_AGAIN)
         press(AppAction.UNLOCK)
         press(AppAction.PAIR_AGAIN)
-        assertEquals(listOf("unlock", "again"), calls)
+        press(AppAction.CHECK_AGAIN)
+        assertEquals(listOf("unlock", "again", "check"), calls)
     }
 
     @Test
@@ -272,7 +273,7 @@ class ScreenShortcutsTest {
     /** The first screen to take focus is the one a keyboard user is about to use. */
     @Test
     fun readyStartsOnUnlock() {
-        show { ReadyScreen(UnlockUiState.Ready(machine, identity), {}, {}) }
+        show { ReadyScreen(UnlockUiState.Ready(machine, identity), {}, {}, {}) }
         rule.onNodeWithText("Unlock").assertIsFocused()
     }
 }

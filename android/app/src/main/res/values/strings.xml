@@ -93,6 +93,7 @@
     <string name="readiness_stale_announce">The machine announced itself a while ago. It may not be at its prompt</string>
     <string name="readiness_absent">The machine has not announced itself. It may still be starting, or switched off</string>
     <string name="readiness_no_network">Cannot check: this phone cannot reach the discovery server</string>
+    <string name="readiness_check_again">Check again</string>
     <string name="failure_last_status">Last known status of the machine: %1$s</string>
     <string name="busy_elapsed">%1$d s</string>
     <string name="busy_attempt">Attempt %1$d</string>

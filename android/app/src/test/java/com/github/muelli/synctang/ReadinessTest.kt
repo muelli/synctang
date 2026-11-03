@@ -71,4 +71,44 @@ class ReadinessTest {
         assertEquals(21.0, contrastRatio(0xFFFFFFFF, 0xFF000000), 0.01)
         assertEquals(1.0, contrastRatio(0xFF123456, 0xFF123456), 0.0001)
     }
+
+    // How often the chip asks: every 30 s, give or take 20 percent, and never because of a 429
+    // sooner than the server said.
+
+    @Test
+    fun theChipAsksEveryHalfMinuteNotEveryFewSeconds() {
+        assertEquals(30_000L, READINESS_POLL_MILLIS)
+        assertEquals(10_000L, READINESS_MIN_GAP_MILLIS)
+    }
+
+    @Test
+    fun thePollDelayStaysWithinTwentyPercentOfItsBase() {
+        assertEquals(24_000L, readinessPollDelayMillis(30_000, 0.0))
+        assertEquals(30_000L, readinessPollDelayMillis(30_000, 0.5))
+        assertEquals(36_000L, readinessPollDelayMillis(30_000, 1.0), )
+        for (i in 0..100) {
+            val d = readinessPollDelayMillis(30_000, i / 100.0)
+            assertTrue("$d", d in 24_000L..36_000L)
+        }
+        // The jitter really moves it: not a constant.
+        assertNotEquals(readinessPollDelayMillis(30_000, 0.1), readinessPollDelayMillis(30_000, 0.9))
+    }
+
+    @Test
+    fun aRateLimitIsWaitedOutAtLeastHalfAMinuteAndAtMostTenMinutes() {
+        assertEquals(30_000L, rateLimitWaitMillis(0))
+        assertEquals(30_000L, rateLimitWaitMillis(5))
+        assertEquals(350_000L, rateLimitWaitMillis(350))
+        assertEquals(600_000L, rateLimitWaitMillis(1_200))
+        assertEquals(600_000L, rateLimitWaitMillis(Int.MAX_VALUE))
+        assertEquals(30_000L, rateLimitWaitMillis(-4))
+    }
+
+    @Test
+    fun theGoRateLimitedStateIsNotAChipState() {
+        // The chip keeps what it showed: RATE_LIMITED has no state of its own, and one this app
+        // does not know is "checking" rather than a claim.
+        assertEquals(ReadinessState.CHECKING, ReadinessState.fromGo("RATE_LIMITED"))
+        assertEquals(GO_RATE_LIMITED, "RATE_LIMITED")
+    }
 }

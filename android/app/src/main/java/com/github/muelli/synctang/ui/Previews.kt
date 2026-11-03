@@ -82,19 +82,19 @@ private fun KeyNeedsReplacingPreview() = Frame {
 @Preview(name = "Ready", widthDp = 360, heightDp = 640)
 @Composable
 private fun ReadyPreview() = Frame {
-    ReadyScreen(UnlockUiState.Ready(machine, identity), {}, {})
+    ReadyScreen(UnlockUiState.Ready(machine, identity), {}, {}, {})
 }
 
 @Preview(name = "Ready, long machine name", widthDp = 360, heightDp = 640)
 @Composable
 private fun ReadyLongNamePreview() = Frame {
-    ReadyScreen(UnlockUiState.Ready(longMachine, identity), {}, {})
+    ReadyScreen(UnlockUiState.Ready(longMachine, identity), {}, {}, {})
 }
 
 @Preview(name = "Ready, large font", widthDp = 360, heightDp = 800, fontScale = 2f)
 @Composable
 private fun ReadyLargeFontPreview() = Frame {
-    ReadyScreen(UnlockUiState.Ready(machine, identity), {}, {})
+    ReadyScreen(UnlockUiState.Ready(machine, identity), {}, {}, {})
 }
 
 @Preview(name = "Connecting", widthDp = 360, heightDp = 640)
