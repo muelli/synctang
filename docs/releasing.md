@@ -65,6 +65,19 @@ Attesting the index is what makes a split-view repository, serving a
 different index to different people, detectable. The APK's signing
 certificate is committed as `signing/app-cert.pem`.
 
+## Publishing the Debian packages
+
+A `v<versionCode>` tag, the same tag that publishes the app, makes the `ci`
+workflow run on the tag, and its `release-debs` job attaches what `build-deb`
+built to a GitHub release: the `.deb` files for amd64 and arm64, the SBOMs, and
+a `SHA256SUMS` file over both. Nothing is rebuilt for the release, so the files
+are the ones that passed the reproducibility check and carry the attestations
+described below. The job refuses a tag that is not `v` followed by the commit
+count, because that count is the version inside the packages. A push to `main`
+keeps its packages only as the `synctang-debs` workflow artifact, for seven
+days. `[U]` The job has not run yet: it is written against the workflow syntax
+and has been read, not executed, on GitHub.
+
 ## Debian package reproducibility
 
 Building the Debian packages (`just deb`) from the same git commit

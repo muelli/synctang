@@ -11,6 +11,9 @@ name: ci
 on:
   push:
     branches: [main]
+    # The tag publish-fdroid.yml publishes the app for: the packages built
+    # here are then attached to a GitHub release (release-debs, below).
+    tags: ['v*']
   pull_request:
 
 jobs:
@@ -310,10 +313,11 @@ jobs:
           done
       - uses: actions/attest-build-provenance@v2
         # A pull request, including one from a fork, cannot obtain an
-        # id-token, so this step only runs for a push to main; the build
+        # id-token, so this step only runs for a push to main or of a
+        # release tag; the build
         # and verification steps above still run on pull requests, so
         # packaging breakage is still caught before merge.
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref_type == 'tag')
         with:
           subject-path: dist/*.deb
       - uses: actions/attest-sbom@v2
@@ -322,22 +326,22 @@ jobs:
         # catches both builds and would attest the amd64 dependency list
         # against the arm64 package, which is worse than not attesting
         # at all: it is a signed statement that happens to be false.
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref_type == 'tag')
         with:
           subject-path: dist/synctang-unlocker_*_amd64.deb
           sbom-path: sbom/synctang-unlocker-amd64.cdx.json
       - uses: actions/attest-sbom@v2
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref_type == 'tag')
         with:
           subject-path: dist/synctang-unlocker_*_arm64.deb
           sbom-path: sbom/synctang-unlocker-arm64.cdx.json
       - uses: actions/attest-sbom@v2
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref_type == 'tag')
         with:
           subject-path: dist/synctang-keyholder_*_amd64.deb
           sbom-path: sbom/synctang-keyholder-amd64.cdx.json
       - uses: actions/attest-sbom@v2
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref_type == 'tag')
         with:
           subject-path: dist/synctang-keyholder_*_arm64.deb
           sbom-path: sbom/synctang-keyholder-arm64.cdx.json
@@ -351,6 +355,53 @@ jobs:
           name: synctang-deb-sboms
           path: sbom/*.cdx.json
           retention-days: 7
+
+  release-debs:
+    # Attaches the packages that build-deb made, and nothing rebuilt, to a
+    # GitHub release, so that someone installing synctang does not need a Go
+    # toolchain, a checkout or "just deb". Only for the v<versionCode> tags
+    # that publish the app; a push to main keeps them as the build-deb
+    # artifact, which is deleted after a week.
+    if: github.ref_type == 'tag'
+    needs: build-deb
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The commit count below is the version the packages carry.
+          fetch-depth: 0
+      - name: Check the tag names the version the packages carry
+        # build-deb versions the packages 0.0.<commit count>-1 and the app's
+        # versionCode is the same count, so a tag that is not v<that count>
+        # would put a release next to files that say another number.
+        run: |
+          expected="v$(git rev-list --count HEAD)"
+          if [ "$GITHUB_REF_NAME" != "$expected" ]; then
+            echo "::error::tag $GITHUB_REF_NAME is on a commit whose version is $expected" >&2
+            exit 1
+          fi
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: synctang-*
+          merge-multiple: true
+          path: release
+      - name: Checksums
+        run: |
+          cd release
+          ls -l
+          sha256sum -- *.deb *.cdx.json > SHA256SUMS
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="Debian and Ubuntu packages, amd64 and arm64: synctang-unlocker and synctang-dracut for a machine whose disk is unlocked, synctang-keyholder for a laptop. The phone app is in the F-Droid repository; see the README. SHA256SUMS lists every file here. Each package has a build-provenance attestation: gh attestation verify <file> --repo ${GITHUB_REPOSITORY}"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" release/* --verify-tag --title "$GITHUB_REF_NAME" --notes "$notes"
+          fi
 
   build-apk:
     runs-on: ubuntu-26.04
