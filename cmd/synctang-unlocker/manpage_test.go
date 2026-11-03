@@ -106,7 +106,9 @@ func TestManPageHasTheSectionsAReaderLooksFor(t *testing.T) {
 			t.Errorf("the page has no %s section", name)
 		}
 	}
-	if !strings.Contains(page, ".\\\" SPDX-License-Identifier: AGPL-3.0-or-later") && !strings.HasPrefix(page, ".\\\" SPDX") {
+	// Built in two pieces: written out whole, this line is itself an SPDX tag as
+	// far as `reuse lint` can tell, and an invalid one.
+	if !strings.Contains(page, ".\\\" SPDX-"+"License-Identifier: AGPL-3.0-or-later") && !strings.HasPrefix(page, ".\\\" SPDX") {
 		t.Error("the page has no SPDX header")
 	}
 }
