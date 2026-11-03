@@ -134,6 +134,14 @@
     <string name="error_details_hide">Hide details</string>
     <string name="error_connection_lost">The connection to the machine was lost.</string>
     <string name="error_nothing_to_approve">The machine connected but sent nothing to approve.</string>
+    <string name="failure_unreachable_waiting">The machine announced itself %1$s ago but did not answer. Try again. If it keeps failing, check its network.</string>
+    <string name="failure_unreachable_stale">The machine last announced itself %1$s ago, so it may not be at its prompt. Check the machine.</string>
+    <string name="failure_unreachable_stale_unknown">The machine announced itself at some point, so it may not be at its prompt. Check the machine.</string>
+    <string name="failure_unreachable_absent">The machine has not announced itself. It may still be starting, switched off, or using another discovery server.</string>
+    <string name="age_seconds">%1$d s</string>
+    <string name="age_minutes">%1$d min</string>
+    <string name="age_hours">%1$d h</string>
+    <string name="age_days">%1$d days</string>
     <string name="failure_unreachable">Could not reach the machine. Check that it is waiting at its unlock prompt, that this phone is online or on the same network, and that this phone is enrolled on it.</string>
     <string name="failure_pair_unreachable">Could not reach the machine. Check that it is still showing its pairing code, and that this phone is online or on the same network.</string>
     <string name="failure_hung_up">The machine hung up before it could be answered. Try again.</string>

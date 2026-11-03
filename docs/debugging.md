@@ -139,6 +139,25 @@ Unlock button is never disabled. When a dial gives up, the technical details of 
 machine: The machine announced itself 47 min ago ...". Each check is in the log (`adb logcat -s
 synctang`, "status waiting age=12") and the Go side's at trace.
 
+### When an unlock gives up
+
+A dial that finds nothing for 90 seconds (the app) or `--timeout` (the command line, two minutes
+by default) ends with one more lookup of the machine on its discovery server, and the headline of
+the failure says what that found, so that "could not reach the machine" is not all there is to
+read. A record at most 150 seconds old: "The machine announced itself N s ago but did not answer.
+Try again. If it keeps failing, check its network." An older one: "The machine last announced
+itself N min ago, so it may not be at its prompt. Check the machine." No record: "The machine has
+not announced itself. It may still be starting, switched off, or using another discovery server."
+The age is in seconds, minutes (under two hours), hours (under two days) or days. When the lookup
+itself fails, or is answered with a 429, the app says what the chip last knew (grown older by the
+time since, and without a lookup if the server has asked to be left alone) and the command line
+adds nothing: the general text stays. The lookup is made only when the machine could not be
+reached, not for a failure partway through the exchange, and never for `--direct-addr`.
+`[V]` in `mrcore/transport/machine_status_test.go` (the units and the texts),
+`cmd/synctang-keyholder/unlock_hint_test.go` (against a fake discovery server: two lookups, the
+dial's first and this one, and none for a direct address) and `UnlockFlowTest`/`ReadinessTest`
+(one lookup, only for an unreachable machine, each state, a 429).
+
 ### When the discovery server says "too many requests"
 
 The public discovery server is shared, and a client that asks too often gets HTTP 429 with a

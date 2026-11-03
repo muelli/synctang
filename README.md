@@ -200,6 +200,9 @@ app looks once when the screen appears or the app comes back, then every 30 seco
 answers a client that asks too often with HTTP 429 and a Retry-After of minutes: the app then
 leaves it alone for that long and keeps showing what it showed, and a dial's retries (and the
 command-line tools') back off from 3 to 15 seconds and wait out a Retry-After too.
+When an unlock gives up, the app (and `synctang-keyholder unlock`) looks the machine up once more and
+says what discovery knows: it announced itself N seconds ago but did not answer, it last announced
+itself minutes or hours ago so it may not be at its prompt, or it never announced itself.
 A debug build of the app logs what it is doing, and `adb logcat -v time -s synctang GoLog`
 follows it; release builds log warnings only (`docs/debugging.md`).
 

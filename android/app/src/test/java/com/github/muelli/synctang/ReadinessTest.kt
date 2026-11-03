@@ -111,4 +111,60 @@ class ReadinessTest {
         assertEquals(ReadinessState.CHECKING, ReadinessState.fromGo("RATE_LIMITED"))
         assertEquals(GO_RATE_LIMITED, "RATE_LIMITED")
     }
+
+    // A failed dial says what discovery knows, in the headline.
+
+    @Test
+    fun anAgeIsInTheUnitThatFits() {
+        fun age(seconds: Int) = ageLabel(seconds).let { it.res to it.args }
+        assertEquals(R.string.age_seconds to listOf<Any>(0), age(0))
+        assertEquals(R.string.age_seconds to listOf<Any>(0), age(-3))
+        assertEquals(R.string.age_seconds to listOf<Any>(59), age(59))
+        assertEquals(R.string.age_minutes to listOf<Any>(1), age(60))
+        assertEquals(R.string.age_minutes to listOf<Any>(119), age(119 * 60 + 59))
+        assertEquals(R.string.age_hours to listOf<Any>(2), age(120 * 60))
+        assertEquals(R.string.age_hours to listOf<Any>(47), age(47 * 3600 + 3599))
+        assertEquals(R.string.age_days to listOf<Any>(2), age(48 * 3600))
+        assertEquals(R.string.age_days to listOf<Any>(10), age(10 * 86_400 + 5))
+    }
+
+    @Test
+    fun theHeadlineOfAFailedDialFollowsWhatDiscoveryKnows() {
+        val waiting = unreachableHeadline(r(ReadinessState.WAITING, 42))!!
+        assertEquals(R.string.failure_unreachable_waiting, waiting.res)
+        assertEquals(ageLabel(42), waiting.age)
+
+        val stale = unreachableHeadline(r(ReadinessState.STALE, 47 * 60))!!
+        assertEquals(R.string.failure_unreachable_stale, stale.res)
+        assertEquals(ageLabel(47 * 60), stale.age)
+        val staleHours = unreachableHeadline(r(ReadinessState.STALE, 5 * 3600))!!
+        assertEquals(R.string.age_hours, staleHours.age!!.res)
+        val staleDays = unreachableHeadline(r(ReadinessState.STALE, 3 * 86_400))!!
+        assertEquals(R.string.age_days, staleDays.age!!.res)
+
+        val unknownAge = unreachableHeadline(r(ReadinessState.STALE, -1))!!
+        assertEquals(R.string.failure_unreachable_stale_unknown, unknownAge.res)
+        assertEquals(null, unknownAge.age)
+
+        val absent = unreachableHeadline(r(ReadinessState.ABSENT))!!
+        assertEquals(R.string.failure_unreachable_absent, absent.res)
+        assertEquals(null, absent.age)
+
+        // Nothing is known about the machine in these: the old general text stays.
+        assertEquals(null, unreachableHeadline(r(ReadinessState.NO_NETWORK)))
+        assertEquals(null, unreachableHeadline(r(ReadinessState.CHECKING)))
+    }
+
+    @Test
+    fun aStatusAsLastSeenGrowsOlderWithTheTimeSince() {
+        assertEquals(r(ReadinessState.WAITING, 52), agedSince(r(ReadinessState.WAITING, 42), 10))
+        // A waiting record that has passed its 150 s is stale now.
+        assertEquals(r(ReadinessState.STALE, 151), agedSince(r(ReadinessState.WAITING, 140), 11))
+        assertEquals(r(ReadinessState.WAITING, 150), agedSince(r(ReadinessState.WAITING, 140), 10))
+        assertEquals(r(ReadinessState.STALE, 3_660), agedSince(r(ReadinessState.STALE, 3_600), 60))
+        // Nothing to age: no age known, or not a record.
+        assertEquals(r(ReadinessState.STALE, -1), agedSince(r(ReadinessState.STALE, -1), 60))
+        assertEquals(r(ReadinessState.ABSENT), agedSince(r(ReadinessState.ABSENT), 60))
+        assertEquals(r(ReadinessState.NO_NETWORK), agedSince(r(ReadinessState.NO_NETWORK), 60))
+    }
 }

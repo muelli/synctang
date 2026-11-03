@@ -136,3 +136,44 @@ sealed interface StatusAnswer {
     data class Known(val readiness: Readiness) : StatusAnswer
     data class RateLimited(val retryAfterMillis: Long) : StatusAnswer
 }
+
+/** An age as the words after "announced itself": seconds, minutes (under two hours), hours (under two days), days. */
+fun ageLabel(seconds: Int): Label = when {
+    seconds < 60 -> Label(R.string.age_seconds, listOf(max(seconds, 0)))
+    seconds < 120 * 60 -> Label(R.string.age_minutes, listOf(seconds / 60))
+    seconds < 48 * 3600 -> Label(R.string.age_hours, listOf(seconds / 3600))
+    else -> Label(R.string.age_days, listOf(seconds / 86_400))
+}
+
+/** A headline for a failed dial: a string resource and, when it has one, the age to put in it. */
+data class UnreachableHeadline(@StringRes val res: Int, val age: Label?)
+
+/**
+ * What a dial that gave up should say about the machine, from what discovery knows of it:
+ * it announced itself lately and did not answer, it announced itself long ago, or never. Null
+ * when discovery tells nothing (no network, still checking): the general headline stays.
+ */
+fun unreachableHeadline(r: Readiness): UnreachableHeadline? = when (r.state) {
+    ReadinessState.WAITING -> UnreachableHeadline(R.string.failure_unreachable_waiting, ageLabel(max(r.ageSeconds, 0)))
+    ReadinessState.STALE ->
+        if (r.ageSeconds < 0) {
+            UnreachableHeadline(R.string.failure_unreachable_stale_unknown, null)
+        } else {
+            UnreachableHeadline(R.string.failure_unreachable_stale, ageLabel(r.ageSeconds))
+        }
+    ReadinessState.ABSENT -> UnreachableHeadline(R.string.failure_unreachable_absent, null)
+    ReadinessState.NO_NETWORK, ReadinessState.CHECKING -> null
+}
+
+/** How long a record counts as "waiting": the Go side's WaitingRecordMaxAge, 150 s. */
+internal const val WAITING_MAX_AGE_SECONDS = 150
+
+/**
+ * A status seen [elapsedSeconds] ago, as it would read now: a record keeps ageing, and a
+ * waiting one that passes 150 s is stale. Unchanged when it has no age to grow.
+ */
+fun agedSince(r: Readiness, elapsedSeconds: Int): Readiness {
+    if ((r.state != ReadinessState.WAITING && r.state != ReadinessState.STALE) || r.ageSeconds < 0) return r
+    val age = r.ageSeconds + max(elapsedSeconds, 0)
+    return Readiness(if (age <= WAITING_MAX_AGE_SECONDS) ReadinessState.WAITING else ReadinessState.STALE, age)
+}

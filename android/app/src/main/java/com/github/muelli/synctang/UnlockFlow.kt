@@ -356,6 +356,7 @@ class UnlockFlow(
     // The status of the paired machine as last looked up, kept so that the Ready screen
     // comes back showing it and a failed dial can say what it was.
     private val lastReadiness = HashMap<String, Readiness>()
+    private val lastReadinessAt = HashMap<String, Long>()
     private var readinessJob: Job? = null
     private var readinessMachine: String? = null
     @Volatile private var appForeground = true
@@ -421,7 +422,7 @@ class UnlockFlow(
                     if (now !is UnlockUiState.Ready || now.machine.deviceId != machine.deviceId) return@launch
                     when (answer) {
                         is StatusAnswer.Known -> {
-                            lastReadiness[machine.deviceId] = answer.readiness
+                            rememberReadiness(machine, answer.readiness)
                             appLog.d { "status ${answer.readiness.state.name.lowercase()} age=${answer.readiness.ageSeconds}" }
                             if (now.readiness != answer.readiness) _state.value = now.copy(readiness = answer.readiness)
                         }
@@ -439,6 +440,44 @@ class UnlockFlow(
             }
         }
     }
+
+    private fun rememberReadiness(machine: Machine, readiness: Readiness) {
+        lastReadiness[machine.deviceId] = readiness
+        lastReadinessAt[machine.deviceId] = clock()
+    }
+
+    /**
+     * What discovery knows of [machine] now that a dial has given up on it: one lookup, unless
+     * the server has asked to be left alone, in which case (and when the lookup is told so)
+     * what the chip last knew, as old as it has grown since. Null when nothing is known.
+     */
+    private suspend fun statusAtFailure(machine: Machine): Readiness? {
+        if (clock() >= (rateLimitedUntil[machine.discovery] ?: 0L)) {
+            val answer = withContext(io) {
+                try {
+                    checkStatus(machine)
+                } catch (e: Exception) {
+                    StatusAnswer.Known(Readiness(ReadinessState.NO_NETWORK))
+                }
+            }
+            when (answer) {
+                is StatusAnswer.Known -> {
+                    rememberReadiness(machine, answer.readiness)
+                    appLog.d { "status at failure ${answer.readiness.state.name.lowercase()} age=${answer.readiness.ageSeconds}" }
+                    return answer.readiness
+                }
+                is StatusAnswer.RateLimited -> {
+                    rateLimitedUntil[machine.discovery] = clock() + answer.retryAfterMillis
+                    appLog.d { "status at failure rate limited, using the last known" }
+                }
+            }
+        }
+        val last = lastReadiness[machine.deviceId] ?: return null
+        val seenAt = lastReadinessAt[machine.deviceId] ?: return last
+        return agedSince(last, ((clock() - seenAt) / 1000).toInt())
+    }
+
+    private fun isUnreachable(e: Exception) = e is MachineFailure && e.kind == FailureKind.UNREACHABLE
 
     /**
      * A tap on Check again: look the machine up now, if the last look was not just now and
@@ -806,10 +845,12 @@ class UnlockFlow(
                 }
             } catch (e: Exception) {
                 withContext(io) { fresh?.closeQuietly() }
+                // The dial gave up: say what discovery knows of the machine, in the headline.
+                val known = if (!attempt.cancelled && isUnreachable(e)) statusAtFailure(machine) else null
                 _state.value = if (attempt.cancelled) {
                     home(previous = null)
                 } else {
-                    failed(machine, e)
+                    failed(machine, e, known = known)
                 }
             } finally {
                 if (inFlight === attempt) inFlight = null
@@ -989,12 +1030,19 @@ class UnlockFlow(
         _state.value = home(previous = null)
     }
 
-    private fun failed(machine: Machine?, e: Exception, retry: Retry = Retry.REFRESH): UnlockUiState.Failed {
+    private fun failed(machine: Machine?, e: Exception, retry: Retry = Retry.REFRESH, known: Readiness? = null): UnlockUiState.Failed {
         logWarn("failed", e)
         val explained = explain(e)
+        val headline = known?.takeIf { isUnreachable(e) }?.let { unreachableHeadline(it) }
+        val message = if (headline == null) {
+            strings.get(explained.message)
+        } else {
+            val args = headline.age?.let { arrayOf<Any>(strings.get(it.res, *it.args.toTypedArray())) } ?: emptyArray()
+            strings.get(headline.res, *args)
+        }
         return UnlockUiState.Failed(
             machine,
-            strings.get(explained.message),
+            message,
             retry,
             explained.detail,
             explained.technical + lastKnownStatus(machine, e),

@@ -77,10 +77,14 @@ class UnlockFlowTest {
     private val logLines = Collections.synchronizedList(mutableListOf<String>())
     private val appLog = AppLog({ _, _, line, _ -> logLines += line }) { AppLog.Level.DEBUG }
 
+    /** Added to the flow's clock, to let time pass without waiting for it. */
+    private val clockOffsetMillis = java.util.concurrent.atomic.AtomicLong()
+
     private var flow = newFlow()
 
     /** A flow whose readiness poll runs every [pollMillis] and whose checks are [minGapMillis] apart at least. */
     private fun newFlow(pollMillis: Long = 20, minGapMillis: Long = 0) = UnlockFlow(
+        clock = { System.currentTimeMillis() + clockOffsetMillis.get() },
         scope = scope,
         io = Dispatchers.IO,
         store = store,
@@ -535,18 +539,121 @@ class UnlockFlowTest {
         assertFalse(failed.technical.orEmpty(), failed.technical.orEmpty().contains("res:${R.string.failure_last_status}"))
     }
 
-    /** The last status goes in the technical details of an unreachable failure, never the headline. */
-    @Test
-    fun anUnreachableMachineHasItsLastKnownStatusInTheTechnicalDetails() {
+    // A failed dial says what discovery knows, in the headline: one lookup when the dial gives up,
+    // and only for an unreachable machine.
+
+    private val unreachable = MachineFailure(FailureKind.UNREACHABLE, "", "mobile: gave up dialling", null)
+
+    private fun connectAndFail(failure: MachineFailure): UnlockUiState.Failed {
+        nextSession = { FakeSession(failWith = failure) }
+        onMain { flow.connect() }
+        return await<UnlockUiState.Failed>()
+    }
+
+    private fun readyWithStatusShown(status: Readiness) {
+        flow = newFlow(pollMillis = 60_000)
         store.saved = machineA
-        statusAnswer = Readiness(ReadinessState.STALE, 47 * 60)
+        statusAnswer = status
         onMain { flow.refresh() }
         await<UnlockUiState.Ready>()
-        awaitReadiness { it.state == ReadinessState.STALE }
-        nextSession = { FakeSession(failWith = MachineFailure(FailureKind.UNREACHABLE, "", "mobile: gave up dialling", null)) }
-        onMain { flow.connect() }
-        val failed = await<UnlockUiState.Failed>()
+        awaitReadiness { it.state == status.state }
+    }
+
+    private fun age(seconds: Int) = ageLabel(seconds).let { "res:${it.res}(${it.args.joinToString(",")})" }
+
+    @Test
+    fun aDialThatFailedWhileTheMachineWasWaitingSaysItAnnouncedButDidNotAnswer() {
+        readyWithStatusShown(Readiness(ReadinessState.WAITING, 42))
+        val asked = statusCalls.get()
+        val failed = connectAndFail(unreachable)
+        assertEquals("res:${R.string.failure_unreachable_waiting}(${age(42)})", failed.message)
+        Thread.sleep(300)
+        assertEquals("one lookup when the dial gave up", asked + 1, statusCalls.get())
+    }
+
+    @Test
+    fun aDialThatFailedForAStaleRecordSaysWhenItLastAnnounced() {
+        readyWithStatusShown(Readiness(ReadinessState.STALE, 47 * 60))
+        val failed = connectAndFail(unreachable)
+        assertEquals("res:${R.string.failure_unreachable_stale}(${age(47 * 60)})", failed.message)
+    }
+
+    @Test
+    fun aDialThatFailedForAMachineNeverAnnouncedSaysSo() {
+        readyWithStatusShown(Readiness(ReadinessState.ABSENT))
+        val failed = connectAndFail(unreachable)
+        assertEquals("res:${R.string.failure_unreachable_absent}", failed.message)
+    }
+
+    @Test
+    fun theHeadlineIsTheLookupAtFailureTimeNotWhatTheChipSaidBefore() {
+        readyWithStatusShown(Readiness(ReadinessState.WAITING, 30))
+        statusAnswer = Readiness(ReadinessState.STALE, 10 * 60)
+        val failed = connectAndFail(unreachable)
+        assertEquals("res:${R.string.failure_unreachable_stale}(${age(10 * 60)})", failed.message)
+    }
+
+    @Test
+    fun withNoNetworkTheOldHeadlineStays() {
+        readyWithStatusShown(Readiness(ReadinessState.NO_NETWORK))
+        val failed = connectAndFail(unreachable)
         assertEquals("res:${R.string.failure_unreachable}", failed.message)
+    }
+
+    @Test
+    fun aRateLimitedLookupAtFailureTimeUsesTheLastKnownStateAndAsksNoMore() {
+        readyWithStatusShown(Readiness(ReadinessState.STALE, 600))
+        statusRateLimitedMillis = 60_000
+        val asked = statusCalls.get()
+        val failed = connectAndFail(unreachable)
+        assertEquals(asked + 1, statusCalls.get())
+        // Still the last known state: STALE, a little older than when it was seen.
+        assertTrue(failed.message, failed.message.startsWith("res:${R.string.failure_unreachable_stale}("))
+        // Told to wait, so a second failure does not ask again.
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        val again = connectAndFail(unreachable)
+        assertEquals("looked up again while rate limited", asked + 1, statusCalls.get())
+        assertTrue(again.message, again.message.startsWith("res:${R.string.failure_unreachable_stale}("))
+    }
+
+    @Test
+    fun theLastKnownStateIsAsOldAsItHasGrownWhenItIsUsedInsteadOfALookup() {
+        readyWithStatusShown(Readiness(ReadinessState.WAITING, 100))
+        statusRateLimitedMillis = 3_600_000
+        // Seen waiting at 100 s old; 20 minutes later it is a record 21 minutes old, not a waiting one.
+        clockOffsetMillis.addAndGet(20 * 60_000L)
+        val failed = connectAndFail(unreachable)
+        assertEquals("res:${R.string.failure_unreachable_stale}(${age(100 + 20 * 60)})", failed.message)
+    }
+
+    @Test
+    fun aRateLimitedLookupWithNothingKnownKeepsTheOldHeadline() {
+        flow = newFlow(pollMillis = 60_000)
+        store.saved = machineA
+        statusRateLimitedMillis = 60_000
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        awaitCalls(1)
+        val failed = connectAndFail(unreachable)
+        assertEquals("res:${R.string.failure_unreachable}", failed.message)
+    }
+
+    @Test
+    fun otherFailuresDoNotLookAnythingUp() {
+        readyWithStatusShown(Readiness(ReadinessState.WAITING, 42))
+        val asked = statusCalls.get()
+        val failed = connectAndFail(MachineFailure(FailureKind.HUNG_UP, "", "the machine hung up", null))
+        assertEquals("res:${R.string.failure_hung_up}", failed.message)
+        Thread.sleep(300)
+        assertEquals("a lookup for a failure that is not about reaching the machine", asked, statusCalls.get())
+    }
+
+    /** The last status goes in the technical details of an unreachable failure, as well as the headline. */
+    @Test
+    fun anUnreachableMachineHasItsLastKnownStatusInTheTechnicalDetails() {
+        readyWithStatusShown(Readiness(ReadinessState.STALE, 47 * 60))
+        val failed = connectAndFail(unreachable)
         val technical = failed.technical.orEmpty()
         assertTrue(technical, technical.contains("res:${R.string.failure_last_status}"))
         assertTrue(technical, technical.contains("47"))
