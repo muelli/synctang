@@ -63,16 +63,24 @@ const dialRelayRetryInterval = 3 * time.Second
 // the machine up is handed an address it has left.
 const defaultAnnounceInterval = 2 * time.Second
 
-// defaultAnnounceRefresh is how often an unchanged record is
-// republished, purely to keep it from expiring.
+// WaitingRecordMaxAge is how young a machine's discovery record has to be for a phone
+// to call the machine "waiting now": a machine at its unlock prompt keeps its record this
+// fresh, one older than this is stale. The phone's readiness check (mobile.CheckMachineStatus)
+// and the machine's refresh interval (defaultAnnounceRefresh) are both measured against it.
+const WaitingRecordMaxAge = 150 * time.Second
+
+// defaultAnnounceRefresh is how often an unchanged record is republished while the
+// machine waits.
 //
-// This used to be the announce interval itself, at ten seconds, which
-// meant a POST to somebody else's free infrastructure every ten
-// seconds for the entire length of a wait, saying exactly what it said
-// the time before. syncthing-socket, whose discovery servers these
-// are, refreshes every thirty minutes; matching it is both the polite
-// number and the one known to keep a record alive.
-const defaultAnnounceRefresh = discovery.DefaultAnnounceInterval
+// It used to be thirty minutes, matching what syncthing-socket does and what the public
+// discovery servers suggest (their Reannounce-After is about 55 minutes), to be polite to
+// somebody else's free infrastructure. But a record that old cannot tell a phone whether
+// the machine is waiting now or was an hour ago, and that is exactly what the phone shows
+// a person before they walk to the machine: so while it waits, the machine republishes
+// every minute, so at least twice inside the WaitingRecordMaxAge a record counts as waiting
+// (so one lost announcement does not make it look stale). One small POST a minute, only
+// while an agent, "open" or "pair" is actually listening, not for the life of the machine.
+const defaultAnnounceRefresh = time.Minute
 
 // levelTrace sits below slog's own lowest built-in level (Debug, -4),
 // for detail below what a caller's --log-level debug would want by
