@@ -806,10 +806,14 @@ class UnlockFlow(
         }
     }
 
-    /** Dials the machine and waits for it to say what it wants. */
-    fun connect() {
+    /**
+     * Dials the machine and waits for it to say what it wants. With a [gate], the
+     * fingerprint prompt then comes up by itself as soon as the request arrives, so one
+     * tap does the whole unlock; without one, the flow stops on the Approve screen.
+     */
+    fun connect(gate: BiometricGate? = null) {
         val machine = store.machine() ?: return
-        appLog.d { "action connect machine=${machine.name} id=${machine.deviceId}" }
+        appLog.d { "action connect machine=${machine.name} id=${machine.deviceId}" + if (gate != null) " one-tap" else "" }
         disarmApproveExpiry()
         val attempt = InFlight()
         inFlight = attempt
@@ -840,8 +844,12 @@ class UnlockFlow(
                     declineAndGoHome(DECLINED_BY_KEY_HOLDER)
                 } else {
                     val expiresAt = connectedAt + approveWindowMillis
+                    approveExpiresAtMillis = expiresAt
                     _state.value = describe(machine).let { if (it is UnlockUiState.Approve) it.copy(expiresAtMillis = expiresAt) else it }
                     (_state.value as? UnlockUiState.Approve)?.let { armApproveExpiry(machine, expiresAt) }
+                    // Asked to unlock in one tap and the machine did ask: the person has
+                    // already chosen this machine, and the fingerprint is the consent.
+                    if (gate != null && _state.value is UnlockUiState.Approve) approve(gate)
                 }
             } catch (e: Exception) {
                 withContext(io) { fresh?.closeQuietly() }
@@ -933,6 +941,14 @@ class UnlockFlow(
         // on the one thread, so the flag and the answer cannot interleave.
         if (window.expired) return
         currentCoroutineContext().ensureActive()
+        if (outcome == AuthOutcome.CANCELLED) {
+            // The person changed their mind about the prompt, or it was dismissed. The
+            // machine is still waiting and the window is still running (and stays armed),
+            // so the request is where it was: back to the Approve screen, to try again or
+            // to decline, and the machine is told nothing.
+            _state.value = describe(machine).let { if (it is UnlockUiState.Approve) it.copy(expiresAtMillis = approveExpiresAtMillis) else it }
+            return
+        }
         if (outcome != AuthOutcome.SUCCEEDED) {
             disarmApproveExpiry()
             // Tell the machine rather than leaving it waiting for a
@@ -1130,6 +1146,9 @@ class UnlockFlow(
     }
 
     private var approveRun: ApproveRun? = null
+
+    /** When the window to answer the request now on screen ends, on the flow's clock. */
+    private var approveExpiresAtMillis = 0L
 
     private fun disarmApproveExpiry() {
         approveExpiry?.cancel()

@@ -124,7 +124,7 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
     fun undoReplace() = flow.undoReplace()
     fun dismissUndo() = flow.dismissUndo()
     fun pair(scanned: String): Boolean = flow.pair(scanned)
-    fun connect() = flow.connect()
+    fun connect(gate: BiometricGate? = null) = flow.connect(gate)
     fun approve(gate: BiometricGate) = flow.approve(gate)
     fun cancel() = flow.cancel()
 

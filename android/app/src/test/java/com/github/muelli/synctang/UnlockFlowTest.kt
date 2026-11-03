@@ -1457,13 +1457,104 @@ class UnlockFlowTest {
         assertTrue("the machine was told no while it was being answered", session.declines.isEmpty())
     }
 
+    // Cancelling the fingerprint prompt does not end the request: the machine is still
+    // waiting and the window is still running, so the Approve screen comes back, with the
+    // machine not told no, and the person can try again or decline.
     @Test
-    fun cancellingThePromptYourselfStillDeclinesOnceAndLeavesNoExpiryBehind() {
+    fun cancellingThePromptBringsTheApproveScreenBackAndTellsTheMachineNothing() {
         val session = connectToARequest()
         onMain { flow.approve { _, _, _ -> AuthOutcome.CANCELLED } }
+        val back = await<UnlockUiState.Approve>()
+        assertTrue("the window must still be running", back.expiresAtMillis > 0)
+        assertTrue("the machine was told no: ${session.declines}", session.declines.isEmpty())
+        assertFalse(session.closed)
+    }
+
+    @Test
+    fun aCancelledPromptCanBeTriedAgainWithinTheWindow() {
+        val session = connectToARequest()
+        onMain { flow.approve { _, _, _ -> AuthOutcome.CANCELLED } }
+        await<UnlockUiState.Approve>()
+
+        onMain { flow.approve { _, _, _ -> AuthOutcome.SUCCEEDED } }
+        await<UnlockUiState.Done>()
+        assertTrue(session.answered)
+        assertTrue(session.declines.isEmpty())
+    }
+
+    @Test
+    fun aCancelledPromptLeftAloneStillRunsOutOfTime() {
+        val session = connectToARequest()
+        onMain { flow.approve { _, _, _ -> AuthOutcome.CANCELLED } }
+        await<UnlockUiState.Approve>()
+
+        val failed = await<UnlockUiState.Failed>()
+        assertEquals("res:${R.string.error_approval_expired}", failed.message)
+        assertEquals(listOf(APPROVAL_TIMED_OUT), session.declines.toList())
+    }
+
+    // One tap: Unlock dials, and when the machine's request arrives the fingerprint
+    // prompt comes up by itself, naming the machine, with no Approve screen in between.
+
+    private fun unlockInOneTap(gate: BiometricGate): FakeSession {
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        nextSession = { FakeSession(connectReturnsAtOnce = true) }
+        onMain { flow.connect(gate) }
+        return sessions.awaitOne()
+    }
+
+    @Test
+    fun unlockingWithAGatePromptsAsSoonAsTheRequestArrives() {
+        val prompts = Collections.synchronizedList(mutableListOf<String>())
+        val session = unlockInOneTap { _, subtitle, _ ->
+            prompts += subtitle
+            AuthOutcome.SUCCEEDED
+        }
+
+        await<UnlockUiState.Done>()
+        assertTrue(session.answered)
+        assertTrue(session.declines.isEmpty())
+        assertEquals(1, prompts.size)
+        assertEquals("the prompt must name the machine", "res:${R.string.biometric_subtitle}(${machineA.name})", prompts.single())
+    }
+
+    @Test
+    fun theOneTapPromptIsNeverShownForAMachineThatAskedNothing() {
+        val prompts = AtomicInteger()
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        nextSession = { FakeSession(connectReturnsAtOnce = true, hasRequest = false) }
+        onMain { flow.connect { _, _, _ -> prompts.incrementAndGet(); AuthOutcome.SUCCEEDED } }
+
         await<UnlockUiState.Failed>()
-        Thread.sleep(1_800) // past the window: nothing more happens
+        assertEquals(0, prompts.get())
+    }
+
+    @Test
+    fun aCancelledOneTapPromptLandsOnTheApproveScreen() {
+        val session = unlockInOneTap { _, _, _ -> AuthOutcome.CANCELLED }
+
+        await<UnlockUiState.Approve>()
+        assertTrue(session.declines.isEmpty())
+    }
+
+    @Test
+    fun aLockedOutOneTapPromptDeclinesAndSaysSo() {
+        val session = unlockInOneTap { _, _, _ -> AuthOutcome.LOCKED_OUT }
+
+        val failed = await<UnlockUiState.Failed>()
+        assertEquals("res:${R.string.error_biometric_lockout}", failed.message)
         assertEquals(listOf(KEY_HOLDER_NOT_AUTHENTICATED), session.declines.toList())
+    }
+
+    @Test
+    fun connectingWithoutAGateStillStopsOnTheApproveScreen() {
+        connectToARequest()
+        Thread.sleep(200)
+        assertTrue(flow.state.value is UnlockUiState.Approve)
     }
 
     // An Approve screen cannot stay up for ever. The machine ended one session
@@ -1729,6 +1820,7 @@ private class FakeSession(
     private val answerFailsWith: Exception? = null,
     private val connectedForMillis: Long = 0,
     private val connectTakesMillis: Long = 0,
+    private val hasRequest: Boolean = true,
 ) : MachineSession {
     override fun connectedForMillis(): Long = connectedForMillis
     val started = CountDownLatch(1)
@@ -1771,7 +1863,7 @@ private class FakeSession(
 
     override fun machineName() = "machine"
     override fun peerId() = "PEER"
-    override fun hasRequest() = true
+    override fun hasRequest() = hasRequest
     override fun requestKidHex() = "ab"
     override fun answer(unwrap: () -> ByteArray) {
         unwrap()
