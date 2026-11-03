@@ -179,12 +179,14 @@ var relayURIRe = regexp.MustCompile(`URI: (relay://\S+)`)
 
 // startRelay runs strelaysrv on the host's address, joined to no pool, and
 // returns the relay:// URI it prints, which carries its Device ID.
-func startRelay(t *testing.T) string {
+func startRelay(t *testing.T, extraArgs ...string) string {
 	t.Helper()
 	port := freePort(t)
-	out := start(t, os.Getenv("STRELAYSRV"),
+	args := append([]string{
 		"-keys", t.TempDir(), "-listen", net.JoinHostPort(hostIP().String(), strconv.Itoa(port)),
-		"-pools=", "-status-srv=")
+		"-pools=", "-status-srv=",
+	}, extraArgs...)
+	out := start(t, os.Getenv("STRELAYSRV"), args...)
 	var uri string
 	waitFor(t, "the relay to print its URI\n"+out.String(), func() bool {
 		m := relayURIRe.FindStringSubmatch(out.String())
