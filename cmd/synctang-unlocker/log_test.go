@@ -97,7 +97,7 @@ func TestLevelNameCoversEveryStandardLevel(t *testing.T) {
 // that knew what was wrong was writing it somewhere unreadable.
 func TestWarningsReachTheConsoleWhenTheJournalIsInUse(t *testing.T) {
 	var console bytes.Buffer
-	logger := newLoggerTo(slog.LevelInfo, true, &console)
+	logger := newLoggerTo(slog.LevelInfo, fakeJournalConn(t), &console)
 
 	logger.Warn("announce failed", "error", "nope")
 	if !strings.Contains(console.String(), "announce failed") {
@@ -110,7 +110,7 @@ func TestWarningsReachTheConsoleWhenTheJournalIsInUse(t *testing.T) {
 // matters scrolls away amongst it.
 func TestRoutineRecordsDoNotReachTheConsole(t *testing.T) {
 	var console bytes.Buffer
-	logger := newLoggerTo(slog.LevelInfo, true, &console)
+	logger := newLoggerTo(slog.LevelInfo, fakeJournalConn(t), &console)
 
 	logger.Info("starting a recovery attempt")
 	if strings.Contains(console.String(), "starting a recovery attempt") {
@@ -122,7 +122,7 @@ func TestRoutineRecordsDoNotReachTheConsole(t *testing.T) {
 // configured level allows, exactly as before.
 func TestWithoutAJournalEverythingGoesToStderr(t *testing.T) {
 	var console bytes.Buffer
-	logger := newLoggerTo(slog.LevelInfo, false, &console)
+	logger := newLoggerTo(slog.LevelInfo, nil, &console)
 
 	logger.Info("starting a recovery attempt")
 	if !strings.Contains(console.String(), "starting a recovery attempt") {

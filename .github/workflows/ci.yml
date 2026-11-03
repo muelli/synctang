@@ -67,6 +67,7 @@ jobs:
       - run: ./scripts/test-secure-initrd.sh
       - run: ./scripts/test-ca-bundles.sh
       - run: ./scripts/test-network-conf.sh
+      - run: ./scripts/test-agent-log.sh
       - run: ./scripts/test-manpages.sh
       - run: ./scripts/emulator-vm/test-idle-shutdown.sh
       - run: SKIP_REAL_AWS_CHECK=1 ./scripts/emulator-vm/test-emu-ctl.sh

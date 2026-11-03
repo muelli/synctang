@@ -74,3 +74,37 @@ logs everything on the Kotlin side. A release build leaves the Go side at its de
 `warn`, and writes only warnings from Kotlin; the messages for the lower levels are not
 even built (`AppLogTest`), and a whole Go connect logs nothing at the default level
 (`TestTheDefaultLevelEmitsNoTraceLines`).
+
+## The machine side
+
+The agent that runs in the initrd writes its log to the systemd journal, through journald's
+own socket (`/run/systemd/journal/socket`, which exists in the initrd because journald runs
+there), under the identifier `synctang-unlocker`. Once the disk is unlocked and the system
+is up, this shows what the agent did while it waited:
+
+    journalctl -b -t synctang-unlocker
+    journalctl -b -t synctang-unlocker -o verbose     # one field per attribute, e.g. TRANSPORT_ID
+
+The identifier is set explicitly because journald otherwise files an entry under the
+process's name, which the kernel cuts to fifteen characters: `synctang-unlock`, which
+`-t synctang-unlocker` does not match. Priorities follow the level: trace and debug are
+7, info 6, warn 4, error 3 (`journalctl -p warning` filters on them). Each attribute of a
+record is a field in upper case, and a value with newlines is sent in journald's
+length-prefixed form so that it arrives whole.
+
+Warnings and worse also go to the console, where a person at the machine watches, and if
+the journal cannot be had everything goes there and that is said once. The agent is never
+stopped or slowed for the journal: writes have a one-second deadline.
+
+`rd.synctang.log=LEVEL` on the kernel command line (or at the boot prompt) sets how much it
+says: `trace`, `debug`, `info` (the default), `warn` or `error`; any other value is ignored
+with a message at boot. `trace` adds the transport's detail (which relay was joined, what
+was announced to discovery, each lookup), which is what to turn on when a machine is not
+being found. `synctang-unlocker agent --journal=auto|on|off` chooses the journal: `auto`,
+the default, uses it when the socket exists. `open` and `pair` log to the console only.
+
+`[V]` the protocol and the handler against a fake journal socket (`internal/journal`, and
+`cmd/synctang-unlocker` `journal_log_test.go`: priorities, fields, multi-line values, the
+deadline, the fallback said once, and that no pairing code, secret, passphrase or key
+appears in what the agent logs while pairing at trace level); the shell side
+(`scripts/test-agent-log.sh`). `[U]` against a real journald in a real initrd.

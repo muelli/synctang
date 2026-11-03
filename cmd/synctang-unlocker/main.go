@@ -14,6 +14,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/muelli/synctang/internal/journal"
 	"github.com/muelli/synctang/mrcore"
 	"io"
 	"io/fs"
@@ -255,6 +256,7 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 	askPasswordDir := fs.String("ask-password-dir", defaultAskPasswordDir, "systemd ask-password directory")
 	directAddr := fs.String("direct-addr", "", "listen on this address directly, bypassing relay and discovery (testing only)")
 	logLevelFlag := fs.String("log-level", string(logLevelInfo), "logging level: trace, debug, info, warn, error")
+	journalFlag := fs.String("journal", string(journalAuto), "write the log to the systemd journal: auto (when its socket exists), on, off")
 	networkConf := fs.String("network-conf", defaultNetworkConfFile, "file naming the relay pool and discovery servers to use instead of the public ones (the kernel arguments rd.synctang.relay= and rd.synctang.discovery= override it)")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -270,7 +272,12 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
 		return 2
 	}
-	logger := newLogger(logLevel)
+	journalChoice, err := parseJournalMode(*journalFlag)
+	if err != nil {
+		fmt.Fprintf(stderr, "synctang-unlocker: --journal: %v\n", err)
+		return 2
+	}
+	logger := newLogger(logLevel, journalChoice, journal.DefaultSocket, os.Stderr)
 	slog.SetDefault(logger)
 
 	cert, err := transport.LoadOrCreateCert(*machineKeyFile)

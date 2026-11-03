@@ -198,6 +198,9 @@ Kernel command line options:
 
 - `rd.synctang=0` does not start the agent; the escape hatch for when the
   network path is what is broken.
+- `rd.synctang.log=LEVEL` sets how much the agent logs (`trace`, `debug`, `info`, `warn` or
+  `error`, default `info`). Its log goes to the journal, so after the boot
+  `journalctl -b -t synctang-unlocker` shows it.
 - `rd.synctang.relay=URL` and `rd.synctang.discovery=URL` use your own relay
   and discovery server instead of the public ones, for this boot; see
   "Use your own relay and discovery server" below.

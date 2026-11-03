@@ -114,6 +114,10 @@ install() {
 		dwarn "synctang-unlocker: the other usual names). Install ca-certificates, or discovery will fail at boot."
 	fi
 
+	# The functions the start hook uses to choose the agent's log level. The agent writes to
+	# the journal itself, through journald's socket, so no tool is needed for that.
+	inst_simple "$moddir/synctang-lib.sh" /usr/lib/synctang/synctang-lib.sh
+
 	# The human who ran "synctang-unlocker enrol" already generated this machine's
 	# persistent transport identity (transport.LoadOrCreateCert's default
 	# path). Carrying the same file into the initrd is what lets the agent

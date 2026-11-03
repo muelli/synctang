@@ -9,7 +9,6 @@ go 1.26.0
 
 require (
 	filippo.io/nistec v0.0.4
-	github.com/coreos/go-systemd/v22 v22.7.0
 	github.com/mdp/qrterminal/v3 v3.2.1
 	github.com/muelli/syncthing-socket v0.1.1-alpha.0.20261018051137-204ecb48b52c
 	github.com/syncthing/syncthing v1.30.0

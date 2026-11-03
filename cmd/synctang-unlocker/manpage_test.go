@@ -95,6 +95,30 @@ func TestManPagesNameEveryPathAndKernelArgument(t *testing.T) {
 	if want := string(m[1]) + "=0"; !strings.Contains(page, want) {
 		t.Errorf("the unlocker page does not mention %q", want)
 	}
+
+	// The value-taking arguments the hook reads through its library (rd.synctang.log=).
+	lib, err := os.ReadFile("../../dracut/90synctang/synctang-lib.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := regexp.MustCompile(`getarg (rd\.[a-z.]+=)`).FindAllSubmatch(lib, -1)
+	if len(args) == 0 {
+		t.Fatal("found no getarg in the dracut library")
+	}
+	for _, a := range args {
+		if !strings.Contains(page, string(a[1])) {
+			t.Errorf("the unlocker page does not mention %q", a[1])
+		}
+	}
+	// And the levels it accepts, which are the agent's own.
+	for _, level := range []string{"trace", "debug", "info", "warn", "error"} {
+		if !strings.Contains(page, level) {
+			t.Errorf("the unlocker page does not name the log level %q", level)
+		}
+	}
+	if !strings.Contains(page, "journalctl -b -t synctang-unlocker") {
+		t.Error("the unlocker page does not say how to read the agent's log from the journal")
+	}
 }
 
 // What the page promises about the program's exit status is a list a person

@@ -290,6 +290,15 @@ Runs the systemd password agent: it waits for a key holder to connect and to
 answer one recovery attempt at a time, checks that the recovered secret really
 opens the volume, and only then answers systemd's password request.
 The console prompt stays live, so the passphrase can still be typed.
+Its log goes to the systemd journal, through journald's socket, under the tag
+.BR synctang\-unlocker ,
+so that after the boot it can be read with
+.B journalctl \-b \-t synctang\-unlocker
+(add
+.B \-o verbose
+for the fields, one per attribute, in upper case).
+Warnings and worse also go to the console; so does everything if the journal cannot be had,
+which is said once.
 It runs until it receives SIGTERM, which the dracut module sends before the
 switch to the real root.
 It is normally started by the dracut module, not by hand.
@@ -347,6 +356,14 @@ or
 .BR error .
 Default
 .BR info .
+.TP
+\fB\-\-journal\fR \fImode\fR
+Whether to write the log to the systemd journal:
+.B auto
+(the default: when journald's socket exists),
+.B on
+or
+.BR off .
 .TP
 \fB\-\-network\-conf\fR \fIfile\fR
 The file naming the relay pool and discovery servers to use instead of the
@@ -476,6 +493,17 @@ instead of the public pool.
 Use this discovery server instead of the public one.
 It replaces the discovery server and the announce endpoint of
 .BR network.conf .
+.TP
+.B rd.synctang.log=\fILEVEL\fR
+How much the agent logs:
+.BR trace ,
+.BR debug ,
+.B info
+(the default),
+.B warn
+or
+.BR error .
+Any other value is ignored, with a message at boot, and the default is used.
 .PP
 A kernel argument wins over the file.
 The URL syntax, including how a self-signed discovery server is trusted, is in
