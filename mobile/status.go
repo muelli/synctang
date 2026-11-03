@@ -27,6 +27,19 @@ const (
 	StatusAbsent = "ABSENT"
 	// StatusNoNetwork: the lookup itself failed, so nothing can be said about the machine.
 	StatusNoNetwork = "NO_NETWORK"
+	// StatusRateLimited: the discovery server answered HTTP 429, it is tired of being
+	// asked. That says nothing about the machine and nothing about the network: keep
+	// showing what was known before, and do not ask again before RetryAfterSeconds is up.
+	StatusRateLimited = "RATE_LIMITED"
+)
+
+// The wait a 429 is honoured for: what the server said, but not less than 30 s (a Retry-After
+// of 0 or 1 would be asking again at once) and not more than 10 minutes (so that a server
+// that says an hour does not leave the chip silent for an hour; the next ask is then
+// probably answered, and if not, the wait starts again).
+const (
+	retryAfterFloor = 30 * time.Second
+	retryAfterCap   = 10 * time.Minute
 )
 
 // statusTimeout bounds one check, on top of the lookup's own limit.
@@ -35,9 +48,13 @@ const statusTimeout = 15 * time.Second
 // MachineStatus is the answer, shaped for gomobile: no time.Time, no slices.
 // AgeSeconds is how long ago the machine announced, or -1 when there is no record or no
 // usable timestamp.
+//
+// RetryAfterSeconds is only set with RATE_LIMITED: how long to wait before asking again, already
+// bounded (30 s to 10 min).
 type MachineStatus struct {
-	State      string
-	AgeSeconds int
+	State             string
+	AgeSeconds        int
+	RetryAfterSeconds int
 }
 
 // CheckMachineStatus asks the discovery server (empty means the public one; the URL may
@@ -69,6 +86,13 @@ func checkMachineStatusAt(now func() time.Time, deviceID, discoveryURL string) (
 	ctx, cancel := context.WithTimeout(context.Background(), statusTimeout)
 	defer cancel()
 	record, err := transport.LookupRecord(ctx, id.String(), cfg.Discovery)
+	var limited *transport.RateLimitedError
+	if errors.As(err, &limited) {
+		wait := honouredRetryAfter(limited.RetryAfter)
+		logEvent(levelTrace, "machine status", "machine", deviceID, "state", StatusRateLimited,
+			"retry_after_s", int(limited.RetryAfter.Seconds()), "honouring_s", wait)
+		return &MachineStatus{State: StatusRateLimited, AgeSeconds: -1, RetryAfterSeconds: wait}, nil
+	}
 	if err != nil {
 		logEvent(levelTrace, "machine status", "machine", deviceID, "state", StatusNoNetwork, "error", err)
 		return &MachineStatus{State: StatusNoNetwork, AgeSeconds: -1}, nil
@@ -76,6 +100,13 @@ func checkMachineStatusAt(now func() time.Time, deviceID, discoveryURL string) (
 	status := statusOf(record != nil, record, now())
 	logEvent(levelTrace, "machine status", "machine", deviceID, "state", status.State, "age_s", status.AgeSeconds)
 	return status, nil
+}
+
+// honouredRetryAfter is a Retry-After as the number of whole seconds to wait: rounded up,
+// at least retryAfterFloor and at most retryAfterCap.
+func honouredRetryAfter(d time.Duration) int {
+	d = min(max(d, retryAfterFloor), retryAfterCap)
+	return int((d + time.Second - 1) / time.Second)
 }
 
 // statusOf is the decision, apart from the network: found says whether there was a record.

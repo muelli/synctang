@@ -130,3 +130,73 @@ func TestMachineStatusRefusesInputThatCannotBeChecked(t *testing.T) {
 		t.Error("a malformed device id was accepted")
 	}
 }
+
+// A discovery server that is tired of being asked: HTTP 429 with the given Retry-After
+// header (none when empty).
+func newLimitingServer(t *testing.T, retryAfter string) *statusServer {
+	t.Helper()
+	s := &statusServer{}
+	s.Server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.requests.Add(1)
+		if retryAfter != "" {
+			w.Header().Set("Retry-After", retryAfter)
+		}
+		http.Error(w, "slow down", http.StatusTooManyRequests)
+	}))
+	t.Cleanup(s.Close)
+	return s
+}
+
+func TestMachineStatusSaysRateLimitedNotNoNetworkFor429(t *testing.T) {
+	soon := time.Now().Add(200 * time.Second).UTC().Format(http.TimeFormat)
+	for _, tt := range []struct {
+		name, header string
+		min, max     int
+	}{
+		{"seconds as told", "350", 350, 350},
+		{"the longest the public server was seen to ask", "1200", 600, 600},
+		{"less than the floor", "5", 30, 30},
+		{"zero", "0", 30, 30},
+		{"an HTTP date", soon, 198, 201},
+		{"garbage is a minute", "later", 60, 60},
+		{"no header is a minute", "", 60, 60},
+		{"more than the cap", "86400", 600, 600},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := newLimitingServer(t, tt.header)
+			got, err := CheckMachineStatus(statusMachine, srv.pinned())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.State != StatusRateLimited {
+				t.Fatalf("state %q, want %q", got.State, StatusRateLimited)
+			}
+			if got.RetryAfterSeconds < tt.min || got.RetryAfterSeconds > tt.max {
+				t.Errorf("RetryAfterSeconds %d, want %d to %d", got.RetryAfterSeconds, tt.min, tt.max)
+			}
+			if srv.requests.Load() != 1 {
+				t.Errorf("%d requests, want 1: a 429 is not retried here", srv.requests.Load())
+			}
+		})
+	}
+}
+
+func TestHonouredRetryAfter(t *testing.T) {
+	for in, want := range map[time.Duration]int{
+		-time.Second: 30, 0: 30, 29 * time.Second: 30, 30 * time.Second: 30, 31 * time.Second: 31,
+		600 * time.Second: 600, 601 * time.Second: 600, 24 * time.Hour: 600,
+		1500 * time.Millisecond: 30, 90*time.Second + 400*time.Millisecond: 91,
+	} {
+		if got := honouredRetryAfter(in); got != want {
+			t.Errorf("honouredRetryAfter(%v) = %d, want %d", in, got, want)
+		}
+	}
+}
+
+func TestOtherStatusesCarryNoRetryAfter(t *testing.T) {
+	srv := newStatusServer(t, seenAgo(time.Second))
+	got, _ := CheckMachineStatus(statusMachine, srv.pinned())
+	if got.RetryAfterSeconds != 0 {
+		t.Errorf("RetryAfterSeconds %d on a %s answer, want 0", got.RetryAfterSeconds, got.State)
+	}
+}
