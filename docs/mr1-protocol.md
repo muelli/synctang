@@ -129,3 +129,37 @@ match).
 Anybody who photographs the code can still *ask*, which is why you are
 shown who is asking and have to agree (`--yes` skips the question, for
 automation).
+
+### One entry per transport ID
+
+A volume holds at most one enrolled recipient per transport Device ID. A phone
+whose app is updated makes a new key but keeps its transport identity, so
+pairing it again used to leave the old entry first in the token, and the agent,
+which answered with the first entry matching the connected phone, failed every
+unlock with nothing saying why. It is now defined as follows. `[V]` for each, by
+the tests named, run against loopback LUKS images (`cmd/synctang-unlocker`,
+`duplicate_recipient_test.go`):
+
+- `enrol` with an ID that already has the same key (the same `kid`, the SHA-256
+  of the public point) adds nothing and reports the keyslot
+  (`TestEnrolOnceSameKeyTwiceIsIdempotent`). With a different key it is refused,
+  names the keyslot and the old key, and points at `--replace`
+  (`TestEnrolOnceDifferentKeySameIDIsRefusedAndNothingChanges`).
+- `pair` treats the same key as success with nothing added
+  (`TestPairSameKeyIsAlreadyEnrolledAndAddsNothing`); a different key asks the
+  operator to replace, naming both keys, and on yes enrols the new key before
+  revoking the old (`TestPairDifferentKeyAsksNamingBothAndReplacesOnYes`), and on no
+  changes nothing (`TestPairDifferentKeyDeclinedChangesNothing`).
+- A header that already has duplicates is repaired by naming the stale keyslot:
+  `enrol --remove <id> --keyslot <n>`. Without `--keyslot`, `--remove` and
+  `--replace` refuse and list the entries
+  (`TestRemoveRefusesWhenSeveralEntriesShareTheID`,
+  `TestRemoveWithAKeyslotRemovesExactlyThatEntry`), and `status` prints a
+  `WARNING` line with the command (`TestStatusWarnsAboutASharedTransportIDAndNamesTheFix`).
+- The agent refuses, before sending the connected key holder anything, when more
+  than one entry matches it, and the error names the keyslots
+  (`TestAgentRefusesBeforeAnythingIsSentWhenSeveralRecipientsMatch`). One match
+  behaves as before, and so does none.
+
+`[U]` Not run on a real phone or a real boot: the pair path was driven with
+the key holder side played by the tests.

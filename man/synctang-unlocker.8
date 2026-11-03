@@ -75,6 +75,16 @@ needs on the device, normally root, and an existing passphrase of the volume.
 It then prints this machine's transport identity, which the key holder needs
 to find the machine.
 .PP
+There is one enrolled key holder per transport identity.
+If the identity given with
+.B \-\-recipient\-transport\-id
+is already enrolled with the same key, nothing is added and the command prints
+.BI "already enrolled at keyslot " N
+and succeeds.
+If it is enrolled with a different key, the command fails and says to use
+.B \-\-replace ,
+naming the keyslot and the old key.
+.PP
 With
 .B \-\-remove
 it revokes a key holder, destroying its keyslot and removing its entry from the
@@ -148,6 +158,19 @@ and
 Rotate the enrolled key holder with this transport identity to the key given
 with
 .BR \-\-pubkey .
+.TP
+\fB\-\-keyslot\fR \fIn\fR
+With
+.B \-\-remove
+or
+.BR \-\-replace :
+the keyslot of the entry to act on.
+Needed only when several enrolled entries share the transport identity, a state
+that
+.B status
+warns about.
+Without it, several matches are refused and listed, rather than the first being
+chosen.
 .SS pair
 Shows a QR code and a one-time pairing code on the console, and enrols the key
 holder that answers it.
@@ -157,6 +180,15 @@ link, printed under the code, for a camera that cannot scan.
 Before anything is written to the volume, the person at the machine is shown
 the Device ID and public key of the key holder that answered, and is asked to
 confirm.
+If that Device ID is already enrolled with the same key, nothing is asked and
+nothing is added: the command says so and succeeds.
+If it is enrolled with a different key, as when a phone's app was updated and
+made a new key but kept its Device ID, the question names both keys and the old
+keyslot, and asks whether to replace the existing entry with the new one.
+On yes the new key is enrolled first and the old one revoked after it, so the
+volume can be opened throughout; on no, or with no answer, nothing is changed.
+.B \-\-yes
+answers yes to either question.
 The pairing code is good once, for the length of the window.
 A wrong code or a refusal is reported and the command carries on waiting.
 .PP
@@ -237,6 +269,11 @@ token, and for each enrolled key holder its transport identity, keyslot and a
 short key identifier.
 Run it before a revocation: naming the wrong transport identity revokes the
 wrong key holder.
+If one transport identity is enrolled more than once, it prints a line starting
+.B WARNING
+that names its keyslots and keys and the command that repairs it, because
+.B agent
+refuses to answer for such a key holder.
 .TP
 \fB\-\-device\fR \fIpath\fR
 The LUKS2 device or image to inspect.
@@ -266,6 +303,16 @@ have appeared yet when the agent starts.
 It also makes sure a resolver is configured before each attempt, since the hook
 runs before the network is necessarily up.
 A failed attempt is reported and retried.
+.PP
+If more than one enrolled entry carries the transport identity of the key holder
+that connected, the agent refuses before sending it anything and logs an error
+naming the keyslots, instead of choosing one: a key that is no longer in use
+would fail every unlock without saying why.
+Run
+.B status
+to see them and
+.B enrol \-\-remove \-\-keyslot
+to remove the stale one.
 .TP
 \fB\-\-device\fR \fIpath\fR
 The LUKS2 device to unlock.

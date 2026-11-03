@@ -109,6 +109,25 @@ printed as text to paste into the app's device ID field. (A device ID
 typed on its own only remembers the machine; the link, with its one-time
 code, is what enrols the phone.)
 
+There is one enrolled key holder per transport ID. If the phone that answers is
+already enrolled with the same key, nothing is asked and nothing is added
+(`already enrolled at keyslot N`). If it is enrolled with a different key, which
+is what happens when the app was updated and made a new key but kept its
+transport ID, the machine asks `replace the existing entry for this key holder
+(keyslot N, key X) with this one (key Y)? [y/N]`; on `y` the new key is enrolled
+first and the old one revoked after it, so there is never a moment with neither,
+and `--yes` answers yes. So to re-pair a phone whose key changed, run the same
+`pair` command again and answer `y`. `enrol` does the same for a laptop: the same
+key is a no-op, and a different key for an enrolled ID is refused with the
+`--replace` command to use instead.
+
+`status` warns if one transport ID is enrolled more than once (a state older
+versions could leave behind), and the agent then refuses to answer for it rather
+than pick a key. Repair it by naming the stale keyslot:
+
+    synctang-unlocker enrol --device /dev/sdXN --remove <transport id> --keyslot <n> \
+      --existing-passphrase-file <(printf %s "$PASS")
+
 `--qr` chooses how the code is drawn: `auto` (the default), `blocks`,
 `plain`, `kitty` or `iterm2`. Automatic means a real image on a terminal
 known to show one (Kitty and Ghostty through the Kitty graphics protocol;
