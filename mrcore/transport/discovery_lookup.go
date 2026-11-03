@@ -145,6 +145,9 @@ func lookupRecord(ctx context.Context, deviceID, discoveryURL string) (*discover
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, nil
 	}
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return nil, &RateLimitedError{RetryAfter: ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now())}
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("discovery lookup returned HTTP %d", resp.StatusCode)
 	}

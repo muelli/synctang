@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/url"
@@ -45,12 +46,6 @@ const defaultRelayLossGrace = 30 * time.Second
 // relay client exposes no event for losing its relay, only state to
 // read, so this is a poll and cannot be anything else.
 const relayLossPollInterval = time.Second
-
-// dialRelayRetryInterval is how long dialRelay waits between attempts.
-// Not load-bearing; matches dialDirect's own spirit (retry rather than
-// fail once), just slower, since a relay attempt is far more expensive
-// than a bare TCP dial.
-const dialRelayRetryInterval = 3 * time.Second
 
 // defaultAnnounceInterval is how often the announce loop looks to see
 // whether this listener's address has changed. It is not how often it
@@ -166,6 +161,12 @@ type SyncthingRelay struct {
 	// OnDialPhase, if set, is told how far each Dial has got; see
 	// DialProgress. Nil means nobody is told.
 	OnDialPhase DialProgress
+
+	// sleep and jitter are the dial's waiting and its randomness, which tests replace so
+	// that a dial's whole budget can pass in an instant. Nil means a real timer and
+	// math/rand.
+	sleep  func(ctx context.Context, d time.Duration) error
+	jitter func() float64
 
 	// announceClientOnce guards announceClient, which is built on
 	// first use and then reused.
@@ -644,21 +645,52 @@ func (t *SyncthingRelay) listenRelay(ctx context.Context) (raw net.Conn, cleanup
 // reason (see its own comment); this is the same idea applied to the
 // relay path, found necessary by testing against a real deployment
 // rather than assumed up front.
+//
+// The retries are spaced out (dialRetryDelay: 3 s growing to 15 s, with jitter) because
+// every attempt is a lookup on a shared discovery server, which answers a client that asks
+// too often with HTTP 429. When it does, the wait before the next lookup is its Retry-After
+// (bounded by a minute and by what is left of ctx), if that is longer than the backoff.
 func (t *SyncthingRelay) dialRelay(ctx context.Context, peerID string) (Conn, error) {
 	var lastErr error
-	for {
+	for retry := 0; ; retry++ {
 		conn, err := t.dialRelayAttempt(ctx, peerID)
 		if err == nil {
 			return conn, nil
 		}
 		lastErr = err
-		t.logger().Log(ctx, levelTrace, "dial attempt failed, retrying", "peer", peerID, "error", err)
-		select {
-		case <-ctx.Done():
-			return nil, fmt.Errorf("%w (last attempt: %v)", ctx.Err(), lastErr)
-		case <-time.After(dialRelayRetryInterval):
+		wait := dialRetryDelay(retry, t.jitterValue())
+		var limited *RateLimitedError
+		if errors.As(err, &limited) {
+			remaining := time.Duration(-1)
+			if deadline, ok := ctx.Deadline(); ok {
+				remaining = time.Until(deadline)
+			}
+			if told := boundedRetryAfter(limited.RetryAfter, remaining); told > wait {
+				wait = told
+			}
+			t.logger().Log(ctx, levelTrace, "discovery asked to slow down",
+				"peer", peerID, "retry_after", limited.RetryAfter, "waiting", wait)
+		} else {
+			t.logger().Log(ctx, levelTrace, "dial attempt failed, retrying", "peer", peerID, "error", err, "waiting", wait)
+		}
+		if err := t.sleeper()(ctx, wait); err != nil {
+			return nil, fmt.Errorf("%w (last attempt: %v)", err, lastErr)
 		}
 	}
+}
+
+func (t *SyncthingRelay) jitterValue() float64 {
+	if t.jitter != nil {
+		return t.jitter()
+	}
+	return rand.Float64()
+}
+
+func (t *SyncthingRelay) sleeper() func(context.Context, time.Duration) error {
+	if t.sleep != nil {
+		return t.sleep
+	}
+	return sleepFor
 }
 
 // dialRelayAttempt is dialRelay's single attempt: one discovery
