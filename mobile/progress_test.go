@@ -258,3 +258,46 @@ func TestStageOnlyMovesForwardWithinAnAttempt(t *testing.T) {
 		t.Errorf("a new attempt: stage %d attempt %d", st, att)
 	}
 }
+
+// The machine's session has been running since the connection was made, which is
+// before its request arrives if it is slow to send it. ConnectedForMillis says how
+// long, so the app can count the time to approve from the connection and not from
+// the moment Connect returns.
+func TestConnectedForMillisCountsFromTheConnectionNotFromTheRequest(t *testing.T) {
+	const phoneSeed, machineSeed = "connected phone seed", "connected machine seed"
+	phoneID, _ := DeviceIDForSeed(phoneSeed)
+	machineID, _ := DeviceIDForSeed(machineSeed)
+	cert, _ := identity.GenerateDeterministicCert(machineSeed)
+	addr := freePort(t)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		conn, err := transport.NewSyncthingRelay(cert).Listen(ctx, transport.ListenOptions{AuthorizedPeers: []string{phoneID}, DirectAddr: addr})
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		time.Sleep(900 * time.Millisecond) // slow to send anything
+		_ = mrcore.WriteMessage(conn, mrcore.Hello{Name: "m"})
+		g := mrcore.P256()
+		sc, _ := g.RandomScalar()
+		pt, _ := g.ScalarBaseMult(sc)
+		_ = mrcore.WriteMessage(conn, mrcore.RecoverRequest{Kid: []byte("k"), X: pt})
+		time.Sleep(500 * time.Millisecond)
+	}()
+
+	s := NewSession(machineID, phoneSeed)
+	s.SetDirectAddr(addr)
+	s.SetTimeoutSeconds(20)
+	defer s.Close()
+	if got := s.ConnectedForMillis(); got != 0 {
+		t.Errorf("before Connect: %d", got)
+	}
+	if err := s.Connect(); err != nil {
+		t.Fatal(err)
+	}
+	got := s.ConnectedForMillis()
+	if got < 850 || got > 3000 {
+		t.Errorf("ConnectedForMillis = %d after a request that took 900 ms to come", got)
+	}
+}

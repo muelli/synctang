@@ -4,6 +4,7 @@ package mobile
 
 import (
 	"sync"
+	"time"
 
 	"github.com/muelli/synctang/mrcore/transport"
 )
@@ -78,6 +79,24 @@ type progress struct {
 	route    int
 	legRoute map[int]transport.Route
 	stages   []int // every distinct stage, in order, for the tests
+
+	connectedAt time.Time // when the last successful dial returned
+}
+
+// markConnected records that the connection to the machine has just been made.
+func (p *progress) markConnected() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.connectedAt = time.Now()
+}
+
+func (p *progress) connectedForMillis() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.connectedAt.IsZero() {
+		return 0
+	}
+	return int(time.Since(p.connectedAt).Milliseconds())
 }
 
 func (p *progress) setLocked(stage int) {
@@ -182,3 +201,9 @@ func (p *Pairer) Attempt() int { _, a, _ := p.progress.snapshot(); return a }
 
 // Route is which way the machine was reached (a Route constant), or RouteUnknown.
 func (p *Pairer) Route() int { _, _, r := p.progress.snapshot(); return r }
+
+// ConnectedForMillis is how long ago the connection to the machine was made, in
+// milliseconds, or 0 if it has not been. The machine's side of the session, and a
+// relay's idle clock, started then, which is before the request arrived if the
+// machine was slow to send it, so the app counts the time left to approve from here.
+func (s *Session) ConnectedForMillis() int { return s.progress.connectedForMillis() }

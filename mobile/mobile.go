@@ -541,6 +541,7 @@ func (s *Session) connectOnceLocked(ctx context.Context, cert tls.Certificate) e
 		s.progress.won(0)
 	}
 	s.progress.advance(StageWaitingForRequest)
+	s.progress.markConnected()
 	s.conn = conn
 
 	// The reads below honour no context, so a cancelled or timed-out
