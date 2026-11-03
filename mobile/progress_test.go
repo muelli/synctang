@@ -4,6 +4,7 @@ package mobile
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"net"
@@ -42,7 +43,8 @@ func machineScript(t *testing.T, addr, machineSeed, phoneID string) {
 		g := mrcore.P256()
 		sc, _ := g.RandomScalar()
 		pt, _ := g.ScalarBaseMult(sc)
-		_ = mrcore.WriteMessage(conn, mrcore.RecoverRequest{Kid: []byte("k"), X: pt})
+		kid := sha256.Sum256([]byte("a key holder's public point"))
+		_ = mrcore.WriteMessage(conn, mrcore.RecoverRequest{Kid: kid[:], X: pt})
 		var resp mrcore.RecoverResponse
 		if err := mrcore.ReadMessage(conn, &resp); err != nil {
 			return
@@ -300,4 +302,28 @@ func TestConnectedForMillisCountsFromTheConnectionNotFromTheRequest(t *testing.T
 	if got < 850 || got > 3000 {
 		t.Errorf("ConnectedForMillis = %d after a request that took 900 ms to come", got)
 	}
+}
+
+// runSessionExchange runs one whole unlock over a direct address against a scripted machine
+// and returns the scalar the phone answered with.
+func runSessionExchange(t *testing.T, phoneSeed, machineSeed string) []byte {
+	t.Helper()
+	phoneID, _ := DeviceIDForSeed(phoneSeed)
+	machineID, _ := DeviceIDForSeed(machineSeed)
+	addr := freePort(t)
+	machineScript(t, addr, machineSeed, phoneID)
+	s := NewSession(machineID, phoneSeed)
+	s.SetDirectAddr(addr)
+	s.SetTimeoutSeconds(20)
+	defer s.Close()
+	if err := s.Connect(); err != nil {
+		t.Fatal(err)
+	}
+	scalar, _ := mrcore.P256().RandomScalar()
+	public, _ := PublicPointOf(scalar)
+	kept := append([]byte(nil), scalar...)
+	if err := s.AnswerWithScalar(scalar, public); err != nil {
+		t.Fatal(err)
+	}
+	return kept
 }

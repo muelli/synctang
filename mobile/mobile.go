@@ -26,6 +26,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -336,11 +337,13 @@ type Session struct {
 // identifying this phone by seed (see DeviceIDForSeed). Nothing
 // happens on the network until Connect.
 func NewSession(machineDeviceID, seed string) *Session {
-	return &Session{
+	s := &Session{
 		machineID:      strings.TrimSpace(machineDeviceID),
 		seed:           seed,
 		timeoutSeconds: defaultTimeoutSeconds,
 	}
+	s.progress.label = "session"
+	return s
 }
 
 // SetDirectAddr makes Connect dial addr ("host:port") directly instead
@@ -384,7 +387,13 @@ func (s *Session) SetTimeoutSeconds(n int) {
 // as the protocol allows without user input: the machine's Hello and
 // the recovery request that follows it.
 func (s *Session) Connect() (err error) {
-	defer func() { s.failure.record(err) }()
+	defer func() {
+		s.failure.record(err)
+		if err != nil {
+			kind, _ := s.failure.get()
+			logEvent(slog.LevelWarn, "connect failed", "machine", s.machineID, "kind", kind, "attempts", s.Attempt(), "error", err)
+		}
+	}()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -400,6 +409,8 @@ func (s *Session) Connect() (err error) {
 		return err
 	}
 	s.progress.advance(StageStarting)
+	logEvent(slog.LevelDebug, "connect starting", "machine", s.machineID, "direct_addr", s.directAddr,
+		"discovery", s.network.Discovery, "timeout_s", s.timeoutSeconds)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.timeoutSeconds)*time.Second)
 	defer cancel()
@@ -428,8 +439,11 @@ func (s *Session) Connect() (err error) {
 	for {
 		lastErr = s.connectOnceLocked(ctx, cert)
 		if lastErr == nil {
+			logEvent(slog.LevelDebug, "connect returned", "machine", s.machineID, "attempts", s.Attempt(),
+				"route", routeName(s.Route()), "connected_ms", s.ConnectedForMillis())
 			return nil
 		}
+		logEvent(slog.LevelDebug, "attempt failed", "who", "session", "attempt", s.Attempt(), "error", lastErr)
 		if s.isCancelled() {
 			return errCancelled
 		}
@@ -508,7 +522,8 @@ func newDialTransport(cert tls.Certificate, directAddr string, network transport
 // gets, and which route won, to p (nil for nobody).
 func newProgressDialTransport(cert tls.Certificate, directAddr string, network transport.NetworkConfig, p *progress) transport.Transport {
 	relay := network.NewSyncthingRelay(cert)
-	local := &transport.LocalDiscovery{Cert: cert}
+	relay.Logger = bridgeLog()
+	local := &transport.LocalDiscovery{Cert: cert, Logger: bridgeLog()}
 	if directAddr != "" {
 		if p != nil {
 			relay.OnDialPhase = p.dialHook(0)
@@ -585,6 +600,7 @@ func (s *Session) readRecoverRequestLocked() error {
 	s.kid = req.Kid
 	s.x = req.X
 	s.progress.advance(StageRequestReady)
+	logEvent(slog.LevelDebug, "request received", "kid", kidPrefix(req.Kid), "machine_name", s.machineName)
 	return nil
 }
 
@@ -700,6 +716,7 @@ func (s *Session) answerXOnly(xOnly []byte) (err error) {
 		return withKind(FailureHungUp, fmt.Errorf("mobile: sending answer: %w", err))
 	}
 	s.answered = true
+	logEvent(slog.LevelDebug, "answer sent")
 	s.progress.advance(StageWaitingForVerdict)
 
 	// Wait to be told what came of it, rather than reporting success
@@ -715,6 +732,7 @@ func (s *Session) answerXOnly(xOnly []byte) (err error) {
 		return withKind(FailureOutcomeUnknown, fmt.Errorf(
 			"mobile: answer sent, but the machine did not report the outcome, so it may or may not have unlocked: %w", err))
 	}
+	logEvent(slog.LevelDebug, "verdict", "ok", result.OK, "reason", mrcore.SafeLabel(result.Error, machineErrorMaxRunes))
 	if !result.OK {
 		reason := mrcore.SafeLabel(result.Error, machineErrorMaxRunes)
 		return withKindDetail(FailureAnswerRejected, reason,
@@ -741,6 +759,7 @@ func (s *Session) Decline(reason string) error {
 		return fmt.Errorf("mobile: sending decline: %w", err)
 	}
 	s.answered = true
+	logEvent(slog.LevelDebug, "decline sent", "reason", reason)
 	return nil
 }
 
@@ -775,6 +794,7 @@ func (s *Session) LastFailureDetail() string {
 // nothing, and the connection it made stays usable (Decline it, then
 // Close it).
 func (s *Session) Cancel() {
+	logEvent(slog.LevelDebug, "cancel", "who", "session", "stage", stageName(s.Stage()))
 	s.cancelMu.Lock()
 	defer s.cancelMu.Unlock()
 	s.cancelled = true
@@ -806,6 +826,7 @@ func (s *Session) isCancelled() bool {
 // and safe to call on a Session that never connected. A Connect still
 // in progress is cancelled first, so Close does not wait it out.
 func (s *Session) Close() error {
+	logEvent(slog.LevelDebug, "close", "who", "session", "stage", stageName(s.Stage()))
 	s.Cancel()
 	s.mu.Lock()
 	defer s.mu.Unlock()

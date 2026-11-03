@@ -81,6 +81,9 @@ type progress struct {
 	stages   []int // every distinct stage, in order, for the tests
 
 	connectedAt time.Time // when the last successful dial returned
+
+	label   string    // "session" or "pairing", for the log
+	started time.Time // when the first stage was reached, for the log's elapsed time
 }
 
 // markConnected records that the connection to the machine has just been made.
@@ -103,8 +106,15 @@ func (p *progress) setLocked(stage int) {
 	if stage == p.stage {
 		return
 	}
+	from := p.stage
 	p.stage = stage
 	p.stages = append(p.stages, stage)
+	now := time.Now()
+	if p.started.IsZero() {
+		p.started = now
+	}
+	logEvent(levelTrace, "stage", "who", p.label, "from", stageName(from), "to", stageName(stage),
+		"attempt", p.attempt, "elapsed_ms", now.Sub(p.started).Milliseconds())
 }
 
 // advance moves to stage if it is later than the current one. The legs of a
@@ -172,6 +182,7 @@ func (p *progress) won(leg int) {
 	case transport.RouteDirect:
 		p.route = RouteDirect
 	}
+	logEvent(levelTrace, "route won", "who", p.label, "route", routeName(p.route), "attempt", p.attempt)
 }
 
 // firstStage is where an attempt starts: at the lookup, or, with an address

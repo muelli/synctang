@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -112,7 +113,11 @@ func (p *Pairer) SetDiscovery(discovery string) error {
 }
 
 // NewPairer returns a Pairer ready for one Pair call.
-func NewPairer() *Pairer { return &Pairer{} }
+func NewPairer() *Pairer {
+	p := &Pairer{}
+	p.progress.label = "pairing"
+	return p
+}
 
 // Cancel interrupts a Pair in progress on another thread, which then
 // returns an error promptly. It returns at once. If the machine had
@@ -120,6 +125,7 @@ func NewPairer() *Pairer { return &Pairer{} }
 // may be enrolled even though Pair reports the cancellation; pairing
 // again simply enrols it again.
 func (p *Pairer) Cancel() {
+	logEvent(slog.LevelDebug, "cancel", "who", "pairing", "stage", stageName(p.Stage()))
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.cancelled = true
@@ -146,7 +152,13 @@ func (p *Pairer) isCancelled() bool {
 
 // Pair is the package-level Pair, interruptible by Cancel.
 func (p *Pairer) Pair(machineID, pairingCode, seed, publicKeyHex, name, directAddr string, timeoutSeconds int) (err error) {
-	defer func() { p.failure.record(err) }()
+	defer func() {
+		p.failure.record(err)
+		if err != nil {
+			kind, _ := p.failure.get()
+			logEvent(slog.LevelWarn, "pairing failed", "machine", machineID, "kind", kind, "attempts", p.Attempt(), "error", err)
+		}
+	}()
 	secret, err := mrcore.DecodePairingSecret(pairingCode)
 	if err != nil {
 		return withKind(FailureBadPairingCode, fmt.Errorf("mobile: %w", err))
@@ -184,13 +196,18 @@ func (p *Pairer) Pair(machineID, pairingCode, seed, publicKeyHex, name, directAd
 	p.mu.Lock()
 	network := p.network
 	p.mu.Unlock()
+	// Never the code, the proof, the public key or the seed: only that there is a code.
+	logEvent(slog.LevelDebug, "pairing starting", "machine", machineID, "has_code", pairingCode != "", "direct_addr", directAddr,
+		"discovery", network.Discovery, "dial_budget_s", timeoutSeconds)
 
 	var lastErr error
 	for {
 		lastErr = pairOnce(ctx, dialCtx, &p.progress, cert, machineID, selfID, secret, publicKey, name, directAddr, network)
 		if lastErr == nil {
+			logEvent(slog.LevelDebug, "pairing succeeded", "machine", machineID, "attempts", p.Attempt(), "route", routeName(p.Route()))
 			return nil
 		}
+		logEvent(slog.LevelDebug, "attempt failed", "who", "pairing", "attempt", p.Attempt(), "error", lastErr)
 		if p.isCancelled() {
 			return errCancelled
 		}
