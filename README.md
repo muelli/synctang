@@ -183,6 +183,10 @@ the app, or on the laptop:
 The key holder shows the machine's name, waits for Enter (or `--yes`),
 and answers once. The machine checks the recovered secret actually opens the volume
 before handing it to systemd, and tells the key holder how it went.
+In the app, Unlock is one tap: it connects, and the fingerprint prompt comes up by itself as
+soon as the machine's request arrives, naming the machine. If you cancel the prompt, the
+approve screen (the machine's name and key, and how long is left) is there to try again
+or to decline; the machine is told nothing until you decline or the time runs out.
 The app gives you 75 seconds to approve, counted from when it connected to the machine,
 and shows how long is left on the approve screen (a connection with nothing on it can be
 closed by a relay or a network after a minute or two; `docs/relay-idle.md`). The 75

@@ -45,9 +45,11 @@ made and not from when the Approve screen appeared (`Session.ConnectedForMillis`
 reports how long ago that was, since the machine may have been slow to send its
 request). 75 s is the shortest of the field sightings, 90 s, less a 15 s margin.
 The window stays running through the fingerprint prompt: if it ends while the
-prompt is up, the prompt is cancelled and the machine is told no. The Approve screen
-shows the time left, in steps of five seconds, as plain text, and warns once,
-politely, at 15 s left.
+prompt is up, the prompt is cancelled and the machine is told no. A cancelled prompt
+does not end the request: the Approve screen comes back with the window still
+running. That screen shows the time left, in steps of five seconds, as plain text, and
+warns once, politely, at 15 s left. Unlock itself goes straight to the prompt when the
+request arrives, so the Approve screen is only seen after a cancelled prompt.
 
 `[V]` On the Pixel 3a XL (Fedora 44 VM as the machine, public relay pool,
 2026-11-03, nobody touching the sensor): the Approve screen appeared 23 s after
