@@ -16,6 +16,25 @@ import (
 	"github.com/muelli/syncthing-socket/identity"
 )
 
+// defaultPairOperatorWait is how long the phone waits, once the machine has
+// the proof of the pairing code, for the person at the machine to answer "enrol
+// it on this volume? [y/N]".
+//
+// The phone cannot know how long the machine will wait: "synctang-unlocker
+// pair" keeps its window for --timeout, five minutes by default, and goes on to
+// enrol after the phone has stopped waiting, which made a phone report failure
+// on a success when the operator took about a minute. So the wait is its own
+// budget, separate from the one for reaching the machine, and matched to that
+// default; Cancel ends it at any time.
+const defaultPairOperatorWait = 5 * time.Minute
+
+// pairOperatorWait is defaultPairOperatorWait; a variable for the tests.
+var pairOperatorWait = defaultPairOperatorWait
+
+// errOperatorTimeout is what a wait for the operator that ran out reports.
+var errOperatorTimeout = withKind(FailurePairNotConfirmed,
+	errors.New("mobile: the machine did not confirm the pairing in time"))
+
 // pairRetryInterval matches connectRetryInterval: the machine may not
 // have reached its listening state by the time the code is scanned off
 // its screen, and a direct dial fails immediately rather than waiting.
@@ -148,8 +167,14 @@ func (p *Pairer) Pair(machineID, pairingCode, seed, publicKeyHex, name, directAd
 		return fmt.Errorf("mobile: %w", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
+	// ctx ends only on Cancel. dialCtx bounds reaching the machine and sending the
+	// proof, by timeoutSeconds; the wait for the operator after that has a budget of
+	// its own (pairOperatorWait), so a slow decision is not mistaken for a machine
+	// that could not be reached.
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	dialCtx, cancelDial := context.WithTimeout(ctx, time.Duration(timeoutSeconds)*time.Second)
+	defer cancelDial()
 	if !p.arm(cancel) {
 		return errCancelled
 	}
@@ -162,7 +187,7 @@ func (p *Pairer) Pair(machineID, pairingCode, seed, publicKeyHex, name, directAd
 
 	var lastErr error
 	for {
-		lastErr = pairOnce(ctx, &p.progress, cert, machineID, selfID, secret, publicKey, name, directAddr, network)
+		lastErr = pairOnce(ctx, dialCtx, &p.progress, cert, machineID, selfID, secret, publicKey, name, directAddr, network)
 		if lastErr == nil {
 			return nil
 		}
@@ -176,8 +201,13 @@ func (p *Pairer) Pair(machineID, pairingCode, seed, publicKeyHex, name, directAd
 		if errors.As(lastErr, &refused) {
 			return refused.withKind()
 		}
+		// The machine was reached and has the proof; a fresh dial would only
+		// spend the one-time code again.
+		if errors.Is(lastErr, errOperatorTimeout) {
+			return lastErr
+		}
 		select {
-		case <-ctx.Done():
+		case <-dialCtx.Done():
 			if p.isCancelled() {
 				return errCancelled
 			}
@@ -188,10 +218,10 @@ func (p *Pairer) Pair(machineID, pairingCode, seed, publicKeyHex, name, directAd
 	}
 }
 
-func pairOnce(ctx context.Context, prog *progress, cert tls.Certificate, machineID, selfID string, secret, publicKey []byte, name, directAddr string, network transport.NetworkConfig) error {
+func pairOnce(ctx, dialCtx context.Context, prog *progress, cert tls.Certificate, machineID, selfID string, secret, publicKey []byte, name, directAddr string, network transport.NetworkConfig) error {
 	prog.beginAttempt(firstStage(directAddr))
 	tr := newProgressDialTransport(cert, directAddr, network, prog)
-	conn, err := tr.Dial(ctx, transport.DialOptions{PeerID: machineID, DirectAddr: directAddr})
+	conn, err := tr.Dial(dialCtx, transport.DialOptions{PeerID: machineID, DirectAddr: directAddr})
 	if err != nil {
 		return fmt.Errorf("mobile: dialling %s: %w", machineID, err)
 	}
@@ -200,9 +230,10 @@ func pairOnce(ctx context.Context, prog *progress, cert tls.Certificate, machine
 	}
 	defer conn.Close()
 	// As in Session.connectOnceLocked: the reads honour no context, so
-	// a cancelled attempt closes the connection under them.
-	stop := context.AfterFunc(ctx, func() { conn.Close() })
-	defer stop()
+	// a cancelled attempt closes the connection under them. Until the proof is
+	// sent that is the dial budget; the wait for the operator has its own below.
+	stop := context.AfterFunc(dialCtx, func() { conn.Close() })
+	defer func() { stop() }()
 
 	var challenge mrcore.PairChallenge
 	if err := mrcore.ReadMessage(conn, &challenge); err != nil {
@@ -215,10 +246,17 @@ func pairOnce(ctx context.Context, prog *progress, cert tls.Certificate, machine
 	if err := mrcore.WriteMessage(conn, req); err != nil {
 		return fmt.Errorf("mobile: sending the pairing request: %w", err)
 	}
+	stop()
+	waitCtx, cancelWait := context.WithTimeout(ctx, pairOperatorWait)
+	defer cancelWait()
+	stop = context.AfterFunc(waitCtx, func() { conn.Close() })
 	prog.advance(StageWaitingForOperator)
 
 	var result mrcore.PairResult
 	if err := mrcore.ReadMessage(conn, &result); err != nil {
+		if waitCtx.Err() == context.DeadlineExceeded && ctx.Err() == nil {
+			return errOperatorTimeout
+		}
 		return fmt.Errorf("mobile: reading the pairing result: %w", err)
 	}
 	if !result.OK {

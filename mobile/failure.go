@@ -53,6 +53,12 @@ const (
 	// public point, so the answer was not sent. Nothing is wrong with the
 	// machine.
 	FailureKeyMismatch = 13
+	// FailurePairNotConfirmed: the phone proved the pairing code and
+	// then waited the longest it will for the person at the machine to
+	// confirm, and no answer came. The machine may still enrol it if
+	// they confirm afterwards, so this is not "could not reach": the
+	// machine was reached, it simply did not say.
+	FailurePairNotConfirmed = 14
 )
 
 // kindError attaches a failure kind, and optionally a detail for the
