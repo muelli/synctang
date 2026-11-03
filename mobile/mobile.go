@@ -317,8 +317,8 @@ type Session struct {
 	directAddr     string
 	timeoutSeconds int
 
-	// network is the machine's choice of relay and discovery servers,
-	// which came in its pairing link; the zero value is the public ones.
+	// network is the machine's choice of discovery server, which came
+	// in its pairing link; the zero value is the public ones.
 	network transport.NetworkConfig
 
 	conn        transport.Conn
@@ -348,16 +348,14 @@ func (s *Session) SetDirectAddr(addr string) {
 	s.directAddr = addr
 }
 
-// SetNetwork makes Connect look the machine up on the given discovery
+// SetDiscovery makes Connect look the machine up on the given discovery
 // server instead of the public one, for a machine whose owner runs
-// their own. relayPool is accepted so the pair can be stored and passed
-// as they came in the pairing link; a dialling phone joins the relay
-// the machine announced and does not consult a pool. Either may be
-// empty, meaning the public default. A value that is not an http(s)
-// URL (or, for relayPool, a relay:// URL with the relay's id) is
-// refused here, not at connect time, and changes nothing.
-func (s *Session) SetNetwork(relayPool, discovery string) error {
-	network, err := transport.ParseNetworkConfig(relayPool, discovery, "")
+// their own. A dialling phone joins the relay the machine announced,
+// so a relay setting has no place here. Empty means the public default.
+// A value that is not an http(s) URL is refused here, not at connect
+// time, and changes nothing.
+func (s *Session) SetDiscovery(discovery string) error {
+	network, err := transport.ParseNetworkConfig("", discovery, "")
 	if err != nil {
 		return fmt.Errorf("mobile: %w", err)
 	}

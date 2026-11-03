@@ -220,8 +220,9 @@ func splitCells(line string) []string {
 	return cells
 }
 
-// A machine that uses its own relay and discovery server has to tell the
-// phone, or the phone looks it up on the public ones and never finds it.
+// A machine that uses its own discovery server has to tell the phone, or the
+// phone looks it up on the public ones and never finds it. Its relay it does
+// not tell: only the machine joins one.
 // A machine on the public servers must keep producing the link it always
 // did, so an older app reads it.
 func TestPairingURLCarriesTheNetworkSettings(t *testing.T) {
@@ -241,8 +242,10 @@ func TestPairingURLCarriesTheNetworkSettings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("not a parseable query: %v", err)
 	}
-	if got := query.Get("relay"); got != cfg.RelayPool {
-		t.Errorf("relay = %q, want %q", got, cfg.RelayPool)
+	// Only the machine joins a relay; a phone learns it from discovery, so the
+	// link carries no relay setting, which an app would otherwise have to refuse.
+	if query.Has("relay") || strings.Contains(raw, "relay") {
+		t.Errorf("the relay is the machine's business, not the phone's: %s", raw)
 	}
 	if got := query.Get("discovery"); got != cfg.Discovery {
 		t.Errorf("discovery = %q, want %q (escaped, so its own ? and & survive)", got, cfg.Discovery)

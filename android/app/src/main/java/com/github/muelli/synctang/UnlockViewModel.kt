@@ -130,7 +130,7 @@ private class GoSession(
     private val session = Session(machine.deviceId, seed).apply {
         setTimeoutSeconds(CONNECT_TIMEOUT_SECONDS)
         // The machine's own servers, if its owner runs them: it is looked up where it announces.
-        setNetwork(machine.relayPool, machine.discovery)
+        setDiscovery(machine.discovery)
     }
 
     // The lock covers the whole dial, including its retries: the
@@ -179,7 +179,7 @@ private class GoPairing(
     override fun pair(machine: Machine, code: String, identity: Identity) =
         classified(pairer::lastFailure, pairer::lastFailureDetail, FailureKind.PAIR_UNREACHABLE) {
             MulticastLease.holding(multicastLock) {
-                pairer.setNetwork(machine.relayPool, machine.discovery)
+                pairer.setDiscovery(machine.discovery)
                 pairer.pair(
                     machine.deviceId,
                     code,

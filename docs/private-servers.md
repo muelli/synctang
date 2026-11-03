@@ -19,12 +19,17 @@ below: a key holder given only the discovery server reached a machine that
 had been given a relay and the same discovery server).
 
 So the two sides must agree on the **discovery server**, and only the machine
-needs the **relay** setting. A key holder given a relay pool does not use
-it; the option exists so one config file can serve both.
+needs a **relay** setting. A dialling side (key holder, phone) has none: it
+learns the relay from discovery. A relay-only setup, with a static relay
+address and no discovery server, is possible in principle and parked; it is
+not built.
 
 ## The settings
 
-Three keys, all optional, each a URL:
+Three keys, all optional, each a URL. On a key holder only `discovery` and
+`discovery-announce` exist: a `relay-pool` line in its config file is refused,
+saying it is a machine setting `[V]` (`TestKeyholderConfigRefusesRelayPool`),
+and there is no `--relay-pool` flag (`TestRunUnlockHasNoRelayPoolFlag`).
 
 | Key | Meaning |
 | --- | --- |
@@ -72,8 +77,8 @@ place `[V]` (unit test `TestNetworkConfigPrivateDiscoveryNeverAnnouncesPublicly`
   `synctang`, while `rd.unlocker=0` and `/etc/unlocker/machine.pem` keep the
   older `unlocker` name for now.) A discovery server given here replaces the
   file's discovery server and its announce endpoint together `[V]`.
-- **Laptop:** `keyholder unlock --relay-pool URL --discovery URL
-  [--discovery-announce URL]`, or the same keys in `~/.config/keyholder/config`
+- **Laptop:** `keyholder unlock --discovery URL [--discovery-announce URL]`, or
+  the same keys in `~/.config/keyholder/config`
   (the user config directory, so `$XDG_CONFIG_HOME/keyholder/config` if set;
   `--config` names another file). Flags win over the file.
 - **Phone:** from the pairing link, below. There is no field to type a URL
@@ -81,21 +86,24 @@ place `[V]` (unit test `TestNetworkConfigPrivateDiscoveryNeverAnnouncesPublicly`
 
 ## The pairing link
 
-`unlocker pair` adds `relay=` and `discovery=` (URL-escaped) to the
-`synctang://pair?...` link and its QR code when the machine has them set, and
-nothing when it has not, so the link for the public servers is unchanged
-`[V]` (unit test). The announce endpoint is not carried: a phone only looks
-up.
+`unlocker pair` adds `discovery=` (URL-escaped) to the `synctang://pair?...`
+link and its QR code when the machine has one set, and nothing when it has
+not, so the link for the public servers is unchanged `[V]`
+(`TestPairingURLCarriesTheNetworkSettings`). Neither the relay nor the announce
+endpoint is carried: only the machine joins a relay or announces, and a phone
+only looks up.
 
-The app stores both with the machine and passes them to every later unlock
+The app stores the discovery server with the machine and passes it to every later unlock
 `[V]` for the parsing and the hand-over to the Go side (JVM unit tests and Go
 tests); `[U]` on the phone itself, which was not touched.
 
 **A link with a parameter the app does not know is refused**, with a message
 naming it, and nothing is paired. Ignoring it could pair the phone against
-servers the owner chose not to use. So are `relay` and `discovery` values
-that are not server URLs `[V]`. The reverse does not hold: a phone running
-an app from before this change ignores `relay=` and `discovery=`, looks the
+servers the owner chose not to use. That includes an old link that carries
+`relay=`: the message names `relay` `[V]` (`aLinkWithARelaySettingIsRefusedAsAnUnknownParameter`,
+`aLinkWithARelaySettingIsRefusedAndSaysWhich`, JVM tests). A `discovery` value
+that is not a server URL is refused too `[V]`. The reverse does not hold: a
+phone running an app from before this change ignores `discovery=`, looks the
 machine up on the public servers, and does not find it `[I]` (read from the
 old parser). Update the app first.
 

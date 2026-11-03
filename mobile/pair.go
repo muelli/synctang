@@ -57,7 +57,7 @@ type Pairer struct {
 
 	failure lastFailure
 
-	// network is the machine's choice of relay and discovery servers,
+	// network is the machine's choice of discovery server,
 	// from its pairing link; the zero value is the public ones.
 	network transport.NetworkConfig
 }
@@ -76,10 +76,10 @@ func (p *Pairer) LastFailureDetail() string {
 	return detail
 }
 
-// SetNetwork is Session.SetNetwork for a pairing: look the machine up
+// SetDiscovery is Session.SetDiscovery for a pairing: look the machine up
 // on the discovery server its pairing link named. Call it before Pair.
-func (p *Pairer) SetNetwork(relayPool, discovery string) error {
-	network, err := transport.ParseNetworkConfig(relayPool, discovery, "")
+func (p *Pairer) SetDiscovery(discovery string) error {
+	network, err := transport.ParseNetworkConfig("", discovery, "")
 	if err != nil {
 		return fmt.Errorf("mobile: %w", err)
 	}

@@ -246,6 +246,17 @@ class UnlockFlowTest {
     }
 
     @Test
+    fun aLinkWithARelaySettingIsRefusedAndSaysWhich() {
+        onMain { flow.refresh() }
+        await<UnlockUiState.NeedsPairing>()
+        onMain { flow.pair(payload(machineB) + "&relay=https%3A%2F%2Fp.example.net%2Fendpoint") }
+        val failed = await<UnlockUiState.Failed>()
+        assertEquals("res:${R.string.pair_unknown_parameters}(relay)", failed.message)
+        assertNull(store.saved)
+        assertTrue(pairings.isEmpty())
+    }
+
+    @Test
     fun aLinkWithABadSettingIsRefusedAndSaysWhich() {
         onMain { flow.refresh() }
         await<UnlockUiState.NeedsPairing>()

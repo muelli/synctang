@@ -45,28 +45,25 @@ func TestDialTransportAppliesNetworkConfig(t *testing.T) {
 	}
 }
 
-func TestSetNetworkValidates(t *testing.T) {
+func TestSetDiscoveryValidates(t *testing.T) {
 	s := NewSession("MACHINE", "seed")
-	if err := s.SetNetwork("", "ftp://disco.example.net/"); err == nil || !strings.Contains(err.Error(), "discovery") {
-		t.Errorf("Session.SetNetwork accepted a bad discovery URL: %v", err)
+	if err := s.SetDiscovery("ftp://disco.example.net/"); err == nil || !strings.Contains(err.Error(), "discovery") {
+		t.Errorf("Session.SetDiscovery accepted a bad discovery URL: %v", err)
 	}
-	if err := s.SetNetwork("gopher://pool.example.net/", ""); err == nil || !strings.Contains(err.Error(), "relay-pool") {
-		t.Errorf("Session.SetNetwork accepted a bad relay URL: %v", err)
-	}
-	if err := s.SetNetwork("", "https://disco.example.net/v2/"); err != nil {
-		t.Errorf("Session.SetNetwork refused a good URL: %v", err)
+	if err := s.SetDiscovery("https://disco.example.net/v2/"); err != nil {
+		t.Errorf("Session.SetDiscovery refused a good URL: %v", err)
 	}
 	p := NewPairer()
-	if err := p.SetNetwork("", "ftp://disco.example.net/"); err == nil {
-		t.Error("Pairer.SetNetwork accepted a bad discovery URL")
+	if err := p.SetDiscovery("ftp://disco.example.net/"); err == nil {
+		t.Error("Pairer.SetDiscovery accepted a bad discovery URL")
 	}
-	if err := p.SetNetwork("", "https://disco.example.net/v2/"); err != nil {
-		t.Errorf("Pairer.SetNetwork refused a good URL: %v", err)
+	if err := p.SetDiscovery("https://disco.example.net/v2/"); err != nil {
+		t.Errorf("Pairer.SetDiscovery refused a good URL: %v", err)
 	}
 	// Empty means the public servers, and must be accepted: it is what a
 	// machine paired without any setting stores.
-	if err := p.SetNetwork("", ""); err != nil {
-		t.Errorf("Pairer.SetNetwork refused the defaults: %v", err)
+	if err := p.SetDiscovery(""); err != nil {
+		t.Errorf("Pairer.SetDiscovery refused the defaults: %v", err)
 	}
 }
 
@@ -133,8 +130,8 @@ func TestSessionLooksTheMachineUpOnTheGivenDiscoveryServer(t *testing.T) {
 	}()
 
 	session := NewSession(machineID, phoneSeed)
-	if err := session.SetNetwork("", disco.URL+"/v2/"); err != nil {
-		t.Fatalf("SetNetwork: %v", err)
+	if err := session.SetDiscovery(disco.URL + "/v2/"); err != nil {
+		t.Fatalf("SetDiscovery: %v", err)
 	}
 	session.SetTimeoutSeconds(25)
 	defer session.Close()

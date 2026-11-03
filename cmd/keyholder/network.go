@@ -14,8 +14,8 @@ import (
 
 // defaultConfigFile is where a key holder that does not want the public
 // Syncthing discovery server says which one to use: the same keys as
-// the machine's network.conf (relay-pool, discovery, discovery-announce),
-// so one file can be copied to both.
+// the machine's network.conf minus relay-pool (discovery,
+// discovery-announce): only the machine joins a relay.
 func defaultConfigFile() (string, error) {
 	dir, err := os.UserConfigDir()
 	if err != nil {
@@ -29,7 +29,7 @@ func defaultConfigFile() (string, error) {
 // ordinary case and means the defaults, unless explicit says the person
 // named it, when it is a mistake. A setting that is wrong is an error,
 // never a quiet fall back to the public servers.
-func loadNetworkConfig(path string, explicit bool, relayPool, discovery, announce string) (transport.NetworkConfig, error) {
+func loadNetworkConfig(path string, explicit bool, discovery, announce string) (transport.NetworkConfig, error) {
 	var file transport.NetworkConfig
 	if path != "" {
 		f, err := os.Open(path)
@@ -39,13 +39,13 @@ func loadNetworkConfig(path string, explicit bool, relayPool, discovery, announc
 			return transport.NetworkConfig{}, fmt.Errorf("reading %s: %w", path, err)
 		default:
 			defer f.Close()
-			file, err = transport.ParseNetworkConf(f)
+			file, err = transport.ParseNetworkConfForDialer(f)
 			if err != nil {
 				return transport.NetworkConfig{}, fmt.Errorf("%s: %w", path, err)
 			}
 		}
 	}
-	flags, err := transport.ParseNetworkConfig(relayPool, discovery, announce)
+	flags, err := transport.ParseNetworkConfig("", discovery, announce)
 	if err != nil {
 		return transport.NetworkConfig{}, fmt.Errorf("--%w", err)
 	}

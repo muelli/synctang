@@ -174,9 +174,10 @@ the initrd (for example `sudo dracut --force`):
 
 `relay-pool` is either a relay pool URL or, as here, one relay of your own;
 `discovery-announce=` is only needed when announcements go to a different
-URL than lookups. `unlocker pair` then puts both settings in the pairing
+URL than lookups. Only the machine needs a relay setting: a key holder learns the relay from
+discovery. `unlocker pair` then puts the discovery server in the pairing
 link, so a phone paired by QR code follows the machine's choice and nobody
-types a URL on it (update the app first: an older one ignores them and looks
+types a URL on it (update the app first: an older one ignores it and looks
 on the public servers). On a laptop, give the discovery server with
 `keyholder unlock --discovery URL`, or in `~/.config/keyholder/config`. Both
 sides must use the same discovery server. A relay or discovery server sees

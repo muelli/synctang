@@ -196,6 +196,18 @@ func (c NetworkConfig) NewSyncthingRelay(cert tls.Certificate) *SyncthingRelay {
 // where a machine announces itself should not be taken for "use the
 // defaults".
 func ParseNetworkConf(r io.Reader) (NetworkConfig, error) {
+	return parseNetworkConf(r, true)
+}
+
+// ParseNetworkConfForDialer is ParseNetworkConf for a key holder's file.
+// Only the machine joins a relay; a key holder learns it from discovery,
+// so a relay-pool line there would do nothing, and is refused saying so
+// instead of being taken for a setting that works.
+func ParseNetworkConfForDialer(r io.Reader) (NetworkConfig, error) {
+	return parseNetworkConf(r, false)
+}
+
+func parseNetworkConf(r io.Reader, allowRelayPool bool) (NetworkConfig, error) {
 	vals := map[string]string{}
 	sc := bufio.NewScanner(r)
 	for n := 1; sc.Scan(); n++ {
@@ -209,7 +221,11 @@ func ParseNetworkConf(r io.Reader) (NetworkConfig, error) {
 			return NetworkConfig{}, fmt.Errorf("line %d: expected key=value", n)
 		}
 		switch key {
-		case NetworkKeyRelayPool, NetworkKeyDiscovery, NetworkKeyDiscoveryAnnounce:
+		case NetworkKeyRelayPool:
+			if !allowRelayPool {
+				return NetworkConfig{}, fmt.Errorf("line %d: %s is a machine setting; a key holder learns the relay from discovery", n, key)
+			}
+		case NetworkKeyDiscovery, NetworkKeyDiscoveryAnnounce:
 		default:
 			return NetworkConfig{}, fmt.Errorf("line %d: unknown key %q", n, key)
 		}

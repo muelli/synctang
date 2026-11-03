@@ -230,7 +230,7 @@ sealed interface PairingPlan {
     /** The link asks for something this app does not know: refuse, saying what. */
     data class UnknownParameters(val names: List<String>) : PairingPlan
 
-    /** The link's [name] setting (relay or discovery) is not a server URL. */
+    /** The link's [name] setting (discovery) is not a server URL. */
     data class BadSetting(val name: String) : PairingPlan
 }
 

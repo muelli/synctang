@@ -302,19 +302,17 @@ func pairConfirmer(assumeYes bool, stdout io.Writer, stdin io.Reader) func(strin
 // already knows how to parse: the same synctang://pair payload used for
 // scanning a machine's identity, with the one-time code added.
 //
-// A machine that uses its own relay pool or discovery server says so
-// with relay= and discovery=, so the phone looks it up where it
-// announces. Nothing is added for the public defaults, which keeps the
-// link what older apps read. The announce endpoint is not carried: it
-// is where the machine posts, and a phone only ever looks up.
+// A machine that uses its own discovery server says so with
+// discovery=, so the phone looks it up where it announces. Nothing is
+// added for the public defaults, which keeps the link what older apps
+// read. Neither the relay nor the announce endpoint is carried: only
+// the machine joins a relay or posts an announcement, and a phone
+// learns the relay from discovery.
 func pairingURL(machineID, name, encodedSecret string, network transport.NetworkConfig) string {
 	q := url.Values{}
 	q.Set("machine", machineID)
 	if name != "" {
 		q.Set("name", name)
-	}
-	if network.RelayPool != "" {
-		q.Set("relay", network.RelayPool)
 	}
 	if network.Discovery != "" {
 		q.Set("discovery", network.Discovery)
