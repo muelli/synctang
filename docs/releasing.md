@@ -70,13 +70,24 @@ certificate is committed as `signing/app-cert.pem`.
 A `v<versionCode>` tag, the same tag that publishes the app, makes the `ci`
 workflow run on the tag, and its `release-debs` job attaches what `build-deb`
 built to a GitHub release: the `.deb` files for amd64 and arm64, the SBOMs, and
-a `SHA256SUMS` file over both. Nothing is rebuilt for the release, so the files
-are the ones that passed the reproducibility check and carry the attestations
-described below. The job refuses a tag that is not `v` followed by the commit
-count, because that count is the version inside the packages. A push to `main`
+a `SHA256SUMS` file over both, and beside each of those a cosign bundle,
+`<file>.sigstore.json`, made by keyless signing with the workflow's identity and
+recorded in the Sigstore transparency log. Nothing is rebuilt for the release,
+so the files are the ones that passed the reproducibility check and carry the
+attestations described below. The job refuses a tag that is not `v` followed by
+the commit count, because that count is the version inside the packages. To
+check a file with cosign alone, no GitHub account or CLI:
+
+    cosign verify-blob --bundle <file>.sigstore.json \
+      --certificate-identity-regexp '^https://github.com/muelli/synctang/\.github/workflows/ci\.yml@refs/tags/v[0-9]+$' \
+      --certificate-oidc-issuer https://token.actions.githubusercontent.com <file>
+
+The identity is the workflow that ran on a release tag, so a file signed by
+anything else, or from a branch, does not verify. A push to `main`
 keeps its packages only as the `synctang-debs` workflow artifact, for seven
-days. `[U]` The job has not run yet: it is written against the workflow syntax
-and has been read, not executed, on GitHub.
+days. `[U]` The job has not run yet, nor has the cosign signing or the
+verification command above: they are written against the documentation and have
+been read, not executed.
 
 ## Debian package reproducibility
 

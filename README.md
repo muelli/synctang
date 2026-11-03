@@ -51,8 +51,9 @@ pressing approve, and unattended reboots by design. Details in
 **Machine and laptop.** Install the Debian packages you need
 (`synctang-dracut` pulls in `synctang-unlocker` and rebuilds your initrds). A
 release has them, for amd64 and arm64, among its assets on GitHub, with a
-`SHA256SUMS` file and a build-provenance attestation for each
-(`gh attestation verify <file> --repo muelli/synctang`). Or build them:
+`SHA256SUMS` file, a build-provenance attestation for each
+(`gh attestation verify <file> --repo muelli/synctang`), and a cosign bundle
+next to each file (see `docs/releasing.md`). Or build them:
 
     just deb
     sudo apt install ./dist/synctang-unlocker_*.deb ./dist/synctang-dracut_*.deb   # the machine

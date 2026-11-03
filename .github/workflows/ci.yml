@@ -367,6 +367,8 @@ jobs:
     runs-on: ubuntu-26.04
     permissions:
       contents: write
+      # Keyless signing: the signature names this workflow, not a key.
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -392,11 +394,22 @@ jobs:
           cd release
           ls -l
           sha256sum -- *.deb *.cdx.json > SHA256SUMS
+      - uses: sigstore/cosign-installer@v3
+      - name: Sign every file with cosign
+        # Keyless, with the workflow's identity, and recorded in the public
+        # transparency log; "cosign verify-blob" needs no GitHub account or
+        # CLI, only the bundle that sits next to each file. SHA256SUMS is
+        # signed like the rest, so one verified file vouches for the list.
+        run: |
+          cd release
+          for f in *.deb *.cdx.json SHA256SUMS; do
+            cosign sign-blob --yes --bundle "$f.sigstore.json" "$f"
+          done
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          notes="Debian and Ubuntu packages, amd64 and arm64: synctang-unlocker and synctang-dracut for a machine whose disk is unlocked, synctang-keyholder for a laptop. The phone app is in the F-Droid repository; see the README. SHA256SUMS lists every file here. Each package has a build-provenance attestation: gh attestation verify <file> --repo ${GITHUB_REPOSITORY}"
+          notes="Debian and Ubuntu packages, amd64 and arm64: synctang-unlocker and synctang-dracut for a machine whose disk is unlocked, synctang-keyholder for a laptop. The phone app is in the F-Droid repository; see the README. SHA256SUMS lists every file here. Each package has a build-provenance attestation (gh attestation verify <file> --repo ${GITHUB_REPOSITORY}) and a cosign bundle, <file>.sigstore.json (cosign verify-blob --bundle <file>.sigstore.json --certificate-identity-regexp '^https://github.com/${GITHUB_REPOSITORY}/\.github/workflows/ci\.yml@refs/tags/v[0-9]+$' --certificate-oidc-issuer https://token.actions.githubusercontent.com <file>)"
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" release/* --clobber
           else
