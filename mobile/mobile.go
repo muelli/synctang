@@ -355,7 +355,7 @@ func (s *Session) SetDirectAddr(addr string) {
 // A value that is not an http(s) URL is refused here, not at connect
 // time, and changes nothing.
 func (s *Session) SetDiscovery(discovery string) error {
-	network, err := transport.ParseNetworkConfig("", discovery, "")
+	network, err := transport.ParseDialerNetworkConfig(discovery, "")
 	if err != nil {
 		return fmt.Errorf("mobile: %w", err)
 	}

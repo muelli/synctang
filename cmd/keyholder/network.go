@@ -45,7 +45,7 @@ func loadNetworkConfig(path string, explicit bool, discovery, announce string) (
 			}
 		}
 	}
-	flags, err := transport.ParseNetworkConfig("", discovery, announce)
+	flags, err := transport.ParseDialerNetworkConfig(discovery, announce)
 	if err != nil {
 		return transport.NetworkConfig{}, fmt.Errorf("--%w", err)
 	}

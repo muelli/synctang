@@ -130,7 +130,7 @@ func TestSessionLooksTheMachineUpOnTheGivenDiscoveryServer(t *testing.T) {
 	}()
 
 	session := NewSession(machineID, phoneSeed)
-	if err := session.SetDiscovery(disco.URL + "/v2/"); err != nil {
+	if err := session.SetDiscovery(disco.URL + "/v2/?insecure"); err != nil {
 		t.Fatalf("SetDiscovery: %v", err)
 	}
 	session.SetTimeoutSeconds(25)

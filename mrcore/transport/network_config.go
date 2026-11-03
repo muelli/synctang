@@ -5,6 +5,7 @@ package transport
 import (
 	"bufio"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -47,32 +48,70 @@ const (
 	NetworkKeyDiscoveryAnnounce = "discovery-announce"
 )
 
-// ParseNetworkConfig validates the three settings, each of which may be
-// empty. Errors name the setting, never echo the value: a URL can carry
-// credentials, and these errors reach logs and consoles.
+// ParseNetworkConfig validates the three settings of a machine, each of
+// which may be empty. Errors name the setting, never echo the value: a URL
+// can carry credentials, and these errors reach logs and consoles.
+//
+// A machine announces to its discovery server, and an announcement is never
+// sent over plain http, so the discovery server must be https unless
+// discovery-announce names an https endpoint of its own, when discovery is
+// only what the phone is told to look up on.
 func ParseNetworkConfig(relayPool, discovery, announce string) (NetworkConfig, error) {
+	return parseNetworkConfig(relayPool, discovery, announce, true)
+}
+
+// ParseDialerNetworkConfig is ParseNetworkConfig for a key holder or a
+// phone, which looks a machine up and never announces and has no relay
+// setting (it learns the relay from discovery). Its discovery server may
+// therefore be plain http, when the URL says ?insecure.
+func ParseDialerNetworkConfig(discovery, announce string) (NetworkConfig, error) {
+	return parseNetworkConfig("", discovery, announce, false)
+}
+
+func parseNetworkConfig(relayPool, discovery, announce string, announces bool) (NetworkConfig, error) {
 	if relayPool != "" {
 		if err := validateRelayPool(relayPool); err != nil {
 			return NetworkConfig{}, fmt.Errorf("%s: %w", NetworkKeyRelayPool, err)
 		}
 	}
 	if discovery != "" {
-		if err := validateHTTPURL(discovery); err != nil {
+		if err := validateDiscovery(discovery, announces && announce == ""); err != nil {
 			return NetworkConfig{}, fmt.Errorf("%s: %w", NetworkKeyDiscovery, err)
 		}
 	}
 	if announce != "" {
-		if err := validateHTTPURL(announce); err != nil {
+		if err := validateDiscovery(announce, true); err != nil {
 			return NetworkConfig{}, fmt.Errorf("%s: %w", NetworkKeyDiscoveryAnnounce, err)
 		}
 	}
 	return NetworkConfig{RelayPool: relayPool, Discovery: discovery, DiscoveryAnnounce: announce}, nil
 }
 
+// validateDiscovery accepts a discovery URL (see discoveryOptions for what
+// its query may say). announced is whether the URL is also announced to,
+// which plain http may not be.
+func validateDiscovery(s string, announced bool) error {
+	_, opts, err := parseDiscoveryURL(s)
+	if err != nil {
+		return err
+	}
+	if u, err := url.Parse(s); err == nil && u.Scheme == "http" {
+		switch {
+		case announced:
+			return errors.New("plain http is for looking up only, and this one is announced to; announcements are never sent over plain http, so use https (with ?id=<server Device ID> or ?insecure for a self-signed server)")
+		case opts.hasID:
+			return errors.New("?id= pins a TLS certificate, and plain http has none")
+		case !opts.insecure:
+			return errors.New("plain http needs ?insecure to say it is meant")
+		}
+	}
+	return nil
+}
+
 // validateHTTPURL accepts an http or https URL with a host and no
-// credentials. Plain http is allowed: a private server on a private
-// network is the point, and discovery answers are checked against the
-// Device ID afterwards, not trusted.
+// credentials. Used for a relay pool, which is fetched over plain http
+// or https and whose answer is checked against each relay's own Device
+// ID afterwards.
 func validateHTTPURL(s string) error {
 	u, err := url.Parse(s)
 	if err != nil {
@@ -236,6 +275,9 @@ func parseNetworkConf(r io.Reader, allowRelayPool bool) (NetworkConfig, error) {
 	}
 	if err := sc.Err(); err != nil {
 		return NetworkConfig{}, err
+	}
+	if !allowRelayPool {
+		return ParseDialerNetworkConfig(vals[NetworkKeyDiscovery], vals[NetworkKeyDiscoveryAnnounce])
 	}
 	return ParseNetworkConfig(vals[NetworkKeyRelayPool], vals[NetworkKeyDiscovery], vals[NetworkKeyDiscoveryAnnounce])
 }

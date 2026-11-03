@@ -651,7 +651,7 @@ func (t *SyncthingRelay) dialRelayOnce(ctx context.Context, peerID string) (net.
 	}
 
 	t.logger().Log(ctx, levelTrace, "looking peer up on discovery", "peer", targetID.String(), "url", t.discoveryURL())
-	record, err := discovery.LookupRecord(ctx, targetID.String(), t.discoveryURL())
+	record, err := lookupRecord(ctx, targetID.String(), t.discoveryURL())
 	if err != nil {
 		return nil, fmt.Errorf("transport: discovery lookup for %s: %w", targetID, err)
 	}
@@ -923,6 +923,17 @@ func (t *SyncthingRelay) announceOnce(ctx context.Context, addresses []string) e
 }
 
 func (t *SyncthingRelay) postAnnounce(ctx context.Context, httpClient *http.Client, announceURL string, payload []byte) error {
+	// An announcement carries this machine's identity and where to reach
+	// it, so it never goes out over plain http; and ?id= and ?insecure are
+	// for a lookup's client, which the server has no use for.
+	target, _, err := parseDiscoveryURL(announceURL)
+	if err != nil {
+		return fmt.Errorf("announce URL: %w", err)
+	}
+	if u, perr := url.Parse(target); perr == nil && u.Scheme != "https" {
+		return fmt.Errorf("refusing to announce to %s over plain http", u.Host)
+	}
+	announceURL = target
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, announceURL, bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("building announce request to %s: %w", announceURL, err)

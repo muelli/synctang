@@ -136,7 +136,7 @@ func TestNetworkConfigExplicitAnnounceWins(t *testing.T) {
 // person chose not to use, so a private discovery URL must never leave
 // the public announce URLs in place.
 func TestNetworkConfigPrivateDiscoveryNeverAnnouncesPublicly(t *testing.T) {
-	c, err := ParseNetworkConfig("https://pool.example.net/endpoint", "http://10.0.0.6:8443/v2/", "")
+	c, err := ParseNetworkConfig("https://pool.example.net/endpoint", "https://10.0.0.6:8443/v2/", "")
 	if err != nil {
 		t.Fatalf("ParseNetworkConfig: %v", err)
 	}
@@ -246,5 +246,63 @@ func TestNetworkConfigSummary(t *testing.T) {
 	c, _ = ParseNetworkConfig("https://pool.example.net/endpoint", "", "")
 	if got := c.Summary(); !strings.Contains(got, "pool") || !strings.Contains(got, "public") {
 		t.Errorf("summary %q should say a pool is used and that discovery stays public", got)
+	}
+}
+
+// Plain http is for looking up and never for announcing, so the setting a
+// machine announces to has to be https, and says why when it is not.
+func TestMachineDiscoveryRefusesPlainHTTP(t *testing.T) {
+	_, err := ParseNetworkConfig("", "http://10.0.0.6:8443/v2/?insecure", "")
+	if err == nil {
+		t.Fatal("a machine's discovery server over plain http was accepted; it would announce over it")
+	}
+	for _, want := range []string{"discovery", "http", "announce"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q should mention %q", err, want)
+		}
+	}
+	if _, err := ParseNetworkConfig("", "https://10.0.0.6:8443/v2/", "http://10.0.0.6:8443/v2/?insecure"); err == nil {
+		t.Error("an announce endpoint over plain http was accepted")
+	}
+	// With its own https announce endpoint, the lookup address may be plain
+	// http (it goes to the phone and is only looked up on).
+	if _, err := ParseNetworkConfig("", "http://10.0.0.6:8443/v2/?insecure", "https://10.0.0.6:8444/v2/"); err != nil {
+		t.Errorf("lookup-only http discovery with an https announce endpoint: %v", err)
+	}
+}
+
+func TestDialerDiscoveryMayBePlainHTTPWithInsecure(t *testing.T) {
+	c, err := ParseDialerNetworkConfig("http://10.0.0.6:8443/v2/?insecure", "")
+	if err != nil {
+		t.Fatalf("ParseDialerNetworkConfig: %v", err)
+	}
+	if c.Discovery != "http://10.0.0.6:8443/v2/?insecure" {
+		t.Errorf("got %+v", c)
+	}
+	for _, bad := range []string{
+		"http://10.0.0.6:8443/v2/",                   // plain http with no explicit opt-in
+		"http://10.0.0.6:8443/v2/?insecure=false",    // opt-in refused
+		"http://10.0.0.6:8443/v2/?id=" + testRelayID, // an id pins a TLS certificate; there is none
+		"https://10.0.0.6:8443/v2/?id=not-an-id",     // not a Device ID
+	} {
+		if _, err := ParseDialerNetworkConfig(bad, ""); err == nil {
+			t.Errorf("%q was accepted", bad)
+		}
+	}
+	if _, err := ParseDialerNetworkConfig("https://10.0.0.6:8443/v2/?id="+testRelayID, ""); err != nil {
+		t.Errorf("a pinned https server: %v", err)
+	}
+	if _, err := ParseDialerNetworkConfig("", "http://10.0.0.6:8443/v2/?insecure"); err == nil {
+		t.Error("a dialling side's announce endpoint over plain http was accepted")
+	}
+}
+
+func TestNetworkConfigDiscoveryIDIsValidated(t *testing.T) {
+	if _, err := ParseNetworkConfig("", "https://disco.example.net/v2/?id="+testRelayID, ""); err != nil {
+		t.Errorf("a pinned discovery server: %v", err)
+	}
+	_, err := ParseNetworkConfig("", "https://disco.example.net/v2/?id=nonsense", "")
+	if err == nil || !strings.Contains(err.Error(), "Device ID") {
+		t.Errorf("a malformed id must be refused saying it is not a Device ID: %v", err)
 	}
 }

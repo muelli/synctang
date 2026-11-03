@@ -79,7 +79,7 @@ func (p *Pairer) LastFailureDetail() string {
 // SetDiscovery is Session.SetDiscovery for a pairing: look the machine up
 // on the discovery server its pairing link named. Call it before Pair.
 func (p *Pairer) SetDiscovery(discovery string) error {
-	network, err := transport.ParseNetworkConfig("", discovery, "")
+	network, err := transport.ParseDialerNetworkConfig(discovery, "")
 	if err != nil {
 		return fmt.Errorf("mobile: %w", err)
 	}
