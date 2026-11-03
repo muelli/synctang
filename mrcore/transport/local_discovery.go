@@ -86,6 +86,16 @@ type LocalDiscovery struct {
 	// Logger receives trace-level detail, exactly as
 	// SyncthingRelay.Logger. Nil means slog's default logger.
 	Logger *slog.Logger
+
+	// OnDialPhase, if set, is told how far each Dial has got; see
+	// DialProgress. Nil means nobody is told.
+	OnDialPhase DialProgress
+}
+
+func (l *LocalDiscovery) phase(phase DialPhase) {
+	if l.OnDialPhase != nil {
+		l.OnDialPhase(RouteLocal, phase)
+	}
 }
 
 func (l *LocalDiscovery) logger() *slog.Logger {
@@ -156,6 +166,7 @@ func (l *LocalDiscovery) Dial(ctx context.Context, opts DialOptions) (Conn, erro
 			return nil, fmt.Errorf("transport: local discovery: %w", err)
 		}
 
+		l.phase(PhaseLookup)
 		addr, err := l.waitForAnnouncement(ctx, opts.PeerID)
 		if err != nil {
 			if lastErr != nil {
@@ -170,6 +181,7 @@ func (l *LocalDiscovery) Dial(ctx context.Context, opts DialOptions) (Conn, erro
 		// machine announced itself and wrong for one a stranger sent:
 		// without a bound, a single spoofed announcement consumes the
 		// entire attempt and the dialler never gets back to listening.
+		l.phase(PhaseConnect)
 		attemptCtx, cancelAttempt := context.WithTimeout(ctx, announcedAddrTimeout)
 		raw, err := dialTCPRetrying(attemptCtx, addr)
 		cancelAttempt()
@@ -180,6 +192,7 @@ func (l *LocalDiscovery) Dial(ctx context.Context, opts DialOptions) (Conn, erro
 			continue
 		}
 
+		l.phase(PhaseHandshake)
 		conn, err := doClientHandshake(l.Cert, l.logger(), raw, opts.PeerID)
 		if err != nil {
 			lastErr = err

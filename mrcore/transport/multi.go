@@ -24,6 +24,11 @@ type Multi struct {
 	RetryInterval time.Duration
 
 	Transports []Transport
+
+	// OnWin, if set, is told the index in Transports of the one whose
+	// connection a Dial or Listen returns, so a caller can say which way
+	// it got through. Nil means nobody is told.
+	OnWin func(index int)
 }
 
 type multiResult struct {
@@ -148,6 +153,9 @@ func (m *Multi) race(ctx context.Context, retryFailed bool, attempt func(context
 				mu.Lock()
 				winnerCancel := cancels[r.index]
 				mu.Unlock()
+				if m.OnWin != nil {
+					m.OnWin(r.index)
+				}
 				// The winner is released when its connection is
 				// closed, which is when the session it produced is
 				// genuinely finished with, and not before.

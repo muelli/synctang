@@ -68,3 +68,51 @@ type DialOptions struct {
 	// lookup entirely.
 	DirectAddr string
 }
+
+// Route is which way a dial is trying to reach the other side, for a
+// caller that wants to say so.
+type Route string
+
+const (
+	// RouteRelay: through a relay, found by looking the peer up on
+	// global discovery.
+	RouteRelay Route = "relay"
+	// RouteLocal: straight over the local network, found by multicast.
+	RouteLocal Route = "local"
+	// RouteDirect: a plain TCP address, either given by the caller or
+	// the one global discovery returned.
+	RouteDirect Route = "direct"
+)
+
+// DialPhase is how far a dial has got on a Route.
+type DialPhase int
+
+const (
+	// PhaseLookup: finding out where the peer is (a discovery lookup, or
+	// listening for a local announcement).
+	PhaseLookup DialPhase = iota + 1
+	// PhaseConnect: reaching that address (joining the relay session, or
+	// opening the TCP connection).
+	PhaseConnect
+	// PhaseHandshake: connected; the TLS handshake that checks the
+	// peer's Device ID is running.
+	PhaseHandshake
+)
+
+func (p DialPhase) String() string {
+	switch p {
+	case PhaseLookup:
+		return "lookup"
+	case PhaseConnect:
+		return "connect"
+	case PhaseHandshake:
+		return "handshake"
+	}
+	return "unknown"
+}
+
+// DialProgress is told, as a Dial goes, which phase it has reached on which
+// route. It is called from the dialling goroutine and, for Multi, from
+// several at once, so it must be quick and safe for concurrent use. It is
+// optional: it changes nothing about how the dial behaves.
+type DialProgress func(route Route, phase DialPhase)

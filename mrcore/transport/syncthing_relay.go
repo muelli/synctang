@@ -155,6 +155,10 @@ type SyncthingRelay struct {
 	// this package taking on that dependency itself.
 	Logger *slog.Logger
 
+	// OnDialPhase, if set, is told how far each Dial has got; see
+	// DialProgress. Nil means nobody is told.
+	OnDialPhase DialProgress
+
 	// announceClientOnce guards announceClient, which is built on
 	// first use and then reused.
 	announceClientOnce sync.Once
@@ -167,6 +171,12 @@ type SyncthingRelay struct {
 	// client, built fresh per call with InsecureSkipVerify (see
 	// announceOnce for why that is safe here).
 	httpClient *http.Client
+}
+
+func (t *SyncthingRelay) phase(route Route, phase DialPhase) {
+	if t.OnDialPhase != nil {
+		t.OnDialPhase(route, phase)
+	}
 }
 
 func (t *SyncthingRelay) logger() *slog.Logger {
@@ -230,10 +240,12 @@ func (t *SyncthingRelay) Dial(ctx context.Context, opts DialOptions) (Conn, erro
 		return nil, ErrNoPeerID
 	}
 	if opts.DirectAddr != "" {
+		t.phase(RouteDirect, PhaseConnect)
 		raw, err := t.dialDirect(ctx, opts.DirectAddr)
 		if err != nil {
 			return nil, err
 		}
+		t.phase(RouteDirect, PhaseHandshake)
 		return t.clientHandshake(raw, opts.PeerID)
 	}
 	return t.dialRelay(ctx, opts.PeerID)
@@ -647,29 +659,31 @@ func (t *SyncthingRelay) dialRelay(ctx context.Context, peerID string) (Conn, er
 // much a sign of "this attempt did not pan out, try a fresh one" as a
 // lookup or join failure is.
 func (t *SyncthingRelay) dialRelayAttempt(ctx context.Context, peerID string) (Conn, error) {
-	raw, err := t.dialRelayOnce(ctx, peerID)
+	raw, route, err := t.dialRelayOnce(ctx, peerID)
 	if err != nil {
 		return nil, err
 	}
+	t.phase(route, PhaseHandshake)
 	return t.clientHandshake(raw, peerID)
 }
 
 // dialRelayOnce is dialRelayAttempt's connection-establishment half:
 // one discovery lookup, then either a direct dial or a relay session
 // join, whichever the address list offers.
-func (t *SyncthingRelay) dialRelayOnce(ctx context.Context, peerID string) (net.Conn, error) {
+func (t *SyncthingRelay) dialRelayOnce(ctx context.Context, peerID string) (net.Conn, Route, error) {
 	targetID, err := protocol.DeviceIDFromString(peerID)
 	if err != nil {
-		return nil, fmt.Errorf("transport: invalid peer Device ID %q: %w", peerID, err)
+		return nil, "", fmt.Errorf("transport: invalid peer Device ID %q: %w", peerID, err)
 	}
 
+	t.phase(RouteRelay, PhaseLookup)
 	t.logger().Log(ctx, levelTrace, "looking peer up on discovery", "peer", targetID.String(), "url", t.discoveryURL())
 	record, err := lookupRecord(ctx, targetID.String(), t.discoveryURL())
 	if err != nil {
-		return nil, fmt.Errorf("transport: discovery lookup for %s: %w", targetID, err)
+		return nil, "", fmt.Errorf("transport: discovery lookup for %s: %w", targetID, err)
 	}
 	if record == nil || len(record.Addresses) == 0 {
-		return nil, fmt.Errorf("transport: no addresses announced for peer %s", targetID)
+		return nil, "", fmt.Errorf("transport: no addresses announced for peer %s", targetID)
 	}
 	t.logger().Log(ctx, levelTrace, "discovery lookup returned addresses", "peer", targetID.String(), "addresses", strings.Join(record.Addresses, ","))
 
@@ -684,6 +698,9 @@ func (t *SyncthingRelay) dialRelayOnce(ctx context.Context, peerID string) (net.
 	}
 
 	var lastErr error
+	if len(directAddrs) > 0 {
+		t.phase(RouteDirect, PhaseConnect)
+	}
 	for _, addrStr := range directAddrs {
 		u, err := url.Parse(addrStr)
 		if err != nil {
@@ -696,10 +713,11 @@ func (t *SyncthingRelay) dialRelayOnce(ctx context.Context, peerID string) (net.
 			lastErr = err
 			continue
 		}
-		return conn, nil
+		return conn, RouteDirect, nil
 	}
 
 	if len(relayAddrs) > 0 {
+		t.phase(RouteRelay, PhaseConnect)
 		conn, err := raceRelayAddresses(ctx, relayAddrs, func(ctx context.Context, u *url.URL) (net.Conn, error) {
 			inv, err := client.GetInvitationFromRelay(ctx, u, targetID, []tls.Certificate{t.Cert}, defaultRelayTimeout)
 			if err != nil {
@@ -712,7 +730,7 @@ func (t *SyncthingRelay) dialRelayOnce(ctx context.Context, peerID string) (net.
 			return raw, nil
 		})
 		if err == nil {
-			return conn, nil
+			return conn, RouteRelay, nil
 		}
 		lastErr = err
 	}
@@ -720,7 +738,7 @@ func (t *SyncthingRelay) dialRelayOnce(ctx context.Context, peerID string) (net.
 	if lastErr == nil {
 		lastErr = fmt.Errorf("no usable direct or relay addresses for %s", targetID)
 	}
-	return nil, fmt.Errorf("transport: connecting to %s: %w", targetID, lastErr)
+	return nil, "", fmt.Errorf("transport: connecting to %s: %w", targetID, lastErr)
 }
 
 // raceRelayAddresses tries every announced relay address at once and
