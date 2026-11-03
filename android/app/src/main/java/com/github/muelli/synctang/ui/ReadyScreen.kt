@@ -50,7 +50,7 @@ internal fun ReadyScreen(state: UnlockUiState.Ready, onUnlock: () -> Unit, onPai
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    ReadinessChip(state.readiness)
+    ReadinessChip(state.readiness, onCheckNow = onCheckAgain)
     // Looks the machine up now. Never faster than the flow allows (it ignores a tap that comes
     // right after a check), and nothing else on the screen waits for it.
     TextButton(

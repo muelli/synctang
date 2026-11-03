@@ -72,26 +72,26 @@ class ReadinessTest {
         assertEquals(1.0, contrastRatio(0xFF123456, 0xFF123456), 0.0001)
     }
 
-    // How often the chip asks: every 30 s, give or take 20 percent, and never because of a 429
-    // sooner than the server said.
+    // How often the chip asks: every minute, give or take 20 percent, and never because of a
+    // 429 sooner than the server said.
 
     @Test
-    fun theChipAsksEveryHalfMinuteNotEveryFewSeconds() {
-        assertEquals(30_000L, READINESS_POLL_MILLIS)
+    fun theChipAsksEveryMinuteNotEveryFewSeconds() {
+        assertEquals(60_000L, READINESS_POLL_MILLIS)
         assertEquals(10_000L, READINESS_MIN_GAP_MILLIS)
     }
 
     @Test
     fun thePollDelayStaysWithinTwentyPercentOfItsBase() {
-        assertEquals(24_000L, readinessPollDelayMillis(30_000, 0.0))
-        assertEquals(30_000L, readinessPollDelayMillis(30_000, 0.5))
-        assertEquals(36_000L, readinessPollDelayMillis(30_000, 1.0), )
+        assertEquals(48_000L, readinessPollDelayMillis(60_000, 0.0))
+        assertEquals(60_000L, readinessPollDelayMillis(60_000, 0.5))
+        assertEquals(72_000L, readinessPollDelayMillis(60_000, 1.0))
         for (i in 0..100) {
-            val d = readinessPollDelayMillis(30_000, i / 100.0)
-            assertTrue("$d", d in 24_000L..36_000L)
+            val d = readinessPollDelayMillis(60_000, i / 100.0)
+            assertTrue("$d", d in 48_000L..72_000L)
         }
         // The jitter really moves it: not a constant.
-        assertNotEquals(readinessPollDelayMillis(30_000, 0.1), readinessPollDelayMillis(30_000, 0.9))
+        assertNotEquals(readinessPollDelayMillis(60_000, 0.1), readinessPollDelayMillis(60_000, 0.9))
     }
 
     @Test

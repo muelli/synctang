@@ -96,13 +96,15 @@ private fun luminance(argb: Long): Double {
 
 /**
  * How often the Ready screen asks, while it is showing and the app is in the foreground:
- * every 30 s, give or take [READINESS_JITTER]. The machine announces itself every 60 s and
+ * every minute, give or take [READINESS_JITTER]. The machine announces itself every 60 s and
  * a record counts as fresh for 150 s, so asking more often cannot tell anything new, and
  * the public discovery server is shared: it answers a client that asks every few seconds
  * with HTTP 429 and a Retry-After of minutes. There is also one check at once when the
- * screen appears or the app comes back, and a person may ask by hand.
+ * screen appears or the app comes back, and a person may ask by hand (the Check again
+ * button, or a long press on the chip), which is held to [READINESS_MIN_GAP_MILLIS] and to
+ * any Retry-After the server has given.
  */
-internal const val READINESS_POLL_MILLIS = 30_000L
+internal const val READINESS_POLL_MILLIS = 60_000L
 
 /** How far, as a fraction, one poll interval moves either way, so that phones do not ask together. */
 internal const val READINESS_JITTER = 0.2

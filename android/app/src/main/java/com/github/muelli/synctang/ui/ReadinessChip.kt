@@ -2,6 +2,7 @@
 package com.github.muelli.synctang.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
@@ -13,6 +14,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -34,15 +38,27 @@ import com.github.muelli.synctang.readinessLabel
  * Announced politely when the state changes and not otherwise: the words shown may carry an age
  * that moves on every poll, so what a screen reader is given is [readinessAnnouncement], which
  * has no age and so does not change with it. The dot is decoration. Nothing here takes focus.
+ * A long press calls [onCheckNow] (with a buzz, since the chip may well look the same afterwards).
  */
 @Composable
-internal fun ReadinessChip(readiness: Readiness) {
+internal fun ReadinessChip(readiness: Readiness, onCheckNow: () -> Unit = {}) {
+    val haptics = LocalHapticFeedback.current
     val label = readinessLabel(readiness)
     val shown = stringResource(label.res, *label.args.toTypedArray())
     val announced = stringResource(readinessAnnouncement(readiness.state))
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.testTag(READINESS_CHIP_TAG),
+        modifier = Modifier
+            .testTag(READINESS_CHIP_TAG)
+            // A long press asks for a check at once. It is a shortcut for people who touch the
+            // chip, not the way to do it: it adds no focus stop and no semantics, because the
+            // Check again button below is the way for a keyboard or a screen reader.
+            .pointerInput(onCheckNow) {
+                detectTapGestures(onLongPress = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onCheckNow()
+                })
+            },
     ) {
         Box(
             Modifier

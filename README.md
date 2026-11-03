@@ -202,8 +202,8 @@ The app's main screen shows a dot and a line of words saying whether the machine
 itself to the discovery server lately (waiting, announced some minutes ago, not announced, or
 cannot check); it is what the machine published, not a promise that an unlock will work, and it
 never stops you pressing Unlock. A machine that is waiting republishes every minute, so the
-app looks once when the screen appears or the app comes back, then every 30 seconds or so, and
-"Check again" looks now (at most every 10 seconds). The public discovery server is shared and
+app looks once when the screen appears or the app comes back, then every minute or so, and
+"Check again", or a long press on the dot, looks now (at most every 10 seconds). The public discovery server is shared and
 answers a client that asks too often with HTTP 429 and a Retry-After of minutes: the app then
 leaves it alone for that long and keeps showing what it showed, and a dial's retries (and the
 command-line tools') back off from 3 to 15 seconds and wait out a Retry-After too.
