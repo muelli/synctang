@@ -251,7 +251,23 @@ app's JVM tests.
   what the agent does. Some meetings in the integration runs took 16 to 29
   seconds for that reason. Not diagnosed further `[U]`; it is why the tests
   listen again.
-- `[U]` The host was not cut off from the Internet while this ran, so "never
-  contacts the public servers" is argued from the settings, not enforced.
-  The machine VM, the real initrd (beyond the Fedora run noted above) and the
-  phone were not involved in the lookup and trust tests.
+- `[V]` On an isolated network (2026-11-03): a Fedora 44 VM with a LUKS2 root
+  on a bridge that has an address on the host and no route anywhere else
+  (`scripts/test-vm-net.sh`), the built programs under their new names, the
+  initrd built by `dracut --force` with the renamed module and a
+  `/etc/synctang/network.conf` naming a private relay (`relay://10.77.0.1:22067/?id=...`)
+  and a private discovery server (`https://10.77.0.1:8443/v2/?id=...`, both on the
+  host). From the VM, `curl https://relays.syncthing.net/endpoint` failed (no HTTP
+  status) and `ping 1.1.1.1` lost every packet, while the private discovery
+  server answered. A laptop key holder on the host
+  (`synctang-keyholder unlock --discovery https://10.77.0.1:8443/v2/?id=...`)
+  unlocked the VM at its LUKS prompt, with nobody typing a passphrase, twice; the
+  agent printed `using single relay 10.77.0.1:22067, discovery 10.77.0.1:8443`.
+  A packet capture of the VM's frames over a whole reboot and unlock (163
+  frames) shows, besides DHCP, ARP, mDNS, IPv6 and the local-discovery
+  multicast (`239.255.42.99`), only packets to `10.77.0.1`, 74 of them, and NTP
+  (UDP 123) to four public addresses from the operating system's own `chronyd`,
+  which started about 15 seconds after the unlock had finished. Nothing from
+  the agent went anywhere else.
+- `[U]` The phone was not on that network, and the dialling side's lookups
+  on a private server were tried only from a laptop key holder, not from the app.
