@@ -1,0 +1,7 @@
+The key is now wrapped by a hardware key that opens only for a fingerprint, once for each unlock.
+
+- A status chip shows whether the machine has announced itself and is waiting.
+- Pairing and unlocking say what they are doing, and how long is left to approve.
+- A failed unlock says what the discovery server last knew of the machine.
+- Keyboard shortcuts and screen reader labels throughout.
+- If the app says the key must be replaced, pair again.
