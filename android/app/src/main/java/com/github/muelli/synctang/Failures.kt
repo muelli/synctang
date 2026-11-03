@@ -14,6 +14,7 @@ enum class FailureKind {
     CANCELLED,
     UNREACHABLE,
     PAIR_UNREACHABLE,
+    PAIR_NOT_CONFIRMED,
     HUNG_UP,
     NO_REPLY,
     OUTCOME_UNKNOWN,
@@ -53,6 +54,7 @@ fun explain(e: Throwable): Explained {
         is MachineFailure -> when (e.kind) {
             FailureKind.UNREACHABLE -> Explained(R.string.failure_unreachable, null, raw)
             FailureKind.PAIR_UNREACHABLE -> Explained(R.string.failure_pair_unreachable, null, raw)
+            FailureKind.PAIR_NOT_CONFIRMED -> Explained(R.string.failure_pair_not_confirmed, null, raw)
             FailureKind.HUNG_UP -> Explained(R.string.failure_hung_up, null, raw)
             FailureKind.NO_REPLY -> Explained(R.string.failure_no_reply, null, raw)
             FailureKind.OUTCOME_UNKNOWN -> Explained(R.string.failure_outcome_unknown, null, raw)

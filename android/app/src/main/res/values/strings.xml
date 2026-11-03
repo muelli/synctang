@@ -128,6 +128,7 @@
     <string name="failure_outcome_unknown">The answer was sent, but the machine did not confirm whether it unlocked. Look at the machine: it may have.</string>
     <string name="failure_answer_rejected">The machine could not use this phone\'s answer, so it is still locked. This phone may no longer be enrolled on its disk.</string>
     <string name="failure_bad_pairing_code">The pairing code in that QR code is damaged or incomplete. Scan it again.</string>
+    <string name="failure_pair_not_confirmed">The machine did not confirm in time. If someone confirmed it just now, pair again: it will say it is already enrolled.</string>
     <string name="failure_pair_code_mismatch">The machine did not accept the pairing code. Each code works only once, so scan the one it is showing now.</string>
     <string name="failure_pair_declined">The machine\'s operator declined the pairing.</string>
     <string name="failure_pair_refused">The machine refused the pairing.</string>

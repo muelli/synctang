@@ -17,6 +17,7 @@ import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -167,6 +168,23 @@ class UnlockFlowTest {
 
         onMain { flow.startPairing() }
         await<UnlockUiState.NeedsPairing>()
+    }
+
+    // The operator at the machine did not answer in time. The machine was reached, so the
+    // phone must not say it could not be, and it says to pair again: if they confirmed
+    // just after, the machine says the phone is already enrolled.
+    @Test
+    fun aPairingTheOperatorDidNotConfirmInTimeSaysSoAndNotUnreachable() {
+        onMain { flow.refresh() }
+        await<UnlockUiState.NeedsPairing>()
+        nextPairing = { FakePairing(failWith = MachineFailure(FailureKind.PAIR_NOT_CONFIRMED, "", "mobile: the machine did not confirm", null)) }
+
+        onMain { flow.pair(payload(machineB)) }
+        val failed = await<UnlockUiState.Failed>()
+        assertEquals("res:${R.string.failure_pair_not_confirmed}", failed.message)
+        assertNotEquals("res:${R.string.failure_pair_unreachable}", failed.message)
+        assertEquals(Retry.SCAN_AGAIN, failed.retry)
+        assertNull(store.saved)
     }
 
     @Test

@@ -209,10 +209,12 @@ private class GoPairing(
     override fun cancel() = pairer.cancel()
 
     private companion object {
-        // Shorter than a connect: the machine is showing a code that
-        // expires in minutes and somebody is standing in front of it,
-        // so a pairing that has not happened by now has gone wrong and
-        // saying so beats a longer wait.
+        // How long to try to reach the machine and send it the proof: shorter
+        // than a connect, since the machine is showing a code that expires in
+        // minutes and somebody is standing in front of it. It does not bound the
+        // wait for the person at the machine to confirm, which the Go side gives
+        // five minutes of its own, so a slow decision is not mistaken for a
+        // machine that could not be reached.
         const val PAIR_TIMEOUT_SECONDS = 60L
     }
 }
@@ -246,6 +248,7 @@ private inline fun <T> classified(
         Mobile.FailurePairRefused -> FailureKind.PAIR_REFUSED
         Mobile.FailureProtocol -> FailureKind.PROTOCOL
         Mobile.FailureKeyMismatch -> FailureKind.KEY_MISMATCH
+        Mobile.FailurePairNotConfirmed -> FailureKind.PAIR_NOT_CONFIRMED
         else -> FailureKind.OTHER
     }
     throw MachineFailure(kind, lastDetail(), e.message, e)

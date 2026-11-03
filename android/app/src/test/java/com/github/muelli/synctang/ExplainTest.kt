@@ -24,6 +24,7 @@ class ExplainTest {
         val expected = mapOf(
             FailureKind.UNREACHABLE to R.string.failure_unreachable,
             FailureKind.PAIR_UNREACHABLE to R.string.failure_pair_unreachable,
+            FailureKind.PAIR_NOT_CONFIRMED to R.string.failure_pair_not_confirmed,
             FailureKind.HUNG_UP to R.string.failure_hung_up,
             FailureKind.NO_REPLY to R.string.failure_no_reply,
             FailureKind.OUTCOME_UNKNOWN to R.string.failure_outcome_unknown,
