@@ -80,9 +80,11 @@ is not. A dialling side (laptop, phone) may use `http://...?insecure` for its
 `discovery`. A machine may give a plain-`http` `discovery` (which is what its
 pairing link hands the phone) only together with an `https`
 `discovery-announce`. Announcements are made with the machine's own
-certificate as the client identity and do not verify the server's certificate,
-as before; `?id=` on the announce URL is stripped, not enforced for the
-announcement `[I]` (read in `syncthing_relay.go`).
+certificate as the client identity. With `?id=` on the announce URL (which is
+the `discovery` URL when no `discovery-announce` is given) the announcement is
+pinned exactly like a lookup: it goes only to the server with that Device ID,
+and nothing is posted to any other. With `?insecure`, or with neither, the
+server's certificate is not verified, as before.
 
 What is verified, with the tests that show it:
 
@@ -100,6 +102,17 @@ What is verified, with the tests that show it:
 - `[V]` `id` and `insecure` are not sent to the server and other query
   parameters are (`TestLookupSendsTheDeviceAndNotTheTrustOptions`); likewise on
   an announce URL (`TestAnnounceDoesNotSendTheTrustOptions`).
+- `[V]` An announcement pinned by `?id=` is posted to a self-signed server with
+  that id (`TestAnnouncePinnedByDeviceIDPostsToTheRightServer`) and to no other:
+  with a wrong id it fails naming the id mismatch and nothing is posted, even if
+  an HTTP client that trusts that server is available
+  (`TestAnnouncePinnedToTheWrongDeviceIDPostsNothing`). `?insecure` and no option
+  stay unpinned (`TestAnnounceInsecureAndPlainStayUnpinned`). Against the real
+  `stdiscosrv`, a machine given a wrong id announces nothing and the key holder
+  does not find it (`TestAMachinePinnedToTheWrongServerIDAnnouncesNothing`); the
+  other integration tests announce with the right id and are found. Mutation
+  check: with the pinned client disabled, the wrong-id unit test and the
+  integration test fail.
 - `[V]` Nothing is announced over plain http (`TestAnnounceRefusesPlainHTTP`);
   the machine's settings refuse an http `discovery` that it would announce to and
   an http `discovery-announce` (`TestMachineDiscoveryRefusesPlainHTTP`); a
@@ -227,8 +240,9 @@ app's JVM tests.
   not find it, and the error says no addresses were announced for the peer
   (`TestAKeyHolderOnAnotherDiscoveryServerDoesNotFindTheMachine`).
 - `[V]` With the machine's announce to the private server removed, the first
-  test fails; with the id comparison disabled, the wrong-id tests fail
-  (mutation checks).
+  test fails; with the id comparison disabled, the wrong-id tests fail; with the
+  pinned announce client disabled, the wrong-id announce tests fail (mutation
+  checks).
 - `[V]` On a real private relay the first session after an announcement
   sometimes failed to complete (a debug log of one such run: the relay logged
   "Failed to add ... to session" and the machine's control connection closed),

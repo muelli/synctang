@@ -174,13 +174,77 @@ func TestAnnounceDoesNotSendTheTrustOptions(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
-	relay := &SyncthingRelay{Cert: testCert(t), AnnounceURLs: []string{srv.URL + "/v2/?x=1&id=" + someDeviceID + "&insecure"}}
-	relay.httpClient = srv.Client()
+	id := protocol.NewDeviceID(srv.Certificate().Raw).String()
+	relay := &SyncthingRelay{Cert: testCert(t), AnnounceURLs: []string{srv.URL + "/v2/?x=1&id=" + id + "&insecure"}}
 	if err := relay.announceOnce(context.Background(), []string{"tcp://192.0.2.1:22000"}); err != nil {
 		t.Fatal(err)
 	}
 	got := q.Load().(url.Values)
 	if got.Has("id") || got.Has("insecure") || got.Get("x") != "1" {
 		t.Errorf("announce query = %v", got)
+	}
+}
+
+// A machine whose discovery URL says ?id= announces only to the server with
+// that Device ID, as it looks up only on it: otherwise an announcement, which
+// says where the machine is, could go to whoever answers at that address.
+func TestAnnouncePinnedByDeviceIDPostsToTheRightServer(t *testing.T) {
+	var posts atomic.Int32
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		posts.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	id := protocol.NewDeviceID(srv.Certificate().Raw).String()
+
+	// No httpClient override: the pin alone has to be what accepts a
+	// self-signed server.
+	relay := &SyncthingRelay{Cert: testCert(t), AnnounceURLs: []string{srv.URL + "/v2/?id=" + id}}
+	if err := relay.announceOnce(context.Background(), []string{"tcp://192.0.2.1:22000"}); err != nil {
+		t.Fatalf("announceOnce: %v", err)
+	}
+	if posts.Load() != 1 {
+		t.Errorf("%d announcements arrived, want 1", posts.Load())
+	}
+}
+
+func TestAnnouncePinnedToTheWrongDeviceIDPostsNothing(t *testing.T) {
+	var posts atomic.Int32
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		posts.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	relay := &SyncthingRelay{Cert: testCert(t), AnnounceURLs: []string{srv.URL + "/v2/?id=" + someDeviceID}}
+	// Even a client that would trust this server must not be used for a pinned URL.
+	relay.httpClient = srv.Client()
+	err := relay.announceOnce(context.Background(), []string{"tcp://192.0.2.1:22000"})
+	if err == nil || !strings.Contains(err.Error(), "id mismatch") {
+		t.Fatalf("announceOnce: %v, want a refusal naming the id mismatch", err)
+	}
+	if posts.Load() != 0 {
+		t.Error("an announcement reached a server that is not the pinned one")
+	}
+}
+
+// Without an id the announcement is made exactly as before: to whatever the
+// certificate is, which the existing tests cover; here with ?insecure, which
+// must not turn into a pin.
+func TestAnnounceInsecureAndPlainStayUnpinned(t *testing.T) {
+	var posts atomic.Int32
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		posts.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	for _, q := range []string{"", "?insecure"} {
+		relay := &SyncthingRelay{Cert: testCert(t), AnnounceURLs: []string{srv.URL + "/v2/" + q}}
+		if err := relay.announceOnce(context.Background(), []string{"tcp://192.0.2.1:22000"}); err != nil {
+			t.Errorf("%q: %v", q, err)
+		}
+	}
+	if posts.Load() != 2 {
+		t.Errorf("%d announcements arrived, want 2", posts.Load())
 	}
 }

@@ -479,6 +479,19 @@ func (t *SyncthingRelay) announceHTTPClient() *http.Client {
 	return t.announceClient
 }
 
+// newPinnedAnnounceHTTPClient is the announce client for a URL that names the
+// server's Device ID: the same client certificate, but the server must be
+// exactly that Device ID. Built per announcement and not kept, which is rare
+// enough not to matter, so it does not hold a connection open either.
+func (t *SyncthingRelay) newPinnedAnnounceHTTPClient(opts discoveryOptions) *http.Client {
+	conf := &tls.Config{Certificates: []tls.Certificate{t.Cert}, MinVersion: tls.VersionTLS12}
+	opts.applyTrust(conf)
+	return &http.Client{
+		Transport: &http.Transport{TLSClientConfig: conf, DisableKeepAlives: true},
+		Timeout:   10 * time.Second,
+	}
+}
+
 func (t *SyncthingRelay) newAnnounceHTTPClient() *http.Client {
 	return &http.Client{
 		Transport: &http.Transport{
@@ -925,8 +938,10 @@ func (t *SyncthingRelay) announceOnce(ctx context.Context, addresses []string) e
 func (t *SyncthingRelay) postAnnounce(ctx context.Context, httpClient *http.Client, announceURL string, payload []byte) error {
 	// An announcement carries this machine's identity and where to reach
 	// it, so it never goes out over plain http; and ?id= and ?insecure are
-	// for a lookup's client, which the server has no use for.
-	target, _, err := parseDiscoveryURL(announceURL)
+	// for the client, which the server has no use for. An ?id= also pins
+	// the server as it does a lookup: the announcement goes only to the
+	// server with that Device ID.
+	target, opts, err := parseDiscoveryURL(announceURL)
 	if err != nil {
 		return fmt.Errorf("announce URL: %w", err)
 	}
@@ -934,6 +949,10 @@ func (t *SyncthingRelay) postAnnounce(ctx context.Context, httpClient *http.Clie
 		return fmt.Errorf("refusing to announce to %s over plain http", u.Host)
 	}
 	announceURL = target
+	if opts.hasID {
+		httpClient = t.newPinnedAnnounceHTTPClient(opts)
+		defer httpClient.CloseIdleConnections()
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, announceURL, bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("building announce request to %s: %w", announceURL, err)

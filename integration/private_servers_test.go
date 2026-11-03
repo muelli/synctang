@@ -455,3 +455,39 @@ func TestAKeyHolderWithNeitherIDNorInsecureRefusesASelfSignedServer(t *testing.T
 		t.Errorf("the failure should be about the certificate, got: %v", err)
 	}
 }
+
+// A machine told to expect a different server certificate than the one it
+// meets must not announce there: the key holder, which looks the machine up on
+// that very server with the right id, finds nothing.
+func TestAMachinePinnedToTheWrongServerIDAnnouncesNothing(t *testing.T) {
+	skipWithoutServers(t)
+	discovery := startDiscovery(t)
+	relay := startRelay(t)
+
+	machineCert, err := transport.LoadOrCreateCert(filepath.Join(t.TempDir(), "machine.pem"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	holderCert, err := transport.LoadOrCreateCert(filepath.Join(t.TempDir(), "holder.pem"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	machineID := protocol.NewDeviceID(machineCert.Certificate[0]).String()
+
+	wrong := "P56IOI7-MZJNU2Y-IQGDREY-DM2MGTI-MGL3BXN-PQ6W5BM-TBBZ4TJ-XZWICQ2"
+	tr := machineConfig(t, relay, discovery.with("?id="+wrong)).NewSyncthingRelay(machineCert)
+	tr.AnnounceInterval = 200 * time.Millisecond
+	listenCtx, stopListening := context.WithCancel(context.Background())
+	defer stopListening()
+	go func() { _, _ = tr.Listen(listenCtx, transport.ListenOptions{}) }()
+
+	// Long enough for many announcement attempts (the interval is 200 ms).
+	time.Sleep(4 * time.Second)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err = holderConfig(t, discovery.pinned()).NewSyncthingRelay(holderCert).Dial(ctx, transport.DialOptions{PeerID: machineID})
+	if err == nil || !strings.Contains(err.Error(), "no addresses announced for peer") {
+		t.Fatalf("Dial: %v, want the machine not to be found there", err)
+	}
+}

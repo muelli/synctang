@@ -86,6 +86,15 @@ func parseDiscoveryURL(s string) (server string, opts discoveryOptions, err erro
 // because only the former also runs when a session is resumed.
 func (o discoveryOptions) httpClient() *http.Client {
 	conf := &tls.Config{MinVersion: tls.VersionTLS12}
+	o.applyTrust(conf)
+	return &http.Client{
+		Timeout:   lookupTimeout,
+		Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, TLSClientConfig: conf},
+	}
+}
+
+// applyTrust sets conf to verify the server as the options say.
+func (o discoveryOptions) applyTrust(conf *tls.Config) {
 	switch {
 	case o.hasID:
 		conf.InsecureSkipVerify = true //nolint:gosec // replaced by the Device ID check in VerifyConnection.
@@ -101,10 +110,6 @@ func (o discoveryOptions) httpClient() *http.Client {
 		}
 	case o.insecure:
 		conf.InsecureSkipVerify = true //nolint:gosec // asked for by ?insecure in the discovery URL.
-	}
-	return &http.Client{
-		Timeout:   lookupTimeout,
-		Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, TLSClientConfig: conf},
 	}
 }
 
