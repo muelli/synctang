@@ -44,8 +44,10 @@ The app stops waiting, tells the machine no and says so, after
 made and not from when the Approve screen appeared (`Session.ConnectedForMillis`
 reports how long ago that was, since the machine may have been slow to send its
 request). 75 s is the shortest of the field sightings, 90 s, less a 15 s margin.
-The screen shows the time left, in steps of five seconds, as plain text, and warns
-once, politely, at 15 s left.
+The window stays running through the fingerprint prompt: if it ends while the
+prompt is up, the prompt is cancelled and the machine is told no. The Approve screen
+shows the time left, in steps of five seconds, as plain text, and warns once,
+politely, at 15 s left.
 
 ## A keepalive would address both causes, and was not built
 

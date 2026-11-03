@@ -182,7 +182,10 @@ and answers once. The machine checks the recovered secret actually opens the vol
 before handing it to systemd, and tells the key holder how it went.
 The app gives you 75 seconds to approve, counted from when it connected to the machine,
 and shows how long is left on the approve screen (a connection with nothing on it can be
-closed by a relay or a network after a minute or two; `docs/relay-idle.md`).
+closed by a relay or a network after a minute or two; `docs/relay-idle.md`). The 75
+seconds include the fingerprint prompt: if it is still up when they run out, the app
+dismisses it, tells the machine no and says so, and a touch that arrives after that
+answers nothing.
 While the app connects, pairs or sends its answer, it says what it is doing (looking
 for the machine, connected through a relay or on the local network and waiting for the
 machine to ask, waiting for you to confirm on the machine), how long it has been, and
