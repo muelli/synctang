@@ -49,6 +49,14 @@ prompt is up, the prompt is cancelled and the machine is told no. The Approve sc
 shows the time left, in steps of five seconds, as plain text, and warns once,
 politely, at 15 s left.
 
+`[V]` On the Pixel 3a XL (Fedora 44 VM as the machine, public relay pool,
+2026-11-03, nobody touching the sensor): the Approve screen appeared 23 s after
+Unlock and said "75 s left to answer"; Approve was tapped and the fingerprint
+prompt came up; the prompt dismissed itself 71 s after the tap, which is 75 s
+after the connection was made, and the screen said "The machine stopped waiting
+for an answer, so nothing was sent". So the real `BiometricPrompt` does go away
+when its coroutine is cancelled.
+
 ## A keepalive would address both causes, and was not built
 
 Any traffic on the session resets a relay's idle timer and keeps a NAT mapping
