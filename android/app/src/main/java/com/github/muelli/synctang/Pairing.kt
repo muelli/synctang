@@ -276,7 +276,7 @@ internal fun ByteArray.toHex(): String =
  */
 fun enrolCommand(publicKeyHex: String, deviceId: String): String =
     "read -rsp 'LUKS passphrase: ' PASS\n" +
-        "unlocker enrol --device /dev/sdXN --name my-machine \\\n" +
+        "synctang-unlocker enrol --device /dev/sdXN --name my-machine \\\n" +
         "  --pubkey $publicKeyHex \\\n" +
         "  --recipient-transport-id $deviceId \\\n" +
         "  --existing-passphrase-file <(printf %s \"\$PASS\")"

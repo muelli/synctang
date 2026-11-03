@@ -26,7 +26,7 @@ class PairingPayloadTest {
         assertEquals("study desktop", machine?.name)
     }
 
-    // What "unlocker pair" prints under its QR code, for a camera that cannot
+    // What "synctang-unlocker pair" prints under its QR code, for a camera that cannot
     // scan: the link the code carries, pasted into the device ID field. This one
     // is verbatim from a real run. A device ID typed on its own carries no code,
     // so it only remembers the machine; the link is what enrols the phone.
@@ -58,7 +58,7 @@ class PairingPayloadTest {
     }
 
     // A machine with its own discovery server says so in the link, so the phone looks it up
-    // where the machine announces. The link is what "unlocker pair" prints, with the URL
+    // where the machine announces. The link is what "synctang-unlocker pair" prints, with the URL
     // escaped as java.net.URLEncoder does. The query of the URL (an id= that pins the server's
     // certificate) travels inside it.
     @Test
@@ -177,7 +177,7 @@ class EnrolCommandTest {
     fun isExactlyTheReadmeForm() {
         assertEquals(
             "read -rsp 'LUKS passphrase: ' PASS\n" +
-                "unlocker enrol --device /dev/sdXN --name my-machine \\\n" +
+                "synctang-unlocker enrol --device /dev/sdXN --name my-machine \\\n" +
                 "  --pubkey 04aabb \\\n" +
                 "  --recipient-transport-id $deviceId \\\n" +
                 "  --existing-passphrase-file <(printf %s \"\$PASS\")",
