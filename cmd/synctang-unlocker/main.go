@@ -11,13 +11,16 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/muelli/synctang/mrcore"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -373,6 +376,12 @@ func readPassphrase(path string) ([]byte, error) {
 		data, err = os.ReadFile(path)
 	}
 	if err != nil {
+		// A process substitution given to a command run through sudo: sudo closes
+		// every descriptor but the first three, so bash's /dev/fd/N is gone.
+		if strings.HasPrefix(path, "/dev/fd/") && errors.Is(err, fs.ErrNotExist) {
+			return nil, fmt.Errorf("%w (%s is a process substitution, and sudo closes it before the command runs: "+
+				"run the command from a root shell (sudo -i), or send the passphrase on stdin with --existing-passphrase-file -)", err, path)
+		}
 		return nil, err
 	}
 	data = bytes.TrimSuffix(data, []byte("\n"))

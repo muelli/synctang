@@ -80,7 +80,12 @@ packages install them; from a checkout, `man -l man/synctang-unlocker.8`.
 The commands below need root on the machine. `--existing-passphrase-file`
 takes an existing LUKS passphrase; the examples use process substitution
 so it never touches a disk. (`-` reads it from stdin, but `pair` also
-uses stdin for its confirmation question.)
+uses stdin for its confirmation question.) Run the commands from a root shell
+(`sudo -i`): `sudo synctang-unlocker ... <(printf %s "$PASS")` fails with `open
+/dev/fd/63: no such file or directory`, because sudo closes the descriptor that
+makes the process substitution work. For a single command,
+`printf %s "$PASS" | sudo synctang-unlocker enrol ... --existing-passphrase-file -`
+does work (not for `pair`).
 
     read -rsp 'LUKS passphrase: ' PASS
 

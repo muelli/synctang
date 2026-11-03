@@ -387,3 +387,30 @@ func TestWarnsOnlyWhenTheIdentityPathWasNotChosen(t *testing.T) {
 		}
 	}
 }
+
+// "sudo cmd --existing-passphrase-file <(printf %s ...)" fails because sudo closes
+// every file descriptor but the standard three before it runs the command, so the
+// /dev/fd/N that bash made for the process substitution is gone. The bare "no such
+// file or directory" sent someone to look for a file; it has to say what happened
+// and what to do instead.
+func TestAPassphraseFileThatIsAClosedDescriptorSaysWhySudoDidThat(t *testing.T) {
+	_, err := readPassphrase("/dev/fd/9999")
+	if err == nil {
+		t.Fatal("a descriptor that is not open was read")
+	}
+	for _, want := range []string{"sudo", "root shell", "--existing-passphrase-file -"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the error does not mention %q: %v", want, err)
+		}
+	}
+}
+
+func TestAnOrdinaryMissingPassphraseFileIsNotBlamedOnSudo(t *testing.T) {
+	_, err := readPassphrase(filepath.Join(t.TempDir(), "nope"))
+	if err == nil {
+		t.Fatal("a missing file was read")
+	}
+	if strings.Contains(err.Error(), "sudo") {
+		t.Errorf("a plain missing file is explained by sudo: %v", err)
+	}
+}

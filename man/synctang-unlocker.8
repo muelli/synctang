@@ -102,6 +102,15 @@ One trailing newline is ignored.
 Required.
 Do not keep the passphrase in a file on disk; see
 .BR EXAMPLES .
+A process substitution, as in the examples, does not survive
+.BR sudo (8),
+which closes every file descriptor but the first three before it runs the
+command: run the examples from a root shell, or send the passphrase on standard
+input with
+.B \-\-existing\-passphrase\-file \-
+(not for
+.BR pair ,
+whose confirmation question also reads standard input).
 .TP
 \fB\-\-name\fR \fIname\fR
 This machine's name, shown to the key holder before it approves.
