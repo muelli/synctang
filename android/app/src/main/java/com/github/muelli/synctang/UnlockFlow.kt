@@ -6,7 +6,9 @@ import javax.crypto.Cipher
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -665,75 +667,103 @@ class UnlockFlow(
         if (_state.value !is UnlockUiState.Approve) return
         val machine = store.machine() ?: return
         val active = session ?: return
-        disarmApproveExpiry()
+        // The window to answer is not ended by tapping Approve: the fingerprint prompt
+        // that follows is part of it, so the expiry stays armed until the answer is
+        // actually being sent (see [ApproveRun]).
+        val window = ApproveRun()
+        approveRun = window
         _state.value = UnlockUiState.Working(machine, Progress(startedAtMillis = clock()))
         progressSource = { active.progress() }
         startPolling()
 
-        scope.launch {
-            // Before any prompt: a key that was retired, or is missing, is found
-            // here, and nobody is asked to touch the sensor for an answer that
-            // cannot be given.
-            val cipher = try {
-                withContext(io) { runWithin(keyUseTimeoutSeconds) { prepareKey() } }
-            } catch (e: KeyInvalidated) {
-                retireInvalidatedKey(machine, active, e)
-                return@launch
-            } catch (e: Exception) {
-                declineQuietly(active)
-                withContext(io) { closeSession() }
-                _state.value = failed(machine, e)
-                return@launch
-            }
-
-            val outcome = gate.authenticate(
-                title = strings.get(R.string.biometric_title),
-                subtitle = strings.get(R.string.biometric_subtitle, machine.name.ifBlank { machine.deviceId }),
-                cipher = cipher,
-            )
-            if (outcome != AuthOutcome.SUCCEEDED) {
-                // Tell the machine rather than leaving it waiting for a
-                // timeout: it can then say why it is still locked.
-                withContext(io) {
-                    try {
-                        active.decline(KEY_HOLDER_NOT_AUTHENTICATED)
-                    } catch (e: Exception) {
-                        // The machine may already have hung up; the
-                        // user-visible outcome is the same either way.
-                    }
-                    closeSession()
-                }
-                _state.value = UnlockUiState.Failed(machine, strings.get(failureMessage(outcome)))
-                return@launch
-            }
-
+        window.job = scope.launch {
             try {
-                withContext(io) { active.answer { runWithin(keyUseTimeoutSeconds, discard = { it.fill(0) }) { unwrapKey(cipher) } } }
-                _state.value = UnlockUiState.Done(machine)
-            } catch (e: KeyUseTimedOut) {
-                // The key is not known to be broken, so it is kept; the
-                // machine is told, rather than left to its own timeout.
-                declineQuietly(active)
-                _state.value = failed(machine, e)
-            } catch (e: KeyRefusedFingerprint) {
-                // Kept, and the machine told, for the same reason; see the class.
-                declineQuietly(active)
-                _state.value = failed(machine, e)
-            } catch (e: MachineFailure) {
-                if (e.kind == FailureKind.KEY_MISMATCH) {
-                    // Nothing was sent: this phone's own two files disagree. Not the
-                    // machine's doing, and not the app's to repair by deleting.
-                    log("the saved key does not match its public point", e)
-                    declineQuietly(active)
-                    _state.value = UnlockUiState.KeyNeedsReplacing(KeyProblem.FILES_DO_NOT_MATCH)
-                } else {
-                    _state.value = failed(machine, e)
-                }
-            } catch (e: Exception) {
-                _state.value = failed(machine, e)
+                approveAndAnswer(window, machine, active, gate)
             } finally {
-                withContext(io) { closeSession() }
+                window.finished = true
             }
+        }
+    }
+
+    /**
+     * One approval, from preparing the key to the machine's verdict. [window] says when the
+     * window to answer has run out, which can happen while the fingerprint prompt is up.
+     */
+    private suspend fun approveAndAnswer(window: ApproveRun, machine: Machine, active: MachineSession, gate: BiometricGate) {
+        // Before any prompt: a key that was retired, or is missing, is found
+        // here, and nobody is asked to touch the sensor for an answer that
+        // cannot be given.
+        val cipher = try {
+            withContext(io) { runWithin(keyUseTimeoutSeconds) { prepareKey() } }
+        } catch (e: KeyInvalidated) {
+            disarmApproveExpiry()
+            retireInvalidatedKey(machine, active, e)
+            return
+        } catch (e: Exception) {
+            disarmApproveExpiry()
+            declineQuietly(active)
+            withContext(io) { closeSession() }
+            _state.value = failed(machine, e)
+            return
+        }
+
+        val outcome = gate.authenticate(
+            title = strings.get(R.string.biometric_title),
+            subtitle = strings.get(R.string.biometric_subtitle, machine.name.ifBlank { machine.deviceId }),
+            cipher = cipher,
+        )
+        // Whichever comes first wins. If the window ran out while the prompt was up, the
+        // machine has been told no and the screen says so, and a touch that lands now, from a
+        // prompt that did not notice being cancelled, answers nothing. Everything here runs
+        // on the one thread, so the flag and the answer cannot interleave.
+        if (window.expired) return
+        currentCoroutineContext().ensureActive()
+        if (outcome != AuthOutcome.SUCCEEDED) {
+            disarmApproveExpiry()
+            // Tell the machine rather than leaving it waiting for a
+            // timeout: it can then say why it is still locked.
+            withContext(io) {
+                try {
+                    active.decline(KEY_HOLDER_NOT_AUTHENTICATED)
+                } catch (e: Exception) {
+                    // The machine may already have hung up; the
+                    // user-visible outcome is the same either way.
+                }
+                closeSession()
+            }
+            _state.value = UnlockUiState.Failed(machine, strings.get(failureMessage(outcome)))
+            return
+        }
+
+        // From here the answer is being sent, under its own time limits; the window is over.
+        window.answering = true
+        disarmApproveExpiry()
+        try {
+            withContext(io) { active.answer { runWithin(keyUseTimeoutSeconds, discard = { it.fill(0) }) { unwrapKey(cipher) } } }
+            _state.value = UnlockUiState.Done(machine)
+        } catch (e: KeyUseTimedOut) {
+            // The key is not known to be broken, so it is kept; the
+            // machine is told, rather than left to its own timeout.
+            declineQuietly(active)
+            _state.value = failed(machine, e)
+        } catch (e: KeyRefusedFingerprint) {
+            // Kept, and the machine told, for the same reason; see the class.
+            declineQuietly(active)
+            _state.value = failed(machine, e)
+        } catch (e: MachineFailure) {
+            if (e.kind == FailureKind.KEY_MISMATCH) {
+                // Nothing was sent: this phone's own two files disagree. Not the
+                // machine's doing, and not the app's to repair by deleting.
+                log("the saved key does not match its public point", e)
+                declineQuietly(active)
+                _state.value = UnlockUiState.KeyNeedsReplacing(KeyProblem.FILES_DO_NOT_MATCH)
+            } else {
+                _state.value = failed(machine, e)
+            }
+        } catch (e: Exception) {
+            _state.value = failed(machine, e)
+        } finally {
+            withContext(io) { closeSession() }
         }
     }
 
@@ -822,7 +852,19 @@ class UnlockFlow(
         approveExpiry?.cancel()
         approveExpiry = scope.launch {
             delay((expiresAtMillis - clock()).coerceAtLeast(0))
-            if (_state.value !is UnlockUiState.Approve) return@launch
+            // Still waiting for an answer: on the Approve screen, or past it with the
+            // fingerprint prompt up and nothing sent yet.
+            val window = approveRun
+            val waiting = when (_state.value) {
+                is UnlockUiState.Approve -> true
+                is UnlockUiState.Working -> window != null && !window.answering && !window.finished
+                else -> false
+            }
+            if (!waiting) return@launch
+            window?.expired = true
+            // Cancelling the approval cancels the prompt: the gate's coroutine ends, which
+            // is what dismisses BiometricPrompt.
+            window?.job?.cancel()
             log("the approval window ran out", IllegalStateException("no answer in ${approveWindowMillis} ms from the connection"))
             withContext(io) {
                 try {
@@ -835,6 +877,21 @@ class UnlockFlow(
             _state.value = UnlockUiState.Failed(machine, strings.get(R.string.error_approval_expired))
         }
     }
+
+    /**
+     * One approval under way, from the tap on Approve to the answer. [expired] is set by
+     * the window running out, [answering] once the answer is being sent (after which the
+     * window no longer applies), and [finished] when the approval has ended either way.
+     * All three are only touched on [scope]'s thread.
+     */
+    private class ApproveRun {
+        var job: Job? = null
+        var expired = false
+        var answering = false
+        var finished = false
+    }
+
+    private var approveRun: ApproveRun? = null
 
     private fun disarmApproveExpiry() {
         approveExpiry?.cancel()

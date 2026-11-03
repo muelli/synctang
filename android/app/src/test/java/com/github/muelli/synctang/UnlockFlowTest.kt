@@ -55,6 +55,7 @@ class UnlockFlowTest {
     @Volatile private var keyCheckWaitsFor: CountDownLatch? = null
     private val keyChecks = AtomicInteger()
     @Volatile private var unwrapFails: Exception? = null
+    @Volatile private var unwrapTakesMillis = 0L
     private val preparedCiphers = Collections.synchronizedList(mutableListOf<Cipher>())
     private val unwrappedWith = Collections.synchronizedList(mutableListOf<Cipher>())
     @Volatile private var identityFails: Exception? = null
@@ -80,6 +81,7 @@ class UnlockFlowTest {
         },
         unwrapKey = { cipher ->
             unwrapFails?.let { throw it }
+            if (unwrapTakesMillis > 0) Thread.sleep(unwrapTakesMillis)
             unwrappedWith += cipher
             ByteArray(32)
         },
@@ -962,6 +964,103 @@ class UnlockFlowTest {
         val session = sessions.single()
         assertEquals(listOf(APPROVAL_TIMED_OUT), session.declines.toList())
         assertTrue("the session was never closed", awaitClosed(session))
+    }
+
+    // The window to answer does not end when Approve is tapped: the fingerprint prompt that
+    // follows is part of it. A prompt left up past the machine's patience could only produce
+    // an answer to a session that has ended, so when the window runs out the prompt is
+    // cancelled, the machine told no and the session closed, as for an Approve left alone.
+    // (The window in these tests is 1500 ms from the connection.)
+
+    /** A gate that never returns, and records that its coroutine was cancelled. */
+    private class NeverGate : BiometricGate {
+        val cancelled = CountDownLatch(1)
+        val shown = CountDownLatch(1)
+        override suspend fun authenticate(title: String, subtitle: String, cipher: Cipher): AuthOutcome =
+            kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+                cont.invokeOnCancellation { cancelled.countDown() }
+                shown.countDown()
+            }
+    }
+
+    @Test
+    fun theWindowRunningOutWhileThePromptIsUpCancelsItAndDeclinesTheMachineOnce() {
+        val session = connectToARequest()
+        val gate = NeverGate()
+        onMain { flow.approve(gate) }
+        await<UnlockUiState.Working>()
+        assertTrue("the prompt was never shown", gate.shown.await(2, TimeUnit.SECONDS))
+
+        val failed = await<UnlockUiState.Failed>()
+        assertEquals("res:${R.string.error_approval_expired}", failed.message)
+        assertTrue("the prompt was not cancelled", gate.cancelled.await(2, TimeUnit.SECONDS))
+        assertEquals(listOf(APPROVAL_TIMED_OUT), session.declines.toList())
+        assertTrue("the session was never closed", awaitClosed(session))
+        assertFalse(session.answered)
+        Thread.sleep(300)
+        assertEquals("declined more than once", 1, session.declines.size)
+        assertTrue(flow.state.value is UnlockUiState.Failed)
+    }
+
+    @Test
+    fun anApprovalJustBeforeTheWindowEndsAnswersAndNoExpiryFollows() {
+        val session = connectToARequest()
+        onMain {
+            flow.approve { _, _, _ ->
+                kotlinx.coroutines.delay(1_200)
+                AuthOutcome.SUCCEEDED
+            }
+        }
+        await<UnlockUiState.Done>()
+        Thread.sleep(600) // past the window
+        assertTrue(flow.state.value is UnlockUiState.Done)
+        assertTrue(session.answered)
+        assertTrue("the machine was told no after it was answered", session.declines.isEmpty())
+    }
+
+    /** The touch arrives after the window ended, from a prompt that did not notice being cancelled. */
+    @Test
+    fun aTouchAfterTheWindowEndedSendsNoAnswer() {
+        val session = connectToARequest()
+        onMain {
+            flow.approve { _, _, _ ->
+                // Not cancellable: this stands for a sensor match that lands after the expiry.
+                withContext(kotlinx.coroutines.NonCancellable) { kotlinx.coroutines.delay(1_900) }
+                AuthOutcome.SUCCEEDED
+            }
+        }
+        val failed = await<UnlockUiState.Failed>()
+        assertEquals("res:${R.string.error_approval_expired}", failed.message)
+        Thread.sleep(1_200) // the late success has come and gone
+        assertFalse("an answer was sent after the machine was declined", session.answered)
+        assertEquals(listOf(APPROVAL_TIMED_OUT), session.declines.toList())
+        assertTrue(flow.state.value is UnlockUiState.Failed)
+    }
+
+    /** An answer already being sent is not cut off by the window running out under it. */
+    @Test
+    fun anAnswerThatIsBeingSentIsNotInterruptedByTheWindowEnding() {
+        val session = connectToARequest()
+        unwrapTakesMillis = 600
+        onMain {
+            flow.approve { _, _, _ ->
+                kotlinx.coroutines.delay(1_100)
+                AuthOutcome.SUCCEEDED
+            }
+        }
+        // The window ends at 1500 ms, in the middle of the 600 ms the unwrapping takes.
+        await<UnlockUiState.Done>()
+        assertTrue(session.answered)
+        assertTrue("the machine was told no while it was being answered", session.declines.isEmpty())
+    }
+
+    @Test
+    fun cancellingThePromptYourselfStillDeclinesOnceAndLeavesNoExpiryBehind() {
+        val session = connectToARequest()
+        onMain { flow.approve { _, _, _ -> AuthOutcome.CANCELLED } }
+        await<UnlockUiState.Failed>()
+        Thread.sleep(1_800) // past the window: nothing more happens
+        assertEquals(listOf(KEY_HOLDER_NOT_AUTHENTICATED), session.declines.toList())
     }
 
     // An Approve screen cannot stay up for ever. The machine ended one session
