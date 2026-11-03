@@ -307,6 +307,10 @@ type Session struct {
 
 	failure lastFailure
 
+	// progress is read by Stage, Attempt and Route without taking mu, which
+	// Connect holds while it dials.
+	progress progress
+
 	seed      string
 	machineID string
 
@@ -395,6 +399,7 @@ func (s *Session) Connect() (err error) {
 	if err != nil {
 		return err
 	}
+	s.progress.advance(StageStarting)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.timeoutSeconds)*time.Second)
 	defer cancel()
@@ -496,21 +501,35 @@ const connectRetryInterval = 2 * time.Second
 // back to behaving as it did before, which is why the lock's absence
 // degrades rather than breaks.
 func newDialTransport(cert tls.Certificate, directAddr string, network transport.NetworkConfig) transport.Transport {
+	return newProgressDialTransport(cert, directAddr, network, nil)
+}
+
+// newProgressDialTransport is newDialTransport that reports how far each dial
+// gets, and which route won, to p (nil for nobody).
+func newProgressDialTransport(cert tls.Certificate, directAddr string, network transport.NetworkConfig, p *progress) transport.Transport {
 	relay := network.NewSyncthingRelay(cert)
+	local := &transport.LocalDiscovery{Cert: cert}
 	if directAddr != "" {
+		if p != nil {
+			relay.OnDialPhase = p.dialHook(0)
+		}
 		return relay
 	}
-	return &transport.Multi{Transports: []transport.Transport{
-		&transport.LocalDiscovery{Cert: cert},
-		relay,
-	}}
+	m := &transport.Multi{Transports: []transport.Transport{local, relay}}
+	if p != nil {
+		local.OnDialPhase = p.dialHook(0)
+		relay.OnDialPhase = p.dialHook(1)
+		m.OnWin = p.won
+	}
+	return m
 }
 
 // connectOnceLocked is one attempt: dial, read Hello, read the
 // recovery request. Any failure leaves the session with no connection, so
 // the next attempt starts clean.
 func (s *Session) connectOnceLocked(ctx context.Context, cert tls.Certificate) error {
-	tr := newDialTransport(cert, s.directAddr, s.network)
+	s.progress.beginAttempt(firstStage(s.directAddr))
+	tr := newProgressDialTransport(cert, s.directAddr, s.network, &s.progress)
 	conn, err := tr.Dial(ctx, transport.DialOptions{
 		PeerID:     s.machineID,
 		DirectAddr: s.directAddr,
@@ -518,6 +537,10 @@ func (s *Session) connectOnceLocked(ctx context.Context, cert tls.Certificate) e
 	if err != nil {
 		return fmt.Errorf("mobile: dialling %s: %w", s.machineID, err)
 	}
+	if s.directAddr != "" {
+		s.progress.won(0)
+	}
+	s.progress.advance(StageWaitingForRequest)
 	s.conn = conn
 
 	// The reads below honour no context, so a cancelled or timed-out
@@ -560,6 +583,7 @@ func (s *Session) readRecoverRequestLocked() error {
 	}
 	s.kid = req.Kid
 	s.x = req.X
+	s.progress.advance(StageRequestReady)
 	return nil
 }
 
@@ -670,10 +694,12 @@ func (s *Session) answerXOnly(xOnly []byte) (err error) {
 		return fmt.Errorf("mobile: expected a %d-byte x-coordinate, got %d bytes", coordLen, len(xOnly))
 	}
 
+	s.progress.advance(StageSendingAnswer)
 	if err := mrcore.WriteMessage(s.conn, mrcore.RecoverResponse{XOnly: xOnly}); err != nil {
 		return withKind(FailureHungUp, fmt.Errorf("mobile: sending answer: %w", err))
 	}
 	s.answered = true
+	s.progress.advance(StageWaitingForVerdict)
 
 	// Wait to be told what came of it, rather than reporting success
 	// on the strength of the write. They are not the same claim: a
@@ -693,6 +719,7 @@ func (s *Session) answerXOnly(xOnly []byte) (err error) {
 		return withKindDetail(FailureAnswerRejected, reason,
 			fmt.Errorf("mobile: the machine could not use the answer: %s", reason))
 	}
+	s.progress.advance(StageUnlocked)
 	return nil
 }
 

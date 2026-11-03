@@ -57,6 +57,9 @@ type Pairer struct {
 
 	failure lastFailure
 
+	// progress is read by Stage, Attempt and Route; see Session.
+	progress progress
+
 	// network is the machine's choice of discovery server,
 	// from its pairing link; the zero value is the public ones.
 	network transport.NetworkConfig
@@ -151,6 +154,7 @@ func (p *Pairer) Pair(machineID, pairingCode, seed, publicKeyHex, name, directAd
 		return errCancelled
 	}
 	defer p.arm(nil)
+	p.progress.advance(StageStarting)
 
 	p.mu.Lock()
 	network := p.network
@@ -158,7 +162,7 @@ func (p *Pairer) Pair(machineID, pairingCode, seed, publicKeyHex, name, directAd
 
 	var lastErr error
 	for {
-		lastErr = pairOnce(ctx, cert, machineID, selfID, secret, publicKey, name, directAddr, network)
+		lastErr = pairOnce(ctx, &p.progress, cert, machineID, selfID, secret, publicKey, name, directAddr, network)
 		if lastErr == nil {
 			return nil
 		}
@@ -184,11 +188,15 @@ func (p *Pairer) Pair(machineID, pairingCode, seed, publicKeyHex, name, directAd
 	}
 }
 
-func pairOnce(ctx context.Context, cert tls.Certificate, machineID, selfID string, secret, publicKey []byte, name, directAddr string, network transport.NetworkConfig) error {
-	tr := newDialTransport(cert, directAddr, network)
+func pairOnce(ctx context.Context, prog *progress, cert tls.Certificate, machineID, selfID string, secret, publicKey []byte, name, directAddr string, network transport.NetworkConfig) error {
+	prog.beginAttempt(firstStage(directAddr))
+	tr := newProgressDialTransport(cert, directAddr, network, prog)
 	conn, err := tr.Dial(ctx, transport.DialOptions{PeerID: machineID, DirectAddr: directAddr})
 	if err != nil {
 		return fmt.Errorf("mobile: dialling %s: %w", machineID, err)
+	}
+	if directAddr != "" {
+		prog.won(0)
 	}
 	defer conn.Close()
 	// As in Session.connectOnceLocked: the reads honour no context, so
@@ -203,9 +211,11 @@ func pairOnce(ctx context.Context, cert tls.Certificate, machineID, selfID strin
 
 	proof := mrcore.PairProof(secret, machineID, selfID, publicKey, challenge.Nonce)
 	req := mrcore.PairRequest{PubKey: publicKey, Name: name, Proof: proof}
+	prog.advance(StageSendingProof)
 	if err := mrcore.WriteMessage(conn, req); err != nil {
 		return fmt.Errorf("mobile: sending the pairing request: %w", err)
 	}
+	prog.advance(StageWaitingForOperator)
 
 	var result mrcore.PairResult
 	if err := mrcore.ReadMessage(conn, &result); err != nil {
@@ -214,6 +224,7 @@ func pairOnce(ctx context.Context, cert tls.Certificate, machineID, selfID strin
 	if !result.OK {
 		return &pairRefused{reason: result.Error}
 	}
+	prog.advance(StageEnrolled)
 	return nil
 }
 
