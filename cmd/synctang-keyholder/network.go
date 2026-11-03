@@ -17,11 +17,11 @@ import (
 // the machine's network.conf minus relay-pool (discovery,
 // discovery-announce): only the machine joins a relay.
 func defaultConfigFile() (string, error) {
-	dir, err := os.UserConfigDir()
+	dir, err := configDir()
 	if err != nil {
-		return "", fmt.Errorf("finding config directory: %w", err)
+		return "", err
 	}
-	return filepath.Join(dir, "keyholder", "config"), nil
+	return filepath.Join(dir, "config"), nil
 }
 
 // loadNetworkConfig reads the settings from the config file at path and

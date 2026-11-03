@@ -12,17 +12,30 @@ import (
 	"github.com/muelli/synctang/mrcore"
 )
 
+// configDirName is this program's directory under the user's config directory,
+// holding key, transport.pem and config.
+const configDirName = "synctang-keyholder"
+
+// configDir is where the key holder keeps its files by default.
+func configDir() (string, error) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("finding config directory: %w", err)
+	}
+	return filepath.Join(dir, configDirName), nil
+}
+
 // defaultKeyFile is where the file backend keeps the long-term private
 // scalar s, unless overridden. It lives under the user's config
 // directory rather than the working directory, so it survives being
 // run from anywhere and is not accidentally picked up by, say, a
 // backup of a project checkout.
 func defaultKeyFile() (string, error) {
-	dir, err := os.UserConfigDir()
+	dir, err := configDir()
 	if err != nil {
-		return "", fmt.Errorf("finding config directory: %w", err)
+		return "", err
 	}
-	return filepath.Join(dir, "keyholder", "key"), nil
+	return filepath.Join(dir, "key"), nil
 }
 
 // defaultTransportKeyFile is where this key holder's persistent transport
@@ -32,11 +45,11 @@ func defaultKeyFile() (string, error) {
 // machine's AuthorizedPeers and Recipient.Transport are matched against;
 // they are both "this key holder's identity" but serve different layers.
 func defaultTransportKeyFile() (string, error) {
-	dir, err := os.UserConfigDir()
+	dir, err := configDir()
 	if err != nil {
-		return "", fmt.Errorf("finding config directory: %w", err)
+		return "", err
 	}
-	return filepath.Join(dir, "keyholder", "transport.pem"), nil
+	return filepath.Join(dir, "transport.pem"), nil
 }
 
 // generateAndSave creates a new random long-term scalar s and writes it
