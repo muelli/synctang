@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/muelli/synctang/mrcore"
@@ -220,10 +221,26 @@ func runUnlock(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		select {
 		case <-ctx.Done():
 			fmt.Fprintf(stderr, "synctang-keyholder: %v (last attempt: %v)\n", ctx.Err(), lastErr)
+			var dial *dialError
+			if *directAddr == "" && errors.As(lastErr, &dial) {
+				if hint := dialFailureHint(machineID, network.Discovery, time.Now); hint != "" {
+					fmt.Fprintf(stderr, "synctang-keyholder: %s\n", hint)
+				}
+			}
 			return 1
 		case <-time.After(unlockRetryInterval):
 		}
 	}
+}
+
+// dialFailureHint asks the discovery server once what it knows of the machine, after a dial
+// gave up, and returns what to tell the person (empty when discovery says nothing useful,
+// such as when it could not be reached or asked to be left alone). The dial's own time is
+// spent, so the lookup has a short limit of its own.
+func dialFailureHint(machineID, discovery string, now func() time.Time) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return transport.DialFailureHint(transport.CheckMachine(ctx, machineID, discovery, now))
 }
 
 // unlockRetryInterval is how long runUnlock waits between attempts

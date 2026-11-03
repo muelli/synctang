@@ -44,11 +44,17 @@ func newDialTransport(cert tls.Certificate, directAddr string, network transport
 	}}
 }
 
+// dialError is a failure to reach the machine at all, as opposed to one partway through
+// talking to it: only that is worth asking discovery about.
+type dialError struct{ error }
+
+func (e *dialError) Unwrap() error { return e.error }
+
 func runUnlockOnce(ctx context.Context, s []byte, cert tls.Certificate, machineID, directAddr string, network transport.NetworkConfig, yes bool, stdin io.Reader, stdout io.Writer) error {
 	tr := newDialTransport(cert, directAddr, network)
 	conn, err := tr.Dial(ctx, transport.DialOptions{PeerID: machineID, DirectAddr: directAddr})
 	if err != nil {
-		return fmt.Errorf("dialing %s: %w", machineID, err)
+		return &dialError{fmt.Errorf("dialing %s: %w", machineID, err)}
 	}
 	defer conn.Close()
 
