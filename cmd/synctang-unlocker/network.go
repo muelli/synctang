@@ -16,8 +16,7 @@ import (
 // defaultNetworkConfFile is where an owner who does not want the public
 // Syncthing relay pool and discovery servers says which ones to use. The
 // dracut module carries it into the initrd, because the agent there has
-// no other place to read it from. It is named for the project, not the
-// binary; the older machine.pem stays under /etc/unlocker for now.
+// no other place to read it from.
 const defaultNetworkConfFile = "/etc/synctang/network.conf"
 
 // procCmdline is the kernel command line. A variable so tests can point
@@ -26,7 +25,7 @@ var procCmdline = "/proc/cmdline"
 
 // The kernel command line arguments that override network.conf. They
 // are the way to change the servers at the boot prompt, when the network
-// path is what is broken, as rd.unlocker=0 is the way to switch the
+// path is what is broken, as rd.synctang=0 is the way to switch the
 // agent off.
 const (
 	cmdlineRelay     = "rd.synctang.relay="

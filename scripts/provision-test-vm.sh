@@ -69,7 +69,7 @@ install -m 755 "$(dirname "$0")/../dracut/90synctang"/*.sh \
 	"$MNT/usr/lib/dracut/modules.d/90synctang/"
 
 log "enrolling ${#RECIPIENTS[@]} recipient(s)"
-mkdir -p "$MNT/etc/unlocker"
+mkdir -p "$MNT/etc/synctang"
 for r in "${RECIPIENTS[@]}"; do
 	pubkey="${r%%:*}"
 	transport="${r#*:}"
@@ -80,7 +80,7 @@ for r in "${RECIPIENTS[@]}"; do
 		--recipient-transport-id "$transport" \
 		--existing-passphrase-file - \
 		--name "$MACHINE_NAME" \
-		--machine-key-file "$MNT/etc/unlocker/machine.pem"
+		--machine-key-file "$MNT/etc/synctang/machine.pem"
 done
 
 KVER=$(basename "$(find "$MNT/lib/modules" -mindepth 1 -maxdepth 1 -type d | sort | head -1)")

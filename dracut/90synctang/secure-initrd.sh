@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Make every initrd image that may carry the machine's identity readable by
-# root only. The identity (/etc/unlocker/machine.pem) is baked into the initrd
+# root only. The identity (/etc/synctang/machine.pem) is baked into the initrd
 # so the agent can run before the root filesystem is unlocked; anyone who can
 # read the image can pose as the machine (docs/threat-model.md).
 #
@@ -18,7 +18,7 @@
 set -eu
 
 boot=${BOOT_DIR:-/boot}
-identity=${IDENTITY:-/etc/unlocker/machine.pem}
+identity=${IDENTITY:-/etc/synctang/machine.pem}
 
 # No identity, nothing secret was baked in.
 [ -e "$identity" ] || exit 0

@@ -13,11 +13,11 @@ type getarg > /dev/null 2>&1 || . /lib/dracut-lib.sh
 
 command -v synctang-unlocker > /dev/null 2>&1 || return 0
 
-# rd.unlocker=0 turns the whole thing off from the kernel command line, the escape
+# rd.synctang=0 turns the whole thing off from the kernel command line, the escape
 # hatch when the network path is what is broken and you just want the console
 # prompt.
-if ! getargbool 1 rd.unlocker; then
-	info "synctang-unlocker: disabled by rd.unlocker=0"
+if ! getargbool 1 rd.synctang; then
+	info "synctang-unlocker: disabled by rd.synctang=0"
 	return 0
 fi
 

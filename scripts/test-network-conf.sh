@@ -39,7 +39,7 @@ root
 check "no network.conf: nothing is claimed" nothing_carried
 
 root
-put etc/unlocker/machine.pem
+put etc/synctang/machine.pem
 check "the machine identity alone is not a network.conf" nothing_carried
 
 # A symlink that points nowhere is not a file to copy; inst_simple would fail
@@ -48,5 +48,16 @@ root
 mkdir -p "$work/root/etc/synctang"
 ln -s /nonexistent "$work/root/etc/synctang/network.conf"
 check "a dangling symlink is not carried" nothing_carried
+
+# The machine identity: the initrd must carry /etc/synctang/machine.pem.
+identity_carried() { [ "$(synctang_machine_identity "$work/root")" = /etc/synctang/machine.pem ]; }
+no_identity_carried() { [ -z "$(synctang_machine_identity "$work/root")" ]; }
+
+root
+put etc/synctang/machine.pem
+check "a machine.pem that is there is carried" identity_carried
+
+root
+check "no machine.pem: nothing is claimed" no_identity_carried
 
 exit "$fail"

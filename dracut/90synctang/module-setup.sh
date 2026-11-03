@@ -60,6 +60,14 @@ synctang_ca_bundles() {
 	return 0
 }
 
+# synctang_machine_identity prints /etc/synctang/machine.pem if there is one,
+# under the optional root given as $1.
+synctang_machine_identity() {
+	local root=${1:-} identity=/etc/synctang/machine.pem
+	[ -r "$root$identity" ] && echo "$identity"
+	return 0
+}
+
 # synctang_network_conf prints /etc/synctang/network.conf if there is one, under
 # the optional root given as $1 (as for synctang_ca_bundles). It is the file that
 # names a private relay pool and discovery server, and the agent in the initrd has
@@ -106,15 +114,17 @@ install() {
 		dwarn "synctang-unlocker: the other usual names). Install ca-certificates, or discovery will fail at boot."
 	fi
 
-	# The human who ran "unlocker enrol" already generated this machine's
+	# The human who ran "synctang-unlocker enrol" already generated this machine's
 	# persistent transport identity (transport.LoadOrCreateCert's default
 	# path). Carrying the same file into the initrd is what lets the agent
 	# present the exact Device ID a key holder's Recipient.Transport was
 	# recorded against; without it the agent would generate a fresh identity
 	# on first boot and no enrolled key holder would recognise it. Missing
 	# entirely just means enrol has not run yet, so there is nothing to copy.
-	if [ -r /etc/unlocker/machine.pem ]; then
-		inst_simple /etc/unlocker/machine.pem
+	local identity
+	identity=$(synctang_machine_identity)
+	if [ -n "$identity" ]; then
+		inst_simple "$identity"
 	fi
 
 	# The owner's choice of relay pool and discovery server, if they made one.

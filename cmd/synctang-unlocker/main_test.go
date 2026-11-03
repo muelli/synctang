@@ -377,9 +377,9 @@ func TestWarnsOnlyWhenTheIdentityPathWasNotChosen(t *testing.T) {
 		want    bool
 	}{
 		{"created at the default path", true, defaultMachineKeyFile, true},
-		{"created where the caller asked", true, "/tmp/some-image/etc/unlocker/machine.pem", false},
+		{"created where the caller asked", true, "/tmp/some-image/etc/synctang/machine.pem", false},
 		{"loaded an existing default", false, defaultMachineKeyFile, false},
-		{"loaded an existing explicit one", false, "/tmp/some-image/etc/unlocker/machine.pem", false},
+		{"loaded an existing explicit one", false, "/tmp/some-image/etc/synctang/machine.pem", false},
 	}
 	for _, c := range cases {
 		if got := shouldWarnAboutNewIdentity(c.isNew, c.keyFile); got != c.want {

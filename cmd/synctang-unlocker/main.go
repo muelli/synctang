@@ -44,7 +44,7 @@ commands:
 // against will not match the one the agent presents at boot; see
 // dracut/90unlocker/module-setup.sh, which copies this file into the
 // initrd when present.
-const defaultMachineKeyFile = "/etc/unlocker/machine.pem"
+const defaultMachineKeyFile = "/etc/synctang/machine.pem"
 
 // defaultAskPasswordDir is where systemd's password agent protocol leaves
 // pending requests; see https://systemd.io/PASSWORD_AGENTS/.

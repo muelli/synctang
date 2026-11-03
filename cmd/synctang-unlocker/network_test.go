@@ -142,8 +142,8 @@ func TestLoadNetworkConfigCmdlineRelay(t *testing.T) {
 }
 
 func TestLoadNetworkConfigIgnoresOtherCmdlineArguments(t *testing.T) {
-	// rd.unlocker=0 and lookalikes are not settings of this kind.
-	cmdline := writeFile(t, "rd.unlocker=0 rd.synctang.relayx=junk xrd.synctang.relay=junk rd.unlocker.relay=junk\n")
+	// rd.synctang=0 and lookalikes are not settings of this kind.
+	cmdline := writeFile(t, "rd.synctang=0 rd.synctang.relayx=junk xrd.synctang.relay=junk rd.unlocker.relay=junk\n")
 	c, err := loadNetworkConfig("", cmdline)
 	if err != nil {
 		t.Fatalf("loadNetworkConfig: %v", err)
@@ -201,13 +201,14 @@ func TestResolveNetwork(t *testing.T) {
 	}
 }
 
-// The settings are named for the project, not for the binary: the file is
-// /etc/synctang/network.conf and the kernel arguments are rd.synctang.*. The
-// older machine identity stays under /etc/unlocker, so the two prefixes differ
-// on purpose.
+// Everything is named for the project: the files are under /etc/synctang and
+// the kernel arguments are rd.synctang.*.
 func TestNetworkSettingsAreNamedForTheProject(t *testing.T) {
 	if defaultNetworkConfFile != "/etc/synctang/network.conf" {
 		t.Errorf("defaultNetworkConfFile = %q", defaultNetworkConfFile)
+	}
+	if defaultMachineKeyFile != "/etc/synctang/machine.pem" {
+		t.Errorf("defaultMachineKeyFile = %q", defaultMachineKeyFile)
 	}
 	if cmdlineRelay != "rd.synctang.relay=" || cmdlineDiscovery != "rd.synctang.discovery=" {
 		t.Errorf("kernel arguments are %q and %q", cmdlineRelay, cmdlineDiscovery)
