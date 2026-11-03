@@ -26,6 +26,12 @@ import mobile.Session
  */
 class UnlockViewModel(application: Application) : AndroidViewModel(application) {
 
+    // The Go side's log: everything in a debug build, so it can be followed from
+    // `adb logcat -s synctang GoLog`, and warnings only in a release build.
+    init {
+        Mobile.setLogLevel(if (BuildConfig.DEBUG) "trace" else "warn")
+    }
+
     private val store = PairingStore(application)
     // Alias and gating both come from TestMode, together: an ungated
     // key lives under its own alias so it can never be mistaken for
@@ -57,7 +63,7 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
         strings = object : Strings {
             override fun get(id: Int, vararg args: Any) = application.getString(id, *args)
         },
-        log = { message, e -> android.util.Log.w(LOG_TAG, message, e) },
+        appLog = AppLog.logcat,
     )
 
     val state: StateFlow<UnlockUiState> = flow.state

@@ -321,9 +321,45 @@ class UnlockFlow(
     private val clock: () -> Long = System::currentTimeMillis,
     private val strings: Strings,
     private val log: (String, Throwable) -> Unit = { _, _ -> },
+    // Where the flow says what it is doing: every state change, every user action, the
+    // approve window, the prompt, the key operations (never their bytes), and failures.
+    private val appLog: AppLog = AppLog.silent,
 ) {
-    private val _state = MutableStateFlow<UnlockUiState>(UnlockUiState.Working(Machine("", "")))
+    /** The state, with every change written to the log. */
+    private inner class LoggedState(initial: UnlockUiState) {
+        private val flow = MutableStateFlow(initial)
+        var value: UnlockUiState
+            get() = flow.value
+            set(next) {
+                val before = flow.value
+                flow.value = next
+                if (before != next) appLog.d { "state " + describeForLog(next) }
+            }
+
+        fun asStateFlow(): StateFlow<UnlockUiState> = flow.asStateFlow()
+    }
+
+    private val _state = LoggedState(UnlockUiState.Working(Machine("", "")))
     val state: StateFlow<UnlockUiState> = _state.asStateFlow()
+
+    // A failure, to the log hook and to the log at warn, with its whole cause chain.
+    private fun logWarn(message: String, e: Throwable) {
+        log(message, e)
+        appLog.w({ message }, e)
+    }
+
+    // One key operation, timed, for the log: when it started and ended and how long it took,
+    // and nothing it handled.
+    private inline fun <T> timed(what: String, block: () -> T): T {
+        appLog.d { "$what start" }
+        val started = clock()
+        try {
+            return block()
+        } finally {
+            val took = clock() - started
+            appLog.d { "$what end ${took} ms" }
+        }
+    }
 
     private var session: MachineSession? = null
 
@@ -344,6 +380,7 @@ class UnlockFlow(
      * either the pairing screen or the unlock screen.
      */
     fun refresh() {
+        appLog.d { "action refresh" }
         scope.launch {
             _state.value = home(previous = null)
             checkKeyOnce()
@@ -357,7 +394,10 @@ class UnlockFlow(
      * The app came back to the foreground, which is when someone may have enrolled a
      * finger in Settings, retiring the key: check again, behind whatever is showing.
      */
-    fun returnedToForeground() = runKeyCheck()
+    fun returnedToForeground() {
+        appLog.d { "action returned to foreground" }
+        runKeyCheck()
+    }
 
     private fun checkKeyOnce() {
         if (!keyChecked) runKeyCheck()
@@ -377,7 +417,7 @@ class UnlockFlow(
                 // then Connecting or Approve): that session has this identity, and the
                 // approval finds the dead key for itself.
                 if (now is UnlockUiState.Ready || now is UnlockUiState.NeedsPairing) {
-                    log("the key was found invalidated at start", e)
+                    logWarn("the key was found invalidated at start", e)
                     val oldDeviceId = withContext(io) { resetIdentity() }
                     _state.value = UnlockUiState.Failed(
                         null,
@@ -388,7 +428,7 @@ class UnlockFlow(
             } catch (e: Exception) {
                 // Not knowing is not a reason to show anything: the next Approve
                 // starts the same operation and reports what it finds.
-                log("could not check the key at start", e)
+                logWarn("could not check the key at start", e)
             } finally {
                 keyCheckRunning = false
             }
@@ -402,10 +442,14 @@ class UnlockFlow(
      * back to it.
      */
     fun startPairing() {
+        appLog.d { "action start pairing" }
         scope.launch { _state.value = home(previous = store.machine(), forcePairing = true) }
     }
 
-    fun keepCurrentMachine() = refresh()
+    fun keepCurrentMachine() {
+        appLog.d { "action keep current machine" }
+        refresh()
+    }
 
     /**
      * The person has chosen to throw away a key that was not whole and make a
@@ -413,6 +457,7 @@ class UnlockFlow(
      * says which Device ID to revoke on the machines that trusted the old one.
      */
     fun replaceKey() {
+        appLog.d { "action replace key" }
         scope.launch {
             val oldDeviceId = withContext(io) { resetIdentity() }
             _state.value = UnlockUiState.Failed(
@@ -429,6 +474,7 @@ class UnlockFlow(
      * been fine.
      */
     fun allowSoftwareKey() {
+        appLog.d { "action allow software key" }
         allowSoftwareKey.invoke()
         refresh()
     }
@@ -439,6 +485,7 @@ class UnlockFlow(
      * it enrolled until it is revoked there.
      */
     fun undoReplace() {
+        appLog.d { "action undo replace" }
         val ready = _state.value as? UnlockUiState.Ready ?: return
         val replaced = ready.replaced ?: return
         store.saveMachine(replaced)
@@ -447,6 +494,7 @@ class UnlockFlow(
 
     /** The offer to undo has gone unused; stop offering it. */
     fun dismissUndo() {
+        appLog.d { "action dismiss undo" }
         val ready = _state.value as? UnlockUiState.Ready ?: return
         _state.value = ready.copy(replaced = null)
     }
@@ -474,7 +522,7 @@ class UnlockFlow(
         } catch (e: SoftwareKeyRefused) {
             UnlockUiState.SoftwareKeyRefused
         } catch (e: KeyNeedsReplacing) {
-            log("the key is not whole", e)
+            logWarn("the key is not whole", e)
             UnlockUiState.KeyNeedsReplacing(e.problem)
         } catch (e: BiometricEnrolmentRequired) {
             UnlockUiState.Failed(null, strings.get(R.string.error_no_biometric))
@@ -484,7 +532,7 @@ class UnlockFlow(
             // gone. Finding out that the Keystore wraps its "no
             // biometric enrolled" error took a throwaway build added
             // just to print this.
-            log("could not prepare this phone's identity", e)
+            logWarn("could not prepare this phone's identity", e)
             failed(null, e)
         }
 
@@ -508,6 +556,11 @@ class UnlockFlow(
      * the undo offered on the Unlock screen afterwards (see [adopt]).
      */
     fun pair(scanned: String): Boolean {
+        // The machine, and only whether there was a code: never the code, never the link.
+        appLog.d {
+            "action pair machine=${PairingPayload.parse(scanned)?.deviceId ?: "none"} " +
+                "code=${if (PairingPayload.pairingCode(scanned) != null) "yes" else "no"}"
+        }
         when (val plan = planPairing(scanned)) {
             PairingPlan.Invalid -> return false
             is PairingPlan.Remember -> scope.launch { adopt(plan.machine) }
@@ -552,6 +605,7 @@ class UnlockFlow(
                 // Saved even if Cancel came too late to stop it: the
                 // machine has enrolled this phone, and saying otherwise
                 // would leave a working pairing unused.
+                appLog.d { "pairing succeeded machine=${machine.name} id=${machine.deviceId}" }
                 adopt(machine)
             } catch (e: Exception) {
                 if (attempt.cancelled) {
@@ -559,7 +613,7 @@ class UnlockFlow(
                 } else if (e is SoftwareKeyRefused) {
                     _state.value = UnlockUiState.SoftwareKeyRefused
                 } else if (e is KeyNeedsReplacing) {
-                    log("the key is not whole", e)
+                    logWarn("the key is not whole", e)
                     _state.value = UnlockUiState.KeyNeedsReplacing(e.problem)
                 } else {
                     _state.value = failed(machine, e, Retry.SCAN_AGAIN)
@@ -605,6 +659,7 @@ class UnlockFlow(
     /** Dials the machine and waits for it to say what it wants. */
     fun connect() {
         val machine = store.machine() ?: return
+        appLog.d { "action connect machine=${machine.name} id=${machine.deviceId}" }
         disarmApproveExpiry()
         val attempt = InFlight()
         inFlight = attempt
@@ -667,6 +722,7 @@ class UnlockFlow(
         if (_state.value !is UnlockUiState.Approve) return
         val machine = store.machine() ?: return
         val active = session ?: return
+        appLog.d { "action approve machine=${machine.name}" }
         // The window to answer is not ended by tapping Approve: the fingerprint prompt
         // that follows is part of it, so the expiry stays armed until the answer is
         // actually being sent (see [ApproveRun]).
@@ -694,7 +750,7 @@ class UnlockFlow(
         // here, and nobody is asked to touch the sensor for an answer that
         // cannot be given.
         val cipher = try {
-            withContext(io) { runWithin(keyUseTimeoutSeconds) { prepareKey() } }
+            withContext(io) { timed("prepare cipher") { runWithin(keyUseTimeoutSeconds) { prepareKey() } } }
         } catch (e: KeyInvalidated) {
             disarmApproveExpiry()
             retireInvalidatedKey(machine, active, e)
@@ -707,11 +763,18 @@ class UnlockFlow(
             return
         }
 
-        val outcome = gate.authenticate(
-            title = strings.get(R.string.biometric_title),
-            subtitle = strings.get(R.string.biometric_subtitle, machine.name.ifBlank { machine.deviceId }),
-            cipher = cipher,
-        )
+        appLog.d { "biometric prompt shown" }
+        val outcome = try {
+            gate.authenticate(
+                title = strings.get(R.string.biometric_title),
+                subtitle = strings.get(R.string.biometric_subtitle, machine.name.ifBlank { machine.deviceId }),
+                cipher = cipher,
+            )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            appLog.d { "biometric prompt cancelled" + if (window.expired) " by the window" else "" }
+            throw e
+        }
+        appLog.d { "biometric prompt result $outcome" }
         // Whichever comes first wins. If the window ran out while the prompt was up, the
         // machine has been told no and the screen says so, and a touch that lands now, from a
         // prompt that did not notice being cancelled, answers nothing. Everything here runs
@@ -739,7 +802,7 @@ class UnlockFlow(
         window.answering = true
         disarmApproveExpiry()
         try {
-            withContext(io) { active.answer { runWithin(keyUseTimeoutSeconds, discard = { it.fill(0) }) { unwrapKey(cipher) } } }
+            withContext(io) { active.answer { timed("unwrap key") { runWithin(keyUseTimeoutSeconds, discard = { it.fill(0) }) { unwrapKey(cipher) } } } }
             _state.value = UnlockUiState.Done(machine)
         } catch (e: KeyUseTimedOut) {
             // The key is not known to be broken, so it is kept; the
@@ -754,7 +817,7 @@ class UnlockFlow(
             if (e.kind == FailureKind.KEY_MISMATCH) {
                 // Nothing was sent: this phone's own two files disagree. Not the
                 // machine's doing, and not the app's to repair by deleting.
-                log("the saved key does not match its public point", e)
+                logWarn("the saved key does not match its public point", e)
                 declineQuietly(active)
                 _state.value = UnlockUiState.KeyNeedsReplacing(KeyProblem.FILES_DO_NOT_MATCH)
             } else {
@@ -775,7 +838,7 @@ class UnlockFlow(
      * dead key in front.
      */
     private suspend fun retireInvalidatedKey(machine: Machine, active: MachineSession, cause: KeyInvalidated) {
-        log("the key was invalidated", cause)
+        logWarn("the key was invalidated", cause)
         declineQuietly(active)
         val oldDeviceId = withContext(io) { resetIdentity() }
         withContext(io) { closeSession() }
@@ -794,6 +857,7 @@ class UnlockFlow(
      * here.
      */
     fun cancel() {
+        appLog.d { "action cancel in " + describeForLog(_state.value).substringBefore(' ') }
         disarmApproveExpiry()
         inFlight?.let {
             it.cancel()
@@ -815,7 +879,7 @@ class UnlockFlow(
     }
 
     private fun failed(machine: Machine?, e: Exception, retry: Retry = Retry.REFRESH): UnlockUiState.Failed {
-        log("failed", e)
+        logWarn("failed", e)
         val explained = explain(e)
         return UnlockUiState.Failed(
             machine,
@@ -849,6 +913,7 @@ class UnlockFlow(
      * Approve that could only fail, for as long as the app stayed open.
      */
     private fun armApproveExpiry(machine: Machine, expiresAtMillis: Long) {
+        appLog.d { "window armed ${(expiresAtMillis - clock()).coerceAtLeast(0)} ms" }
         approveExpiry?.cancel()
         approveExpiry = scope.launch {
             delay((expiresAtMillis - clock()).coerceAtLeast(0))
@@ -861,11 +926,12 @@ class UnlockFlow(
                 else -> false
             }
             if (!waiting) return@launch
+            appLog.d { "window expired, " + (if (window != null) "prompt cancelled" else "no prompt up") }
             window?.expired = true
             // Cancelling the approval cancels the prompt: the gate's coroutine ends, which
             // is what dismisses BiometricPrompt.
             window?.job?.cancel()
-            log("the approval window ran out", IllegalStateException("no answer in ${approveWindowMillis} ms from the connection"))
+            logWarn("the approval window ran out", IllegalStateException("no answer in ${approveWindowMillis} ms from the connection"))
             withContext(io) {
                 try {
                     session?.decline(APPROVAL_TIMED_OUT)
@@ -946,5 +1012,27 @@ private fun MachineSession.closeQuietly() {
     } catch (e: Exception) {
         // Closing a connection that is already gone is not a failure
         // worth showing anyone.
+    }
+}
+
+/**
+ * The state in words for the log: its type and the fields that are not secret. Machine
+ * names, device IDs, stages and times are; a key identifier is shortened to its first
+ * eight characters and the identity's public key is left out.
+ */
+internal fun describeForLog(state: UnlockUiState): String {
+    fun machine(m: Machine) = "machine=${m.name} id=${m.deviceId}"
+    fun progress(p: Progress) = "stage=${p.stage.name.lowercase()} attempt=${p.attempt} route=${p.route.name.lowercase()}"
+    return when (state) {
+        is UnlockUiState.NeedsPairing -> "NeedsPairing phone=${state.identity.deviceId} previous=${state.previous?.name ?: "none"}"
+        is UnlockUiState.Ready -> "Ready ${machine(state.machine)} phone=${state.identity.deviceId}"
+        is UnlockUiState.Connecting -> "Connecting ${machine(state.machine)} ${progress(state.progress)}"
+        is UnlockUiState.Pairing -> "Pairing ${machine(state.machine)} ${progress(state.progress)}"
+        is UnlockUiState.Approve -> "Approve ${machine(state.machine)} peer=${state.peerId} kid=${kidPrefix(state.kidHex)} expiresAt=${state.expiresAtMillis}"
+        is UnlockUiState.Working -> "Working ${machine(state.machine)} ${progress(state.progress)}"
+        is UnlockUiState.Done -> "Done ${machine(state.machine)}"
+        is UnlockUiState.SoftwareKeyRefused -> "SoftwareKeyRefused"
+        is UnlockUiState.KeyNeedsReplacing -> "KeyNeedsReplacing problem=${state.problem}"
+        is UnlockUiState.Failed -> "Failed message=${state.message} machine=${state.machine?.name ?: "none"}"
     }
 }

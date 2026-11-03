@@ -191,6 +191,9 @@ for the machine, connected through a relay or on the local network and waiting f
 machine to ask, waiting for you to confirm on the machine), how long it has been, and
 which attempt it is on after the first.
 
+A debug build of the app logs what it is doing, and `adb logcat -v time -s synctang GoLog`
+follows it; release builds log warnings only (`docs/debugging.md`).
+
 Kernel command line options:
 
 - `rd.synctang=0` does not start the agent; the escape hatch for when the

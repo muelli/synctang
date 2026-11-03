@@ -48,7 +48,7 @@ class UnlockFlowTest {
     private var nextSession: () -> FakeSession = { FakeSession() }
     private var nextPairing: () -> FakePairing = { FakePairing() }
 
-    private val identity = Identity("PHONE-ID", "04ab", KeyHolderKey.Backing.TEE)
+    private val identity = Identity("PHONE-ID", "04" + "deadbeefcafe".repeat(10), KeyHolderKey.Backing.TEE)
     @Volatile private var prepareFails: Exception? = null
     @Volatile private var prepareBlocksOn: CountDownLatch? = null
     @Volatile private var keyCheckFails: Exception? = null
@@ -62,6 +62,10 @@ class UnlockFlowTest {
     @Volatile private var softwareKeyAllowances = 0
     @Volatile private var identityResets = 0
     private val logged = Collections.synchronizedList(mutableListOf<Throwable>())
+
+    /** Every line the flow writes through the facade, at the most verbose level. */
+    private val logLines = Collections.synchronizedList(mutableListOf<String>())
+    private val appLog = AppLog({ _, _, line, _ -> logLines += line }) { AppLog.Level.DEBUG }
 
     private val flow = UnlockFlow(
         scope = scope,
@@ -104,6 +108,7 @@ class UnlockFlowTest {
                 "res:$id" + if (args.isEmpty()) "" else args.joinToString(",", "(", ")")
         },
         log = { _, e -> logged += e },
+        appLog = appLog,
     )
 
     @After
@@ -316,6 +321,68 @@ class UnlockFlowTest {
         pairings.single().finish()
         await<UnlockUiState.Ready>()
         assertEquals("https://d.example.net/v2/", store.saved?.discovery)
+    }
+
+    // The log: what the flow does is followable from logcat, and none of it is a secret.
+
+    @Test
+    fun aPairingIsLoggedWithoutItsCodeOrItsKeys() {
+        onMain { flow.refresh() }
+        await<UnlockUiState.NeedsPairing>()
+        onMain { flow.pair(payload(machineB, code = "SECRET-CODE-123")) }
+        await<UnlockUiState.Pairing>()
+        val pairing = pairings.awaitOne()
+        pairing.started.await(5, TimeUnit.SECONDS)
+        pairing.finish()
+        await<UnlockUiState.Ready>()
+
+        val all = synchronized(logLines) { logLines.toList() }
+        assertTrue("nothing was logged", all.any { it.contains("pair", ignoreCase = true) })
+        assertTrue("the machine id was not logged", all.any { it.contains(machineB.deviceId.substringBefore('-')) })
+        for (line in all) {
+            assertFalse("the pairing code was logged: $line", line.contains("SECRET-CODE-123"))
+            assertFalse("a pairing link was logged: $line", line.contains("psk="))
+            assertFalse("the whole link was logged: $line", line.contains("synctang://pair"))
+            assertFalse("the public key was logged: $line", line.contains("deadbeefcafe"))
+        }
+        assertTrue("whether there was a code is worth saying", all.any { it.contains("code=yes") || it.contains("has_code=true") })
+    }
+
+    @Test
+    fun anUnlockIsLoggedWithoutTheKeyBytes() {
+        val session = connectToARequest()
+        onMain { flow.approve { _, _, _ -> AuthOutcome.SUCCEEDED } }
+        await<UnlockUiState.Done>()
+        assertTrue(session.answered)
+
+        val all = synchronized(logLines) { logLines.toList() }
+        // What the fake unwrapping returns is 32 bytes of 0x00; these are the other things a
+        // careless log might include.
+        for (line in all) {
+            assertFalse("the key bytes were logged: $line", line.contains("[B@") || line.contains("0, 0, 0, 0"))
+            assertFalse(line, line.contains("deadbeefcafe"))
+        }
+        val joined = all.joinToString("\n")
+        for (want in listOf("Approve", "prompt", "unwrap", "Done")) {
+            assertTrue("the log does not mention $want:\n$joined", joined.contains(want, ignoreCase = true))
+        }
+    }
+
+    @Test
+    fun everyStateChangeAndEveryUserActionIsLogged() {
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        nextSession = { FakeSession(connectReturnsAtOnce = true) }
+        onMain { flow.connect() }
+        await<UnlockUiState.Approve>()
+        onMain { flow.cancel() }
+        await<UnlockUiState.Ready>()
+
+        val joined = synchronized(logLines) { logLines.toList() }.joinToString("\n")
+        for (want in listOf("state Ready", "state Connecting", "state Approve", "action connect", "action cancel", "window armed", machineA.name)) {
+            assertTrue("the log does not contain \"$want\":\n$joined", joined.contains(want))
+        }
     }
 
     // Progress: the busy screens say what the dial, the pairing and the answer are doing,
