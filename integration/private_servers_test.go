@@ -4,20 +4,25 @@
 // build itself. They skip when those are not there.
 //
 // private_servers_test.go runs a machine and a key holder through a relay
-// server and a discovery server of their own, on the loopback, with the real
-// Syncthing programs strelaysrv and stdiscosrv rather than fakes of them.
-// Nothing in it is pointed at the public Syncthing servers: the settings under
-// test are exactly what keeps it from doing so, and a lookup that went there
-// instead would not find the machine. It does not, however, take the network
-// away, so that is argued from the settings and not enforced.
+// server and a discovery server of their own, with the real Syncthing
+// programs strelaysrv and stdiscosrv rather than fakes of them. The
+// discovery server makes itself a self-signed certificate, which no system
+// root vouches for, so the tests also show what the ?id= and ?insecure
+// options of a discovery URL do against a real server: ?id=<its Device ID>
+// is accepted, a different id is refused before connecting, ?insecure is
+// accepted, and neither is refused. Nothing in them is pointed at the public
+// Syncthing servers: the settings under test are exactly what keeps them from
+// doing so, and a lookup that went there instead would not find the machine.
+// They do not, however, take the network away, so that is argued from the
+// settings and not enforced.
 //
 // The servers are reached on this host's own non-loopback address, not on
 // 127.0.0.1: stdiscosrv silently drops loopback addresses from what it is
 // told, so a relay announced as relay://127.0.0.1:... is never stored and the
 // machine is never found. A private deployment is on a LAN address anyway.
-// The test skips on a host with none.
+// The tests skip on a host with none.
 //
-// To run it, build the two servers somewhere outside this module (their
+// To run them, build the two servers somewhere outside this module (their
 // module's replace directives stop "go install ...@version" from working, and
 // their dependencies are not in this module's go.sum):
 //
@@ -34,16 +39,10 @@ package integration
 import (
 	"bytes"
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io"
-	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -61,14 +60,6 @@ import (
 	"github.com/syncthing/syncthing/lib/protocol"
 )
 
-// discoCertPEM and discoKeyPEM are the private discovery server's own
-// certificate, for this host's addresses. The lookup side verifies the server's
-// certificate against the system roots (there is no way to hand it another
-// pool, and private CAs are out of scope for the product), so TestMain points
-// SSL_CERT_FILE at this certificate before anything has loaded the roots,
-// which is why this lives in a package of its own.
-var discoCertPEM, discoKeyPEM []byte
-
 // hostIP is this host's first non-loopback IPv4 address, or nil.
 func hostIP() net.IP {
 	addrs, err := net.InterfaceAddrs()
@@ -81,59 +72,6 @@ func hostIP() net.IP {
 		}
 	}
 	return nil
-}
-
-func TestMain(m *testing.M) {
-	dir, err := os.MkdirTemp("", "synctang-integration-")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	defer os.RemoveAll(dir)
-
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	tmpl := &x509.Certificate{
-		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: "private discovery"},
-		NotBefore:             time.Now().Add(-time.Hour),
-		NotAfter:              time.Now().Add(24 * time.Hour),
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		BasicConstraintsValid: true,
-		IsCA:                  true,
-		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1")},
-	}
-	if ip := hostIP(); ip != nil {
-		tmpl.IPAddresses = append(tmpl.IPAddresses, ip)
-	}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	keyDER, err := x509.MarshalECPrivateKey(key)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	discoCertPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
-	discoKeyPEM = pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
-
-	roots := filepath.Join(dir, "roots.pem")
-	if err := os.WriteFile(roots, discoCertPEM, 0o600); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	os.Setenv("SSL_CERT_FILE", roots)
-	os.Setenv("SSL_CERT_DIR", dir)
-
-	code := m.Run()
-	os.RemoveAll(dir)
-	os.Exit(code)
 }
 
 // syncBuffer is a bytes.Buffer a process can write while a test reads it.
@@ -191,21 +129,29 @@ func waitFor(t *testing.T, what string, ok func() bool) {
 	}
 }
 
-// startDiscovery runs stdiscosrv on the loopback and returns its URL.
-func startDiscovery(t *testing.T) string {
+// discoveryServer is a running stdiscosrv: where it is, and the Device ID of
+// the self-signed certificate it made for itself.
+type discoveryServer struct {
+	url string // https://host:port/v2/, no options
+	id  string
+}
+
+// with is the server's URL with a query, such as "?id=" + s.id.
+func (d discoveryServer) with(query string) string { return d.url + query }
+
+// pinned is the URL as an owner would write it: trusted by Device ID.
+func (d discoveryServer) pinned() string { return d.with("?id=" + d.id) }
+
+// startDiscovery runs stdiscosrv, which generates its own certificate when
+// there is none, and reads the Device ID off the file it wrote.
+func startDiscovery(t *testing.T) discoveryServer {
 	t.Helper()
-	bin := os.Getenv("STDISCOSRV")
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "cert.pem"), discoCertPEM, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "key.pem"), discoKeyPEM, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	certFile := filepath.Join(dir, "cert.pem")
 	port := freePort(t)
 	addr := net.JoinHostPort(hostIP().String(), strconv.Itoa(port))
-	out := start(t, bin,
-		"--cert", filepath.Join(dir, "cert.pem"), "--key", filepath.Join(dir, "key.pem"),
+	out := start(t, os.Getenv("STDISCOSRV"),
+		"--cert", certFile, "--key", filepath.Join(dir, "key.pem"),
 		"--listen", addr, "--db-dir", dir)
 	waitFor(t, "the discovery server to listen\n"+out.String(), func() bool {
 		c, err := net.Dial("tcp", addr)
@@ -215,18 +161,28 @@ func startDiscovery(t *testing.T) string {
 		c.Close()
 		return true
 	})
-	return fmt.Sprintf("https://%s/v2/", addr)
+	raw, err := os.ReadFile(certFile)
+	if err != nil {
+		t.Fatalf("the discovery server wrote no certificate: %v", err)
+	}
+	block, _ := pem.Decode(raw)
+	if block == nil {
+		t.Fatal("the discovery server's certificate is not PEM")
+	}
+	return discoveryServer{
+		url: fmt.Sprintf("https://%s/v2/", addr),
+		id:  protocol.NewDeviceID(block.Bytes).String(),
+	}
 }
 
 var relayURIRe = regexp.MustCompile(`URI: (relay://\S+)`)
 
-// startRelay runs strelaysrv on the loopback, joined to no pool, and returns
-// the relay:// URI it prints, which carries its Device ID.
+// startRelay runs strelaysrv on the host's address, joined to no pool, and
+// returns the relay:// URI it prints, which carries its Device ID.
 func startRelay(t *testing.T) string {
 	t.Helper()
-	bin := os.Getenv("STRELAYSRV")
 	port := freePort(t)
-	out := start(t, bin,
+	out := start(t, os.Getenv("STRELAYSRV"),
 		"-keys", t.TempDir(), "-listen", net.JoinHostPort(hostIP().String(), strconv.Itoa(port)),
 		"-pools=", "-status-srv=")
 	var uri string
@@ -251,10 +207,45 @@ func skipWithoutServers(t *testing.T) {
 	}
 }
 
+func machineConfig(t *testing.T, relay, discovery string) transport.NetworkConfig {
+	t.Helper()
+	cfg, err := transport.ParseNetworkConfig(relay, discovery, "")
+	if err != nil {
+		t.Fatalf("the machine's settings: %v", err)
+	}
+	return cfg
+}
+
+func holderConfig(t *testing.T, discovery string) transport.NetworkConfig {
+	t.Helper()
+	cfg, err := transport.ParseDialerNetworkConfig(discovery, "")
+	if err != nil {
+		t.Fatalf("the key holder's settings: %v", err)
+	}
+	return cfg
+}
+
+// listenAgain is what the agent does: a Listen that fails (a session the relay
+// could not complete, say, which closes the machine's control connection)
+// is followed by another, until one succeeds or ctx is done. A single Listen
+// would make these tests depend on the first dial landing cleanly.
+func listenAgain(ctx context.Context, tr *transport.SyncthingRelay, opts transport.ListenOptions) (transport.Conn, error) {
+	for {
+		conn, err := tr.Listen(ctx, opts)
+		if err == nil {
+			return conn, nil
+		}
+		if ctx.Err() != nil {
+			return nil, err
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
 // meet has the machine listen through machineCfg and the key holder dial
-// through keyholderCfg, and checks that bytes cross both ways and that each
+// through holderCfg, and checks that bytes cross both ways and that each
 // side saw the other's real identity.
-func meet(t *testing.T, machineCfg, keyholderCfg transport.NetworkConfig) {
+func meet(t *testing.T, machineCfg, holderCfg transport.NetworkConfig) {
 	t.Helper()
 	machineCert, err := transport.LoadOrCreateCert(filepath.Join(t.TempDir(), "machine.pem"))
 	if err != nil {
@@ -279,7 +270,7 @@ func meet(t *testing.T, machineCfg, keyholderCfg transport.NetworkConfig) {
 	}
 	listened := make(chan result, 1)
 	go func() {
-		conn, err := machineTr.Listen(ctx, transport.ListenOptions{AuthorizedPeers: []string{holderID}})
+		conn, err := listenAgain(ctx, machineTr, transport.ListenOptions{AuthorizedPeers: []string{holderID}})
 		if err != nil {
 			listened <- result{err: err}
 			return
@@ -294,7 +285,7 @@ func meet(t *testing.T, machineCfg, keyholderCfg transport.NetworkConfig) {
 		listened <- result{peer: conn.PeerID(), got: string(buf[:n]), err: err}
 	}()
 
-	conn, err := keyholderCfg.NewSyncthingRelay(holderCert).Dial(ctx, transport.DialOptions{PeerID: machineID})
+	conn, err := holderCfg.NewSyncthingRelay(holderCert).Dial(ctx, transport.DialOptions{PeerID: machineID})
 	if err != nil {
 		t.Fatalf("the key holder could not reach the machine: %v", err)
 	}
@@ -324,18 +315,18 @@ func TestMeetingThroughAPrivateRelayAndDiscoveryServer(t *testing.T) {
 	discovery := startDiscovery(t)
 	relay := startRelay(t)
 
-	// The machine names its single relay and its discovery server; the key
-	// holder needs only the discovery server, and joins the relay the machine
-	// announced.
-	machineCfg, err := transport.ParseNetworkConfig(relay, discovery, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	holderCfg, err := transport.ParseNetworkConfig("", discovery, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Run("a single relay", func(t *testing.T) { meet(t, machineCfg, holderCfg) })
+	// The machine names its single relay and its discovery server, pinned by
+	// the server's Device ID; the key holder needs only the discovery server,
+	// and joins the relay the machine announced.
+	machineCfg := machineConfig(t, relay, discovery.pinned())
+	t.Run("a single relay, discovery pinned by id", func(t *testing.T) {
+		meet(t, machineCfg, holderConfig(t, discovery.pinned()))
+	})
+
+	// ?insecure on the key holder's side instead of the id.
+	t.Run("a single relay, key holder with ?insecure", func(t *testing.T) {
+		meet(t, machineCfg, holderConfig(t, discovery.with("?insecure")))
+	})
 
 	// The same through a relay pool: a pool is an HTTP endpoint answering with
 	// a list of relays.
@@ -343,11 +334,48 @@ func TestMeetingThroughAPrivateRelayAndDiscoveryServer(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"relays": []map[string]string{{"url": relay}}})
 	}))
 	defer pool.Close()
-	poolCfg, err := transport.ParseNetworkConfig(pool.URL+"/endpoint", discovery, "")
+	poolCfg := machineConfig(t, pool.URL+"/endpoint", discovery.pinned())
+	t.Run("a relay pool", func(t *testing.T) { meet(t, poolCfg, holderConfig(t, discovery.pinned())) })
+}
+
+// startMachine has a machine announce through cfg until the test ends, and
+// waits until it can be found, so that a failure afterwards is about how the
+// key holder trusts the server and not about timing. It returns the machine's
+// Device ID.
+func startMachine(t *testing.T, cfg transport.NetworkConfig, findWith transport.NetworkConfig) string {
+	t.Helper()
+	machineCert, err := transport.LoadOrCreateCert(filepath.Join(t.TempDir(), "machine.pem"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Run("a relay pool", func(t *testing.T) { meet(t, poolCfg, holderCfg) })
+	machineID := protocol.NewDeviceID(machineCert.Certificate[0]).String()
+
+	listenCtx, stopListening := context.WithCancel(context.Background())
+	t.Cleanup(stopListening)
+	tr := cfg.NewSyncthingRelay(machineCert)
+	tr.AnnounceInterval = 200 * time.Millisecond
+	go func() {
+		for listenCtx.Err() == nil {
+			if conn, err := tr.Listen(listenCtx, transport.ListenOptions{}); err == nil {
+				conn.Close()
+			}
+		}
+	}()
+
+	probeCert, err := transport.LoadOrCreateCert(filepath.Join(t.TempDir(), "probe.pem"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the machine to announce", func() bool {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		conn, err := findWith.NewSyncthingRelay(probeCert).Dial(ctx, transport.DialOptions{PeerID: machineID})
+		if err == nil {
+			conn.Close()
+		}
+		return err == nil || !strings.Contains(err.Error(), "no addresses announced")
+	})
+	return machineID
 }
 
 // Without the same discovery server on both sides the machine is not found,
@@ -359,56 +387,71 @@ func TestAKeyHolderOnAnotherDiscoveryServerDoesNotFindTheMachine(t *testing.T) {
 	otherDiscovery := startDiscovery(t)
 	relay := startRelay(t)
 
-	machineCfg, err := transport.ParseNetworkConfig(relay, machineDiscovery, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	wrongCfg, err := transport.ParseNetworkConfig("", otherDiscovery, "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	machineID := startMachine(t, machineConfig(t, relay, machineDiscovery.pinned()), holderConfig(t, machineDiscovery.pinned()))
 
-	machineCert, err := transport.LoadOrCreateCert(filepath.Join(t.TempDir(), "machine.pem"))
-	if err != nil {
-		t.Fatal(err)
-	}
 	holderCert, err := transport.LoadOrCreateCert(filepath.Join(t.TempDir(), "holder.pem"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	machineID := protocol.NewDeviceID(machineCert.Certificate[0]).String()
-
-	listenCtx, stopListening := context.WithCancel(context.Background())
-	defer stopListening()
-	machineTr := machineCfg.NewSyncthingRelay(machineCert)
-	machineTr.AnnounceInterval = 200 * time.Millisecond
-	go func() { _, _ = machineTr.Listen(listenCtx, transport.ListenOptions{}) }()
-
-	// Wait until the machine is findable where it announced, so that the
-	// failure below is about the server and not about timing.
-	found := func() bool {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		c, err := transport.ParseNetworkConfig("", machineDiscovery, "")
-		if err != nil {
-			t.Fatal(err)
-		}
-		_ = c
-		conn, err := c.NewSyncthingRelay(holderCert).Dial(ctx, transport.DialOptions{PeerID: machineID})
-		if err == nil {
-			conn.Close()
-		}
-		return err == nil || !strings.Contains(err.Error(), "no addresses announced")
-	}
-	waitFor(t, "the machine to announce", found)
-
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
-	_, err = wrongCfg.NewSyncthingRelay(holderCert).Dial(ctx, transport.DialOptions{PeerID: machineID})
+	_, err = holderConfig(t, otherDiscovery.pinned()).NewSyncthingRelay(holderCert).Dial(ctx, transport.DialOptions{PeerID: machineID})
 	if err == nil {
 		t.Fatal("the key holder reached a machine that announced somewhere else")
 	}
 	if !strings.Contains(err.Error(), "no addresses announced for peer") {
 		t.Errorf("the failure should say the machine was not found there, got: %v", err)
+	}
+}
+
+// A key holder told to expect a different server certificate than the one it
+// meets must refuse, and say that the id does not match, even though the
+// machine is announced and findable on that very server.
+func TestAKeyHolderPinnedToTheWrongServerIDNeverConnects(t *testing.T) {
+	skipWithoutServers(t)
+	discovery := startDiscovery(t)
+	relay := startRelay(t)
+	machineID := startMachine(t, machineConfig(t, relay, discovery.pinned()), holderConfig(t, discovery.pinned()))
+
+	holderCert, err := transport.LoadOrCreateCert(filepath.Join(t.TempDir(), "holder.pem"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrong := "P56IOI7-MZJNU2Y-IQGDREY-DM2MGTI-MGL3BXN-PQ6W5BM-TBBZ4TJ-XZWICQ2"
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	conn, err := holderConfig(t, discovery.with("?id="+wrong)).NewSyncthingRelay(holderCert).Dial(ctx, transport.DialOptions{PeerID: machineID})
+	if err == nil {
+		conn.Close()
+		t.Fatal("the key holder connected through a discovery server whose id it was not told")
+	}
+	for _, want := range []string{"id mismatch", discovery.id, wrong} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q should contain %q", err, want)
+		}
+	}
+}
+
+// With neither ?id nor ?insecure the system's authorities decide, and a
+// self-signed server is not one of them.
+func TestAKeyHolderWithNeitherIDNorInsecureRefusesASelfSignedServer(t *testing.T) {
+	skipWithoutServers(t)
+	discovery := startDiscovery(t)
+	relay := startRelay(t)
+	machineID := startMachine(t, machineConfig(t, relay, discovery.pinned()), holderConfig(t, discovery.pinned()))
+
+	holderCert, err := transport.LoadOrCreateCert(filepath.Join(t.TempDir(), "holder.pem"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	conn, err := holderConfig(t, discovery.url).NewSyncthingRelay(holderCert).Dial(ctx, transport.DialOptions{PeerID: machineID})
+	if err == nil {
+		conn.Close()
+		t.Fatal("the key holder trusted a self-signed server with no id and no ?insecure")
+	}
+	if !strings.Contains(err.Error(), "certificate") {
+		t.Errorf("the failure should be about the certificate, got: %v", err)
 	}
 }
