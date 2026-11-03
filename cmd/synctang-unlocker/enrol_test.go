@@ -199,7 +199,7 @@ func TestRemoveRecipientRevokesOnlyThatOne(t *testing.T) {
 
 	p1 := recoverPForTest(t, g, rec1, s1)
 
-	if err := removeRecipient(device, existingPassphrase, testKH1); err != nil {
+	if err := removeRecipient(device, existingPassphrase, testKH1, ""); err != nil {
 		t.Fatalf("removeRecipient: %v", err)
 	}
 
@@ -250,7 +250,7 @@ func TestRemoveRecipientUnknownIDFails(t *testing.T) {
 		t.Fatalf("enrolRecipient: %v", err)
 	}
 
-	if err := removeRecipient(device, existingPassphrase, "NO-SUCH-ID"); err == nil {
+	if err := removeRecipient(device, existingPassphrase, "NO-SUCH-ID", ""); err == nil {
 		t.Fatal("removeRecipient succeeded for an id that was never enrolled")
 	}
 }

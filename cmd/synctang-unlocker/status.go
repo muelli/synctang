@@ -97,6 +97,24 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "  %s  keyslot %s  kid %s\n", id, keyslot, shortKid(rec.Kid))
 	}
 
+	// A transport id enrolled more than once leaves the agent unable to tell
+	// which key is the live one, so it refuses to answer for that key holder.
+	// Say so here, where an operator looks, and how to repair it.
+	seen := map[string]bool{}
+	for _, rec := range tok.Recipients {
+		id, ok := rec.TransportDeviceID()
+		if !ok || id == "" || seen[canonicalOrRaw(id)] {
+			continue
+		}
+		seen[canonicalOrRaw(id)] = true
+		if idxs := recipientsByTransportID(tok, id); len(idxs) > 1 {
+			fmt.Fprintf(stdout, "WARNING: transport id %s is enrolled %d times (%s), so the agent will refuse to answer for it. "+
+				"Keep the entry whose key is current and remove each of the others with: "+
+				"synctang-unlocker enrol --device %s --remove %s --keyslot <n> --existing-passphrase-file ...\n",
+				id, len(idxs), describeRecipients(tok, idxs), activeDevice, id)
+		}
+	}
+
 	return 0
 }
 

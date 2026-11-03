@@ -36,7 +36,7 @@ func TestReplaceRecipientRotatesAKeyInOneStep(t *testing.T) {
 	beforeTok := exportTokenForTest(t, device)
 	pOld := recoverPForTest(t, g, beforeTok.Recipients[0], sOld)
 
-	if err := replaceRecipient(device, existingPassphrase, SNew, testKH1, testKH1); err != nil {
+	if err := replaceRecipient(device, existingPassphrase, SNew, testKH1, testKH1, ""); err != nil {
 		t.Fatalf("replaceRecipient: %v", err)
 	}
 
@@ -85,7 +85,7 @@ func TestReplaceRecipientLeavesOtherKeyHoldersAlone(t *testing.T) {
 		t.Fatalf("enrolRecipient 2: %v", err)
 	}
 
-	if err := replaceRecipient(device, existingPassphrase, S1b, testKH1, testKH1); err != nil {
+	if err := replaceRecipient(device, existingPassphrase, S1b, testKH1, testKH1, ""); err != nil {
 		t.Fatalf("replaceRecipient: %v", err)
 	}
 
@@ -128,7 +128,7 @@ func TestReplaceRecipientRefusesAnUnknownIDBeforeChangingAnything(t *testing.T) 
 		t.Fatalf("enrolRecipient: %v", err)
 	}
 
-	err := replaceRecipient(device, existingPassphrase, SNew, "KH-TYPO", testKH1)
+	err := replaceRecipient(device, existingPassphrase, SNew, "KH-TYPO", testKH1, "")
 	if err == nil {
 		t.Fatal("replaceRecipient accepted an unknown transport id")
 	}

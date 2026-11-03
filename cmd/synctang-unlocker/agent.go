@@ -108,6 +108,29 @@ func agentNameFor(flagName, tokenName string) string {
 	return cmp.Or(flagName, tokenName)
 }
 
+// matchRecipient finds the one enrolled recipient for the connected peer.
+// Two or more entries with its transport id are refused, before anything is
+// sent to the peer: picking the first would answer with a key that may be dead
+// (a phone whose app was updated keeps its transport id and makes a new key),
+// and fail every unlock with nothing saying why. "synctang-unlocker status"
+// names them.
+func matchRecipient(tok mrcore.Token, peerID string) (*mrcore.Recipient, error) {
+	idxs := recipientsByTransportID(tok, peerID)
+	switch len(idxs) {
+	case 0:
+		return nil, fmt.Errorf("synctang-unlocker: connected peer %s does not match any enrolled recipient", peerID)
+	case 1:
+		return &tok.Recipients[idxs[0]], nil
+	}
+	slots := make([]string, len(idxs))
+	for n, i := range idxs {
+		slots[n] = keyslotOf(tok, i)
+	}
+	return nil, fmt.Errorf("synctang-unlocker: %d enrolled recipients share the transport id %s (keyslots %s), so the agent will not guess which key is the live one; "+
+		"run 'synctang-unlocker status', then remove the stale entry with 'synctang-unlocker enrol --remove %s --keyslot <n>'",
+		len(idxs), peerID, strings.Join(slots, ", "), peerID)
+}
+
 // runExchange is everything that happens once a key holder is on the
 // other end of conn: greet it, ask it to answer a challenge, check what comes back actually
 // opens the volume, hand that to systemd, and tell the key holder how
@@ -146,15 +169,9 @@ func runExchange(
 	// returns unwinds the arrangement when the exchange finishes first.
 	defer context.AfterFunc(exchangeCtx, func() { conn.Close() })()
 
-	var matched *mrcore.Recipient
-	for i := range tok.Recipients {
-		if id, ok := tok.Recipients[i].TransportDeviceID(); ok && canonicalOrRaw(id) == conn.PeerID() {
-			matched = &tok.Recipients[i]
-			break
-		}
-	}
-	if matched == nil {
-		return fmt.Errorf("synctang-unlocker: connected peer %s does not match any enrolled recipient", conn.PeerID())
+	matched, err := matchRecipient(tok, conn.PeerID())
+	if err != nil {
+		return err
 	}
 
 	if err := mrcore.WriteMessage(conn, mrcore.Hello{Name: machineName}); err != nil {

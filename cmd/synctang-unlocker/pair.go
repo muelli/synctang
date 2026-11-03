@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"flag"
 	"fmt"
@@ -47,6 +48,16 @@ type pairOptions struct {
 	// with the key holder's verified Device ID and the public key it
 	// wants enrolled. Returning false abandons the pairing.
 	confirm func(peerID string, pubKey []byte) bool
+
+	// confirmReplace is asked instead of confirm when the key holder's
+	// transport id is already enrolled with a different key: it names both
+	// keys, and returning true replaces the old entry with the new one. Nil
+	// means no.
+	confirmReplace func(peerID string, existing existingRecipient, newKid []byte) bool
+
+	// notify tells the operator something that is not a question, such as
+	// that the key holder was already enrolled. Nil means the log.
+	notify func(message string)
 
 	listenOpts transport.ListenOptions
 	logger     *slog.Logger
@@ -122,6 +133,46 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 	// on the curve, in the right subgroup, not the point at infinity.
 	if _, err := mrcore.P256().PointToX(req.PubKey); err != nil {
 		return refusePairing(conn, mrcore.PairRefusedInvalidKey)
+	}
+
+	// One enrolled recipient per transport id. The same key already there is
+	// success with nothing to add; a different one is replaced, if the operator
+	// agrees, by the existing rotation (new key first, then revoke the old, so
+	// there is never a moment with neither).
+	plan, err := planEnrolment(opts.device, req.PubKey, peerID)
+	if err != nil {
+		_ = mrcore.WriteMessage(conn, mrcore.PairResult{Error: mrcore.PairRefusedEnrolFailed})
+		waitForPeerClose(conn, resultLingerTimeout)
+		return fmt.Errorf("synctang-unlocker: %w", err)
+	}
+	notify := opts.notify
+	if notify == nil {
+		notify = func(m string) { logger.Info(m) }
+	}
+	switch plan.Kind {
+	case planAlready:
+		notify(fmt.Sprintf("%s is already enrolled at keyslot %s with this key; nothing was added", peerID, plan.Existing.Keyslot))
+		if err := mrcore.WriteMessage(conn, mrcore.PairResult{OK: true}); err != nil {
+			return fmt.Errorf("synctang-unlocker: %s was already enrolled, but telling it so failed: %w", peerID, err)
+		}
+		waitForPeerClose(conn, resultLingerTimeout)
+		return nil
+	case planReplace:
+		newKid := sha256.Sum256(req.PubKey)
+		if opts.confirmReplace == nil || !opts.confirmReplace(peerID, plan.Existing, newKid[:]) {
+			notify("not replacing; nothing was changed")
+			return refusePairing(conn, mrcore.PairRefusedDeclined)
+		}
+		if err := replaceRecipient(opts.device, opts.existingPassphrase, req.PubKey, peerID, peerID, plan.Existing.Keyslot); err != nil {
+			_ = mrcore.WriteMessage(conn, mrcore.PairResult{Error: mrcore.PairRefusedEnrolFailed})
+			waitForPeerClose(conn, resultLingerTimeout)
+			return fmt.Errorf("synctang-unlocker: replacing the paired key holder's key: %w", err)
+		}
+		if err := mrcore.WriteMessage(conn, mrcore.PairResult{OK: true}); err != nil {
+			return fmt.Errorf("synctang-unlocker: %s's key was replaced, but telling it so failed: %w", peerID, err)
+		}
+		waitForPeerClose(conn, resultLingerTimeout)
+		return nil
 	}
 
 	if opts.confirm != nil && !opts.confirm(peerID, req.PubKey) {
@@ -243,13 +294,18 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 	ctx, cancel := context.WithTimeout(context.Background(), *window)
 	defer cancel()
 
+	// One reader for both questions, so neither loses what the other buffered.
+	stdin := bufio.NewReader(os.Stdin)
+
 	opts := pairOptions{
 		device:             *device,
 		existingPassphrase: passphrase,
 		machineCert:        cert,
 		machineName:        *name,
 		secret:             secret,
-		confirm:            pairConfirmer(*yes, stdout, os.Stdin),
+		confirm:            pairConfirmer(*yes, stdout, stdin),
+		confirmReplace:     pairReplaceConfirmer(*yes, stdout, stdin),
+		notify:             func(m string) { fmt.Fprintln(stdout, m) },
 		listenOpts:         transport.ListenOptions{DirectAddr: *directAddr},
 		network:            network,
 	}
@@ -275,6 +331,10 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 // not by itself consent: the code is shown on a screen and can be
 // photographed, so the operator standing at the machine is shown the
 // identity that answered it and decides.
+//
+// stdin should be one *bufio.Reader shared with pairReplaceConfirmer, so that
+// whichever question is asked reads what was typed and nothing is buffered
+// away from the other.
 func pairConfirmer(assumeYes bool, stdout io.Writer, stdin io.Reader) func(string, []byte) bool {
 	if assumeYes {
 		return func(string, []byte) bool { return true }
@@ -291,6 +351,31 @@ func pairConfirmer(assumeYes bool, stdout io.Writer, stdin io.Reader) func(strin
 			// No console to ask, or stdin already spent on the
 			// passphrase. Refusing is the safe reading of silence.
 			fmt.Fprintln(stdout, "\nno answer, so not enrolling (use --yes to skip this question)")
+			return false
+		}
+		answer := strings.ToLower(strings.TrimSpace(line))
+		return answer == "y" || answer == "yes"
+	}
+}
+
+// pairReplaceConfirmer is the question asked when the key holder that
+// answered the code is already enrolled with a different key: it names both
+// keys, so the operator sees what is being replaced and by what. --yes means
+// yes; silence means no.
+func pairReplaceConfirmer(assumeYes bool, stdout io.Writer, stdin io.Reader) func(string, existingRecipient, []byte) bool {
+	if assumeYes {
+		return func(string, existingRecipient, []byte) bool { return true }
+	}
+	reader := bufio.NewReader(stdin)
+	return func(peerID string, existing existingRecipient, newKid []byte) bool {
+		fmt.Fprintf(stdout, "\na key holder that is already enrolled answered the pairing code:\n\n")
+		fmt.Fprintf(stdout, "  transport id:  %s\n\n", peerID)
+		fmt.Fprintf(stdout, "replace the existing entry for this key holder (keyslot %s, key %s) with this one (key %s)? [y/N] ",
+			existing.Keyslot, shortKid(existing.Kid), shortKid(newKid))
+
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			fmt.Fprintln(stdout, "\nno answer, so not replacing (use --yes to skip this question)")
 			return false
 		}
 		answer := strings.ToLower(strings.TrimSpace(line))

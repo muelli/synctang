@@ -97,7 +97,13 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, "path to this machine's persistent transport identity")
 	remove := fs.String("remove", "", "revoke the enrolled recipient with this transport id instead of adding one")
 	replace := fs.String("replace", "", "rotate the enrolled recipient with this transport id to --pubkey, revoking the old key")
+	keyslot := fs.String("keyslot", "", "with --remove or --replace: the keyslot of the entry to act on, when several enrolled entries share the transport id")
 	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	if *keyslot != "" && *remove == "" && *replace == "" {
+		fmt.Fprintln(stderr, "synctang-unlocker: --keyslot goes with --remove or --replace")
 		return 2
 	}
 
@@ -129,7 +135,7 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 		// a rotation into an enrolment the agent cannot restrict.
 		newTransportID := cmp.Or(*recipientTransportID, *replace)
 
-		if err := replaceRecipient(*device, passphrase, pubkey, *replace, newTransportID); err != nil {
+		if err := replaceRecipient(*device, passphrase, pubkey, *replace, newTransportID, *keyslot); err != nil {
 			fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
 			return 1
 		}
@@ -149,7 +155,7 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 		}
 		defer mrcore.Wipe(passphrase)
 
-		if err := removeRecipient(*device, passphrase, *remove); err != nil {
+		if err := removeRecipient(*device, passphrase, *remove, *keyslot); err != nil {
 			fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
 			return 1
 		}
@@ -175,12 +181,17 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 	}
 	defer mrcore.Wipe(passphrase)
 
-	if err := enrolRecipient(*device, passphrase, pubkey, *name, *transportID, *recipientTransportID); err != nil {
+	outcome, err := enrolOnce(*device, passphrase, pubkey, *name, *transportID, *recipientTransportID)
+	if err != nil {
 		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
 		return 1
 	}
 
-	fmt.Fprintf(stdout, "enrolled a new recipient on %s\n", *device)
+	if outcome.Already {
+		fmt.Fprintf(stdout, "%s is already enrolled at keyslot %s on %s; nothing was added\n", *recipientTransportID, outcome.Keyslot, *device)
+	} else {
+		fmt.Fprintf(stdout, "enrolled a new recipient on %s\n", *device)
+	}
 
 	// The human doing this by hand needs this machine's own transport id
 	// to hand to a key holder, in case it is ever needed (for example to

@@ -3,10 +3,13 @@
 package main
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/muelli/synctang/mrcore"
@@ -116,6 +119,125 @@ func enrolRecipient(device string, existingPassphrase, recipientPublicKey []byte
 	return nil
 }
 
+// existingRecipient is the entry a transport id already has: where it is and
+// which key it holds.
+type existingRecipient struct {
+	Keyslot string
+	Kid     []byte
+}
+
+// enrolOutcome says what enrolOnce did.
+type enrolOutcome struct {
+	// Already is true when the same key was already enrolled for that
+	// transport id, so nothing was added; Keyslot is where.
+	Already bool
+	Keyslot string
+}
+
+// keyslotOf is the keyslot of tok's idx'th recipient, or "?" when the token's two
+// lists disagree about their length.
+func keyslotOf(tok mrcore.Token, idx int) string {
+	if idx < len(tok.Keyslots) {
+		return tok.Keyslots[idx]
+	}
+	return "?"
+}
+
+// recipientsByTransportID is the indexes of the recipients that carry
+// transport id id.
+func recipientsByTransportID(tok mrcore.Token, id string) []int {
+	want := canonicalOrRaw(id)
+	var idxs []int
+	for i, rec := range tok.Recipients {
+		if got, ok := rec.TransportDeviceID(); ok && canonicalOrRaw(got) == want {
+			idxs = append(idxs, i)
+		}
+	}
+	return idxs
+}
+
+// describeRecipients names recipients as "keyslot 1 (key abcd1234...)", for the
+// messages about a transport id that is enrolled more than once.
+func describeRecipients(tok mrcore.Token, idxs []int) string {
+	parts := make([]string, len(idxs))
+	for n, i := range idxs {
+		parts[n] = fmt.Sprintf("keyslot %s (key %s)", keyslotOf(tok, i), shortKid(tok.Recipients[i].Kid))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// enrolOnce is "enrol": it adds a key holder, but there is one enrolled
+// recipient per transport id. If that id already has an entry and it holds this
+// same key (the same kid), nothing is added and the outcome says where it is;
+// if it holds a different key, enrolling is refused and the error says how to
+// rotate instead, because a second entry for one id would leave a dead key the
+// agent could pick. An empty recipientTransportID has no id to compare and is
+// enrolled as before. replaceRecipient does not come through here: it adds
+// the new key for the same id on purpose.
+func enrolOnce(device string, existingPassphrase, recipientPublicKey []byte, machineName, transportID, recipientTransportID string) (enrolOutcome, error) {
+	if recipientTransportID != "" {
+		plan, err := planEnrolment(device, recipientPublicKey, recipientTransportID)
+		if err != nil {
+			return enrolOutcome{}, err
+		}
+		switch plan.Kind {
+		case planAlready:
+			return enrolOutcome{Already: true, Keyslot: plan.Existing.Keyslot}, nil
+		case planReplace:
+			return enrolOutcome{}, fmt.Errorf("transport id %s is already enrolled with a different key (keyslot %s, key %s); "+
+				"to change its key use: synctang-unlocker enrol --device %s --replace %s --pubkey <new public key> ...",
+				recipientTransportID, plan.Existing.Keyslot, shortKid(plan.Existing.Kid), device, recipientTransportID)
+		}
+	}
+	return enrolOutcome{}, enrolRecipient(device, existingPassphrase, recipientPublicKey, machineName, transportID, recipientTransportID)
+}
+
+type enrolPlanKind int
+
+const (
+	planAdd     enrolPlanKind = iota // nothing is enrolled for the id
+	planAlready                      // this very key is
+	planReplace                      // a different key is
+)
+
+type enrolPlan struct {
+	Kind     enrolPlanKind
+	Existing existingRecipient // for planAlready and planReplace
+}
+
+// planEnrolment looks at what device holds for transportID and says what
+// enrolling publicKey would be. It refuses when the id is already enrolled more
+// than once, which is a state to repair first (see "synctang-unlocker status").
+func planEnrolment(device string, publicKey []byte, transportID string) (enrolPlan, error) {
+	dump, err := runCommand(nil, "cryptsetup", "luksDump", device)
+	if err != nil {
+		return enrolPlan{}, fmt.Errorf("reading LUKS header: %w", err)
+	}
+	tok, tokenID, err := loadToken(string(dump), device, "", "")
+	if err != nil {
+		return enrolPlan{}, err
+	}
+	if tokenID < 0 {
+		return enrolPlan{Kind: planAdd}, nil
+	}
+	idxs := recipientsByTransportID(tok, transportID)
+	switch len(idxs) {
+	case 0:
+		return enrolPlan{Kind: planAdd}, nil
+	case 1:
+		existing := existingRecipient{Keyslot: keyslotOf(tok, idxs[0]), Kid: tok.Recipients[idxs[0]].Kid}
+		kid := sha256.Sum256(publicKey)
+		if bytes.Equal(existing.Kid, kid[:]) {
+			return enrolPlan{Kind: planAlready, Existing: existing}, nil
+		}
+		return enrolPlan{Kind: planReplace, Existing: existing}, nil
+	default:
+		return enrolPlan{}, fmt.Errorf("transport id %s is enrolled more than once (%s); remove all but one first, with "+
+			"synctang-unlocker enrol --remove %s --keyslot <n> (see synctang-unlocker status)",
+			transportID, describeRecipients(tok, idxs), transportID)
+	}
+}
+
 // removeRecipient revokes one enrolled key holder from device,
 // identified by its transport Device ID (the same string
 // Recipient.TransportDeviceID returns, and the one printed by
@@ -125,12 +247,16 @@ func enrolRecipient(device string, existingPassphrase, recipientPublicKey []byte
 // before revocation) open device directly, without going through the
 // key holder or the token at all. existingPassphrase authenticates the
 // keyslot removal, exactly as it does for enrolRecipient's luksAddKey.
-func removeRecipient(device string, existingPassphrase []byte, recipientTransportID string) error {
+//
+// keyslot picks the entry when several share the transport id, which is how a
+// duplicate left by an old bug is repaired; without it, several matches are
+// refused rather than one chosen.
+func removeRecipient(device string, existingPassphrase []byte, recipientTransportID, keyslot string) error {
 	tok, existingTokenID, err := loadEnrolledToken(device)
 	if err != nil {
 		return err
 	}
-	idx, err := recipientIndexByTransportID(tok, recipientTransportID)
+	idx, err := selectRecipient(tok, recipientTransportID, keyslot)
 	if err != nil {
 		return err
 	}
@@ -163,14 +289,34 @@ func loadEnrolledToken(device string) (mrcore.Token, int, error) {
 	return tok, existingTokenID, nil
 }
 
+// recipientIndexByTransportID is selectRecipient with no keyslot named.
 func recipientIndexByTransportID(tok mrcore.Token, recipientTransportID string) (int, error) {
-	want := canonicalOrRaw(recipientTransportID)
-	for i, rec := range tok.Recipients {
-		if id, ok := rec.TransportDeviceID(); ok && canonicalOrRaw(id) == want {
-			return i, nil
-		}
+	return selectRecipient(tok, recipientTransportID, "")
+}
+
+// selectRecipient finds the one recipient with transport id recipientTransportID.
+// Several matches are an error that lists them, never a choice of the first:
+// removing or replacing "the first" could destroy the one entry that works.
+// With keyslot set, the entry in that keyslot is chosen, if it has that id.
+func selectRecipient(tok mrcore.Token, recipientTransportID, keyslot string) (int, error) {
+	idxs := recipientsByTransportID(tok, recipientTransportID)
+	if len(idxs) == 0 {
+		return -1, fmt.Errorf("no enrolled recipient with transport id %s", recipientTransportID)
 	}
-	return -1, fmt.Errorf("no enrolled recipient with transport id %s", recipientTransportID)
+	if keyslot != "" {
+		for _, i := range idxs {
+			if keyslotOf(tok, i) == keyslot {
+				return i, nil
+			}
+		}
+		return -1, fmt.Errorf("keyslot %s holds no entry for transport id %s (it has: %s)",
+			keyslot, recipientTransportID, describeRecipients(tok, idxs))
+	}
+	if len(idxs) > 1 {
+		return -1, fmt.Errorf("transport id %s is enrolled more than once (%s), so it cannot tell which you mean; name one with --keyslot <n>",
+			recipientTransportID, describeRecipients(tok, idxs))
+	}
+	return idxs[0], nil
 }
 
 // removeRecipientAt destroys the keyslot of tok's idx'th recipient and
@@ -226,12 +372,15 @@ func removeRecipientAt(device string, existingPassphrase []byte, tok mrcore.Toke
 // but does mean a failure there leaves the volume openable by either
 // key. The error says so, and names the keyslot, since at that point no
 // transport id distinguishes them.
-func replaceRecipient(device string, existingPassphrase, newPublicKey []byte, oldRecipientTransportID, newRecipientTransportID string) error {
+//
+// keyslot picks the old entry when several share its transport id; see
+// removeRecipient.
+func replaceRecipient(device string, existingPassphrase, newPublicKey []byte, oldRecipientTransportID, newRecipientTransportID, keyslot string) error {
 	tok, _, err := loadEnrolledToken(device)
 	if err != nil {
 		return err
 	}
-	idx, err := recipientIndexByTransportID(tok, oldRecipientTransportID)
+	idx, err := selectRecipient(tok, oldRecipientTransportID, keyslot)
 	if err != nil {
 		return err
 	}
