@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/muelli/synctang/mrcore"
@@ -26,6 +27,20 @@ func cryptsetupOrSkip(t *testing.T) {
 	if _, err := os.Stat(path); err != nil {
 		t.Skip("cryptsetup not found, skipping loopback LUKS2 test")
 	}
+
+	// A cryptsetup that derives keys cheaply for a new keyslot. The tests defend
+	// nothing, and the default (argon2, benchmarked to about two seconds a
+	// keyslot, more on a busy host) made each enrolment, and so each test, last
+	// many seconds. The wrapper is test-only: it is found first on PATH, adds the
+	// flags to luksAddKey and otherwise runs the real program unchanged.
+	dir := t.TempDir()
+	wrapper := "#!/bin/sh\nreal=" + strconv.Quote(path) + "\n" +
+		`if [ "$1" = luksAddKey ]; then exec "$real" "$@" --pbkdf pbkdf2 --pbkdf-force-iterations 1000; fi` + "\n" +
+		`exec "$real" "$@"` + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "cryptsetup"), []byte(wrapper), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
 func formatLoopbackImage(t *testing.T, existingPassphrase []byte) string {
@@ -37,7 +52,8 @@ func formatLoopbackImage(t *testing.T, existingPassphrase []byte) string {
 		t.Fatalf("truncate: %v", err)
 	}
 	if _, err := runCommand(existingPassphrase, "cryptsetup", "luksFormat",
-		"--type", "luks2", "--batch-mode", "--key-file=-", device); err != nil {
+		"--type", "luks2", "--batch-mode", "--key-file=-",
+		"--pbkdf", "pbkdf2", "--pbkdf-force-iterations", "1000", device); err != nil {
 		t.Fatalf("luksFormat: %v", err)
 	}
 	return device
