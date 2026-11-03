@@ -17,7 +17,7 @@ import (
 	"github.com/syncthing/syncthing/lib/protocol"
 )
 
-// "unlocker open" is for a volume that is not the machine's own root: an
+// "synctang-unlocker open" is for a volume that is not the machine's own root: an
 // external drive plugged in after boot, say. The agent answers a password
 // request that systemd made, and so only exists to be started when systemd is
 // asking; here a person runs one command, a key holder approves, and the volume
@@ -75,12 +75,12 @@ func defaultMapperName(dump string) string {
 	return "synctang-volume"
 }
 
-const openUsage = `usage: unlocker open [flags] <device> [name]
+const openUsage = `usage: synctang-unlocker open [flags] <device> [name]
 
 Waits for a key holder to approve, then opens the LUKS volume on <device> as
 /dev/mapper/<name> and exits. Mount it afterwards, and close it with
 "cryptsetup close <name>". Needs root. The volume must already have a key holder
-enrolled (see "unlocker pair").
+enrolled (see "synctang-unlocker pair").
 
 `
 
@@ -115,7 +115,7 @@ func runOpen(args []string, stdout, stderr io.Writer) int {
 	if len(positional) == 2 {
 		name = positional[1]
 		if !validMapperName(name) {
-			fmt.Fprintf(stderr, "unlocker: %q is not a usable name (letters, digits, '_', '.' and '-', starting with a letter or digit, at most 63 characters)\n", name)
+			fmt.Fprintf(stderr, "synctang-unlocker: %q is not a usable name (letters, digits, '_', '.' and '-', starting with a letter or digit, at most 63 characters)\n", name)
 			return 2
 		}
 	}
@@ -123,33 +123,33 @@ func runOpen(args []string, stdout, stderr io.Writer) int {
 	// Before anything waits: approving on a phone and then finding out that
 	// nothing could be opened is the worst way to learn this.
 	if geteuid() != 0 {
-		fmt.Fprintln(stderr, "unlocker: opening a volume needs root (try sudo)")
+		fmt.Fprintln(stderr, "synctang-unlocker: opening a volume needs root (try sudo)")
 		return 1
 	}
 
 	dump, err := runCommand(nil, "cryptsetup", "luksDump", device)
 	if err != nil {
-		fmt.Fprintf(stderr, "unlocker: reading the LUKS header of %s: %v\n", device, err)
+		fmt.Fprintf(stderr, "synctang-unlocker: reading the LUKS header of %s: %v\n", device, err)
 		return 1
 	}
 	if _, id, err := loadToken(string(dump), device, "", ""); err != nil {
-		fmt.Fprintf(stderr, "unlocker: %v\n", err)
+		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
 		return 1
 	} else if id < 0 {
-		fmt.Fprintf(stderr, "unlocker: %s has no key holder enrolled, so nobody could approve opening it; enrol one first with: unlocker pair --device %s --existing-passphrase-file ...\n", device, device)
+		fmt.Fprintf(stderr, "synctang-unlocker: %s has no key holder enrolled, so nobody could approve opening it; enrol one first with: synctang-unlocker pair --device %s --existing-passphrase-file ...\n", device, device)
 		return 1
 	}
 	if name == "" {
 		name = defaultMapperName(string(dump))
 	}
 	if mapperExists(name) {
-		fmt.Fprintf(stderr, "unlocker: /dev/mapper/%s already exists; close it first or choose another name\n", name)
+		fmt.Fprintf(stderr, "synctang-unlocker: /dev/mapper/%s already exists; close it first or choose another name\n", name)
 		return 1
 	}
 
 	cert, err := transport.LoadOrCreateCert(*machineKeyFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "unlocker: %v\n", err)
+		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
 		return 1
 	}
 	network, ok := resolveNetwork(*networkConf, stdout, stderr)
@@ -162,7 +162,7 @@ func runOpen(args []string, stdout, stderr io.Writer) int {
 // openOnDemand waits up to timeout for a key holder whose answer opens device.
 // An attempt that fails (a key holder that declines, one that answers with the
 // wrong key, a dropped connection) is reported and followed by another, as
-// "unlocker pair" does, until one works or the time is up.
+// "synctang-unlocker pair" does, until one works or the time is up.
 func openOnDemand(device, name, machineName string, cert tls.Certificate, timeout time.Duration, directAddr string, network transport.NetworkConfig, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "waiting for a key holder to approve opening %s as /dev/mapper/%s\n", device, name)
 	fmt.Fprintf(stdout, "this machine's transport id: %s\n", protocol.NewDeviceID(cert.Certificate[0]))
@@ -172,7 +172,7 @@ func openOnDemand(device, name, machineName string, cert tls.Certificate, timeou
 	tr := newAgentTransport(cert, nil, directAddr, network)
 	deliver := func(key []byte) error {
 		if err := openVolume(device, name, key); err != nil {
-			return fmt.Errorf("unlocker: opening %s: %w", device, err)
+			return fmt.Errorf("synctang-unlocker: opening %s: %w", device, err)
 		}
 		return nil
 	}
@@ -183,10 +183,10 @@ func openOnDemand(device, name, machineName string, cert tls.Certificate, timeou
 			return 0
 		}
 		if ctx.Err() != nil {
-			fmt.Fprintf(stderr, "unlocker: nobody approved within %s\n", timeout)
+			fmt.Fprintf(stderr, "synctang-unlocker: nobody approved within %s\n", timeout)
 			return 1
 		}
-		fmt.Fprintf(stderr, "unlocker: %v (still waiting)\n", err)
+		fmt.Fprintf(stderr, "synctang-unlocker: %v (still waiting)\n", err)
 		select {
 		case <-ctx.Done():
 		case <-time.After(agentRetryInterval):

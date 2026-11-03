@@ -41,7 +41,7 @@ type NetworkConfig struct {
 	DiscoveryAnnounce string
 }
 
-// The keys of a network.conf file, and of the keyholder config.
+// The keys of a network.conf file, and of the synctang-keyholder config.
 const (
 	NetworkKeyRelayPool         = "relay-pool"
 	NetworkKeyDiscovery         = "discovery"

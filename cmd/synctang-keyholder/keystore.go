@@ -101,7 +101,7 @@ func loadPrivateKey(keyFile string) ([]byte, error) {
 }
 
 // publicKeyHex loads s from keyFile and returns S = s.G, hex-encoded,
-// suitable for pasting into `unlocker enrol --pubkey`.
+// suitable for pasting into `synctang-unlocker enrol --pubkey`.
 func publicKeyHex(keyFile string) (string, error) {
 	s, err := loadPrivateKey(keyFile)
 	if err != nil {

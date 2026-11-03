@@ -19,7 +19,7 @@ func passphraseFile(t *testing.T, passphrase string) string {
 	return path
 }
 
-// "unlocker pair" used to read the passphrase and print its code without ever
+// "synctang-unlocker pair" used to read the passphrase and print its code without ever
 // testing it, so a typo surfaced only at the end: after the phone had scanned
 // the code and the person had confirmed, when the enrolment failed. It checks
 // the passphrase against the header first, before it makes an identity or

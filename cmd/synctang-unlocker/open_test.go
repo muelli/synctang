@@ -146,7 +146,7 @@ func waitFor(t *testing.T, done <-chan runResult) runResult {
 	case r := <-done:
 		return r
 	case <-time.After(30 * time.Second):
-		t.Fatal("unlocker open did not finish")
+		t.Fatal("synctang-unlocker open did not finish")
 		return runResult{}
 	}
 }

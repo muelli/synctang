@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Command keyholder is the laptop key holder for synctang: it holds a
+// Command synctang-keyholder is the laptop key holder for synctang: it holds a
 // long-term private scalar and answers a machine's recovery challenges
 // on demand. There is no listening mode; the key holder always dials.
 package main
@@ -18,11 +18,11 @@ import (
 	"github.com/syncthing/syncthing/lib/protocol"
 )
 
-const usage = `usage: keyholder <command> [flags]
+const usage = `usage: synctang-keyholder <command> [flags]
 
 commands:
   init            generate a new long-term key and transport identity
-  export-pubkey   print the public key and transport id, for "unlocker enrol"
+  export-pubkey   print the public key and transport id, for "synctang-unlocker enrol"
   unlock          answer one machine's recovery attempt
 `
 
@@ -44,7 +44,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	case "unlock":
 		return runUnlock(args[1:], stdin, stdout, stderr)
 	default:
-		fmt.Fprintf(stderr, "keyholder: unknown command %q\n%s", args[0], usage)
+		fmt.Fprintf(stderr, "synctang-keyholder: unknown command %q\n%s", args[0], usage)
 		return 2
 	}
 }
@@ -78,17 +78,17 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if *keyFile == "" {
-		fmt.Fprintln(stderr, "keyholder: --key-file is required (could not determine a default)")
+		fmt.Fprintln(stderr, "synctang-keyholder: --key-file is required (could not determine a default)")
 		return 2
 	}
 	if *transportKeyFile == "" {
-		fmt.Fprintln(stderr, "keyholder: --transport-key-file is required (could not determine a default)")
+		fmt.Fprintln(stderr, "synctang-keyholder: --transport-key-file is required (could not determine a default)")
 		return 2
 	}
 
 	s, err := generateAndSave(*keyFile, *force)
 	if err != nil {
-		fmt.Fprintf(stderr, "keyholder: %v\n", err)
+		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
 		return 1
 	}
 	defer mrcore.Wipe(s)
@@ -99,7 +99,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	// certificate here would change this key holder's Device ID, silently
 	// breaking every AuthorizedPeers list it was already enrolled into.
 	if _, err := transport.LoadOrCreateCert(*transportKeyFile); err != nil {
-		fmt.Fprintf(stderr, "keyholder: %v\n", err)
+		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
 		return 1
 	}
 
@@ -117,23 +117,23 @@ func runExportPubkey(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if *keyFile == "" {
-		fmt.Fprintln(stderr, "keyholder: --key-file is required (could not determine a default)")
+		fmt.Fprintln(stderr, "synctang-keyholder: --key-file is required (could not determine a default)")
 		return 2
 	}
 	if *transportKeyFile == "" {
-		fmt.Fprintln(stderr, "keyholder: --transport-key-file is required (could not determine a default)")
+		fmt.Fprintln(stderr, "synctang-keyholder: --transport-key-file is required (could not determine a default)")
 		return 2
 	}
 
 	pubHex, err := publicKeyHex(*keyFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "keyholder: %v\n", err)
+		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
 		return 1
 	}
 
 	cert, err := transport.LoadOrCreateCert(*transportKeyFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "keyholder: %v\n", err)
+		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
 		return 1
 	}
 
@@ -152,12 +152,12 @@ func runUnlock(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	timeout := fs.Duration("timeout", defaultUnlockTimeout, "give up dialling the machine after this long")
 	discovery := fs.String("discovery", "", "discovery server URL, instead of the public one; the machine must announce to the same one")
 	discoveryAnnounce := fs.String("discovery-announce", "", "discovery announce URL, if it differs from --discovery")
-	configFile := fs.String("config", "", "file with discovery and discovery-announce settings (default: keyholder/config in the user config directory)")
+	configFile := fs.String("config", "", "file with discovery and discovery-announce settings (default: synctang-keyholder/config in the user config directory)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "keyholder: unlock requires exactly one argument, the machine's transport id")
+		fmt.Fprintln(stderr, "synctang-keyholder: unlock requires exactly one argument, the machine's transport id")
 		return 2
 	}
 	machineID := fs.Arg(0)
@@ -169,32 +169,32 @@ func runUnlock(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	network, err := loadNetworkConfig(configPath, explicitConfig, *discovery, *discoveryAnnounce)
 	if err != nil {
-		fmt.Fprintf(stderr, "keyholder: network settings: %v\n", err)
+		fmt.Fprintf(stderr, "synctang-keyholder: network settings: %v\n", err)
 		return 2
 	}
 	if s := network.Summary(); s != "" {
-		fmt.Fprintf(stderr, "keyholder: %s\n", s)
+		fmt.Fprintf(stderr, "synctang-keyholder: %s\n", s)
 	}
 
 	if *keyFile == "" {
-		fmt.Fprintln(stderr, "keyholder: --key-file is required (could not determine a default)")
+		fmt.Fprintln(stderr, "synctang-keyholder: --key-file is required (could not determine a default)")
 		return 2
 	}
 	if *transportKeyFile == "" {
-		fmt.Fprintln(stderr, "keyholder: --transport-key-file is required (could not determine a default)")
+		fmt.Fprintln(stderr, "synctang-keyholder: --transport-key-file is required (could not determine a default)")
 		return 2
 	}
 
 	s, err := loadPrivateKey(*keyFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "keyholder: %v\n", err)
+		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
 		return 1
 	}
 	defer mrcore.Wipe(s)
 
 	cert, err := transport.LoadOrCreateCert(*transportKeyFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "keyholder: %v\n", err)
+		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
 		return 1
 	}
 
@@ -219,7 +219,7 @@ func runUnlock(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		select {
 		case <-ctx.Done():
-			fmt.Fprintf(stderr, "keyholder: %v (last attempt: %v)\n", ctx.Err(), lastErr)
+			fmt.Fprintf(stderr, "synctang-keyholder: %v (last attempt: %v)\n", ctx.Err(), lastErr)
 			return 1
 		case <-time.After(unlockRetryInterval):
 		}

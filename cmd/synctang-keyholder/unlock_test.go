@@ -33,11 +33,11 @@ func freeTestAddr(t *testing.T) string {
 	return addr
 }
 
-// TestUnlockAnswersMachineRecovery is the keyholder-side half of the
+// TestUnlockAnswersMachineRecovery is the synctang-keyholder half of the
 // end-to-end recovery test: cmd/synctang-unlocker/agent_test.go already covers the
 // machine side, driving a simulated key holder with direct mrcore calls.
-// This test drives the actual keyholder unlock code (runUnlockOnce, the
-// same function "keyholder unlock" runs) against a simulated machine side
+// This test drives the actual synctang-keyholder unlock code (runUnlockOnce, the
+// same function "synctang-keyholder unlock" runs) against a simulated machine side
 // written the same way, mirroring mrcore/mr1_test.go's own enrol/recover
 // round trip. cmd/synctang-unlocker and cmd/synctang-keyholder stay two independent
 // binaries; nothing here imports the other package.
@@ -54,7 +54,7 @@ func TestUnlockAnswersMachineRecovery(t *testing.T) {
 	}
 
 	// Play the machine's part in enrolment directly, the same way a real
-	// "unlocker enrol" would via mrcore.Enrol: this is what a Recipient
+	// "synctang-unlocker enrol" would via mrcore.Enrol: this is what a Recipient
 	// carrying the key holder's own public key S looks like on disk.
 	P, rec, err := mrcore.Enrol(g, S)
 	if err != nil {

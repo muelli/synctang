@@ -41,7 +41,7 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 	if activeDevice == "" {
 		found, err := discoverAskingDevice(defaultAskPasswordDir)
 		if err != nil {
-			fmt.Fprintf(stderr, "unlocker: %v\n", err)
+			fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
 			return 1
 		}
 		activeDevice = found
@@ -52,7 +52,7 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 	// Read rather than load-or-create: see the comment above.
 	switch cert, err := readCertIfPresent(*machineKeyFile); {
 	case err != nil:
-		fmt.Fprintf(stderr, "unlocker: reading %s: %v\n", *machineKeyFile, err)
+		fmt.Fprintf(stderr, "synctang-unlocker: reading %s: %v\n", *machineKeyFile, err)
 		return 1
 	case cert == nil:
 		fmt.Fprintf(stdout, "this machine's transport id: not created yet (%s)\n", *machineKeyFile)
@@ -62,13 +62,13 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 
 	dump, err := runCommand(nil, "cryptsetup", "luksDump", activeDevice)
 	if err != nil {
-		fmt.Fprintf(stderr, "unlocker: reading the LUKS2 header: %v\n", err)
+		fmt.Fprintf(stderr, "synctang-unlocker: reading the LUKS2 header: %v\n", err)
 		return 1
 	}
 
 	tok, tokenID, err := loadToken(string(dump), activeDevice, "", "")
 	if err != nil {
-		fmt.Fprintf(stderr, "unlocker: %v\n", err)
+		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
 		return 1
 	}
 	if tokenID < 0 || len(tok.Recipients) == 0 {

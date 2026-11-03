@@ -106,11 +106,11 @@ func parseCmdlineNetwork(cmdline string) (transport.NetworkConfig, error) {
 func resolveNetwork(confPath string, stdout, stderr io.Writer) (transport.NetworkConfig, bool) {
 	c, err := loadNetworkConfig(confPath, procCmdline)
 	if err != nil {
-		fmt.Fprintf(stderr, "unlocker: network settings: %v\n", err)
+		fmt.Fprintf(stderr, "synctang-unlocker: network settings: %v\n", err)
 		return transport.NetworkConfig{}, false
 	}
 	if s := c.Summary(); s != "" {
-		fmt.Fprintf(stdout, "unlocker: %s\n", s)
+		fmt.Fprintf(stdout, "synctang-unlocker: %s\n", s)
 	}
 	return c, true
 }

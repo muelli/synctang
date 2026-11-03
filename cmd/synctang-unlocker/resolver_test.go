@@ -28,7 +28,7 @@ func TestParseResolvConfSourceEmpty(t *testing.T) {
 // and non-empty, but is only useful once systemd-resolved itself is
 // actually running with an upstream configured, which this early in a
 // dracut initrd it is not. Found running this against a real VM:
-// unlocker's very first ensureResolver check accepted exactly this
+// synctang-unlocker's very first ensureResolver check accepted exactly this
 // and never looked any further, so it retried DNS against a resolver
 // that was actively refusing connections, forever.
 func TestLooksLikeResolvConfRejectsLoopbackOnly(t *testing.T) {

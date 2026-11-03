@@ -13,7 +13,7 @@ import (
 	"github.com/syncthing/syncthing/lib/protocol"
 )
 
-// The dracut hook starts "unlocker agent" with no --name, so the name a key
+// The dracut hook starts "synctang-unlocker agent" with no --name, so the name a key
 // holder is shown has to come from the token, where enrolment put it. It used
 // to arrive empty: a key holder asked to approve `Machine ""`.
 func TestAgentGreetsWithTheNameGivenAtEnrolmentWhenNoneIsPassed(t *testing.T) {

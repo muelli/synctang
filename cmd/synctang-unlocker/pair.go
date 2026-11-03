@@ -80,16 +80,16 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 
 	conn, err := tr.Listen(ctx, listenOpts)
 	if err != nil {
-		return fmt.Errorf("unlocker: waiting for a key holder to pair: %w", err)
+		return fmt.Errorf("synctang-unlocker: waiting for a key holder to pair: %w", err)
 	}
 	defer conn.Close()
 
 	nonce := make([]byte, pairNonceLen)
 	if _, err := rand.Read(nonce); err != nil {
-		return fmt.Errorf("unlocker: generating a pairing nonce: %w", err)
+		return fmt.Errorf("synctang-unlocker: generating a pairing nonce: %w", err)
 	}
 	if err := mrcore.WriteMessage(conn, mrcore.PairChallenge{Nonce: nonce, Name: opts.machineName}); err != nil {
-		return fmt.Errorf("unlocker: sending the pairing challenge: %w", err)
+		return fmt.Errorf("synctang-unlocker: sending the pairing challenge: %w", err)
 	}
 
 	// Closing the connection is what interrupts a blocked read: the
@@ -103,7 +103,7 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 	requestTimer.Stop()
 	stopOnWindowEnd()
 	if err != nil {
-		return fmt.Errorf("unlocker: reading the pairing request: %w", err)
+		return fmt.Errorf("synctang-unlocker: reading the pairing request: %w", err)
 	}
 
 	// PeerID is the identity from the completed TLS handshake, not
@@ -134,13 +134,13 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 		// to whoever is holding the phone than a timeout.
 		_ = mrcore.WriteMessage(conn, mrcore.PairResult{Error: mrcore.PairRefusedEnrolFailed})
 		waitForPeerClose(conn, resultLingerTimeout)
-		return fmt.Errorf("unlocker: enrolling the paired key holder: %w", err)
+		return fmt.Errorf("synctang-unlocker: enrolling the paired key holder: %w", err)
 	}
 
 	if err := mrcore.WriteMessage(conn, mrcore.PairResult{OK: true}); err != nil {
 		// The enrolment happened and stands; only the acknowledgement
 		// was lost, so say so rather than implying nothing changed.
-		return fmt.Errorf("unlocker: %s was enrolled, but telling it so failed: %w", peerID, err)
+		return fmt.Errorf("synctang-unlocker: %s was enrolled, but telling it so failed: %w", peerID, err)
 	}
 	waitForPeerClose(conn, resultLingerTimeout)
 	return nil
@@ -153,7 +153,7 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 func refusePairing(conn io.ReadWriter, reason string) error {
 	_ = mrcore.WriteMessage(conn, mrcore.PairResult{Error: reason})
 	waitForPeerClose(conn, resultLingerTimeout)
-	return fmt.Errorf("unlocker: pairing refused: %s", reason)
+	return fmt.Errorf("synctang-unlocker: pairing refused: %s", reason)
 }
 
 // defaultPairWindow is how long a pairing code stays good for. Long
@@ -183,12 +183,12 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if !validQRMode(*qrMode) {
-		fmt.Fprintf(stderr, "unlocker: --qr: unknown mode %q, want one of %s\n", *qrMode, strings.Join(qrModes, ", "))
+		fmt.Fprintf(stderr, "synctang-unlocker: --qr: unknown mode %q, want one of %s\n", *qrMode, strings.Join(qrModes, ", "))
 		return 2
 	}
 
 	if *device == "" || *passphraseFile == "" {
-		fmt.Fprintln(stderr, "unlocker: --device and --existing-passphrase-file are required")
+		fmt.Fprintln(stderr, "synctang-unlocker: --device and --existing-passphrase-file are required")
 		return 2
 	}
 
@@ -199,7 +199,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 
 	passphrase, err := readPassphrase(*passphraseFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "unlocker: %v\n", err)
+		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
 		return 1
 	}
 	defer mrcore.Wipe(passphrase)
@@ -209,20 +209,20 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 	// person had confirmed it. Before the identity is made, too, so a
 	// refused run leaves nothing behind.
 	if err := verifyPassphrase(*device, passphrase); err != nil {
-		fmt.Fprintf(stderr, "unlocker: that passphrase does not open %s (%v); nothing was changed\n", *device, err)
+		fmt.Fprintf(stderr, "synctang-unlocker: that passphrase does not open %s (%v); nothing was changed\n", *device, err)
 		return 1
 	}
 
 	cert, err := transport.LoadOrCreateCert(*machineKeyFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "unlocker: %v\n", err)
+		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
 		return 1
 	}
 	machineID := protocol.NewDeviceID(cert.Certificate[0]).String()
 
 	secret, encoded, err := mrcore.NewPairingSecret()
 	if err != nil {
-		fmt.Fprintf(stderr, "unlocker: %v\n", err)
+		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
 		return 1
 	}
 	defer mrcore.Wipe(secret)
@@ -231,7 +231,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		// Not fatal: the printed values below are enough to pair by
 		// hand, and a machine whose terminal cannot show a QR code is
 		// exactly the case they exist for.
-		fmt.Fprintf(stderr, "unlocker: could not draw the QR code (%v); use the link below\n", err)
+		fmt.Fprintf(stderr, "synctang-unlocker: could not draw the QR code (%v); use the link below\n", err)
 	} else {
 		fmt.Fprintln(stdout)
 		fmt.Fprint(stdout, qrCode)
@@ -264,10 +264,10 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 			return 0
 		}
 		if ctx.Err() != nil {
-			fmt.Fprintf(stderr, "unlocker: nobody paired within %s\n", *window)
+			fmt.Fprintf(stderr, "synctang-unlocker: nobody paired within %s\n", *window)
 			return 1
 		}
-		fmt.Fprintf(stderr, "unlocker: %v (still waiting)\n", err)
+		fmt.Fprintf(stderr, "synctang-unlocker: %v (still waiting)\n", err)
 	}
 }
 

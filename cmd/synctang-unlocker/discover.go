@@ -35,9 +35,9 @@ func blockDevices(procPartitions string) []string {
 
 // findMr1Devices scans every block device in /proc/partitions for a LUKS2
 // header carrying an mr-1 token and returns all of them, in /proc/partitions
-// order. "unlocker agent" falls back to this when --device is not given,
+// order. "synctang-unlocker agent" falls back to this when --device is not given,
 // which is always the case in the real dracut deployment: the hook script
-// (dracut/90unlocker/unlocker-start.sh) has no device name to pass either.
+// (dracut/90synctang/synctang-start.sh) has no device name to pass either.
 //
 // There can be more than one: a second enrolled volume, a USB stick that
 // carries a token. Which of them is the one asking for a password is decided

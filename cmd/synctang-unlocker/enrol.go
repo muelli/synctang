@@ -119,7 +119,7 @@ func enrolRecipient(device string, existingPassphrase, recipientPublicKey []byte
 // removeRecipient revokes one enrolled key holder from device,
 // identified by its transport Device ID (the same string
 // Recipient.TransportDeviceID returns, and the one printed by
-// "keyholder export-pubkey"). Both the token's Recipient entry and its
+// "synctang-keyholder export-pubkey"). Both the token's Recipient entry and its
 // LUKS2 keyslot are destroyed: leaving the keyslot in place would let
 // whoever still holds the revoked recipient's P (or a copy of it made
 // before revocation) open device directly, without going through the

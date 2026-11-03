@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Command unlocker is the machine side of synctang: it runs in the
+// Command synctang-unlocker is the machine side of synctang: it runs in the
 // dracut initrd and, after boot, as a systemd password agent. It
 // always listens for a key holder to dial in; it never dials out.
 package main
@@ -25,7 +25,7 @@ import (
 	"github.com/syncthing/syncthing/lib/protocol"
 )
 
-const usage = `usage: unlocker <command> [flags]
+const usage = `usage: synctang-unlocker <command> [flags]
 
 commands:
   enrol   add a key holder's public key to a LUKS volume (or --remove
@@ -39,10 +39,10 @@ commands:
 
 // defaultMachineKeyFile is where this machine's own persistent transport
 // identity lives, unless overridden. It must exist at the same path both
-// when a human runs "unlocker enrol" and inside the dracut initrd the
+// when a human runs "synctang-unlocker enrol" and inside the dracut initrd the
 // "agent" subcommand later runs in, or the Device ID a key holder paired
 // against will not match the one the agent presents at boot; see
-// dracut/90unlocker/module-setup.sh, which copies this file into the
+// dracut/90synctang/module-setup.sh, which copies this file into the
 // initrd when present.
 const defaultMachineKeyFile = "/etc/synctang/machine.pem"
 
@@ -77,7 +77,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "open":
 		return runOpen(args[1:], stdout, stderr)
 	default:
-		fmt.Fprintf(stderr, "unlocker: unknown command %q\n%s", args[0], usage)
+		fmt.Fprintf(stderr, "synctang-unlocker: unknown command %q\n%s", args[0], usage)
 		return 2
 	}
 }
@@ -86,11 +86,11 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("enrol", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	device := fs.String("device", "", "LUKS2 device or image to enrol")
-	pubkeyHex := fs.String("pubkey", "", "recipient's public key, hex-encoded (from keyholder export-pubkey)")
+	pubkeyHex := fs.String("pubkey", "", "recipient's public key, hex-encoded (from synctang-keyholder export-pubkey)")
 	passphraseFile := fs.String("existing-passphrase-file", "", "file containing an existing valid LUKS passphrase (- for stdin)")
 	name := fs.String("name", "", "this machine's name, shown to the key holder")
 	transportID := fs.String("transport-id", "", "this machine's transport identity")
-	recipientTransportID := fs.String("recipient-transport-id", "", "the recipient's own transport identity (from keyholder export-pubkey), if known")
+	recipientTransportID := fs.String("recipient-transport-id", "", "the recipient's own transport identity (from synctang-keyholder export-pubkey), if known")
 	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, "path to this machine's persistent transport identity")
 	remove := fs.String("remove", "", "revoke the enrolled recipient with this transport id instead of adding one")
 	replace := fs.String("replace", "", "rotate the enrolled recipient with this transport id to --pubkey, revoking the old key")
@@ -99,23 +99,23 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 	}
 
 	if *remove != "" && *replace != "" {
-		fmt.Fprintln(stderr, "unlocker: --remove and --replace are alternatives; use one or the other")
+		fmt.Fprintln(stderr, "synctang-unlocker: --remove and --replace are alternatives; use one or the other")
 		return 2
 	}
 
 	if *replace != "" {
 		if *device == "" || *pubkeyHex == "" || *passphraseFile == "" {
-			fmt.Fprintln(stderr, "unlocker: --device, --pubkey and --existing-passphrase-file are all required with --replace")
+			fmt.Fprintln(stderr, "synctang-unlocker: --device, --pubkey and --existing-passphrase-file are all required with --replace")
 			return 2
 		}
 		pubkey, err := hex.DecodeString(*pubkeyHex)
 		if err != nil {
-			fmt.Fprintf(stderr, "unlocker: --pubkey: %v\n", err)
+			fmt.Fprintf(stderr, "synctang-unlocker: --pubkey: %v\n", err)
 			return 2
 		}
 		passphrase, err := readPassphrase(*passphraseFile)
 		if err != nil {
-			fmt.Fprintf(stderr, "unlocker: %v\n", err)
+			fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
 			return 1
 		}
 		defer mrcore.Wipe(passphrase)
@@ -127,7 +127,7 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 		newTransportID := cmp.Or(*recipientTransportID, *replace)
 
 		if err := replaceRecipient(*device, passphrase, pubkey, *replace, newTransportID); err != nil {
-			fmt.Fprintf(stderr, "unlocker: %v\n", err)
+			fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
 			return 1
 		}
 		fmt.Fprintf(stdout, "rotated recipient %s on %s; its previous key no longer opens the device\n", *replace, *device)
@@ -136,18 +136,18 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 
 	if *remove != "" {
 		if *device == "" || *passphraseFile == "" {
-			fmt.Fprintln(stderr, "unlocker: --device and --existing-passphrase-file are required with --remove")
+			fmt.Fprintln(stderr, "synctang-unlocker: --device and --existing-passphrase-file are required with --remove")
 			return 2
 		}
 		passphrase, err := readPassphrase(*passphraseFile)
 		if err != nil {
-			fmt.Fprintf(stderr, "unlocker: %v\n", err)
+			fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
 			return 1
 		}
 		defer mrcore.Wipe(passphrase)
 
 		if err := removeRecipient(*device, passphrase, *remove); err != nil {
-			fmt.Fprintf(stderr, "unlocker: %v\n", err)
+			fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
 			return 1
 		}
 		fmt.Fprintf(stdout, "revoked recipient %s on %s\n", *remove, *device)
@@ -155,25 +155,25 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 	}
 
 	if *device == "" || *pubkeyHex == "" || *passphraseFile == "" {
-		fmt.Fprintln(stderr, "unlocker: --device, --pubkey and --existing-passphrase-file are all required")
+		fmt.Fprintln(stderr, "synctang-unlocker: --device, --pubkey and --existing-passphrase-file are all required")
 		return 2
 	}
 
 	pubkey, err := hex.DecodeString(*pubkeyHex)
 	if err != nil {
-		fmt.Fprintf(stderr, "unlocker: --pubkey: %v\n", err)
+		fmt.Fprintf(stderr, "synctang-unlocker: --pubkey: %v\n", err)
 		return 2
 	}
 
 	passphrase, err := readPassphrase(*passphraseFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "unlocker: %v\n", err)
+		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
 		return 1
 	}
 	defer mrcore.Wipe(passphrase)
 
 	if err := enrolRecipient(*device, passphrase, pubkey, *name, *transportID, *recipientTransportID); err != nil {
-		fmt.Fprintf(stderr, "unlocker: %v\n", err)
+		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
 		return 1
 	}
 
@@ -198,16 +198,16 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 
 	cert, err := transport.LoadOrCreateCert(*machineKeyFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "unlocker: loading this machine's transport identity: %v\n", err)
+		fmt.Fprintf(stderr, "synctang-unlocker: loading this machine's transport identity: %v\n", err)
 		return 1
 	}
 	fmt.Fprintf(stdout, "this machine's transport id: %s\n", protocol.NewDeviceID(cert.Certificate[0]))
 	if shouldWarnAboutNewIdentity(machineIdentityIsNew, *machineKeyFile) {
 		fmt.Fprintf(stderr,
-			"unlocker: created a new transport identity at %s, so the id above is this host's.\n"+
-				"unlocker: if --device is a disk image for another machine, pass --machine-key-file pointing\n"+
-				"unlocker: into that image and re-run, or the key holder will pair against an id no machine\n"+
-				"unlocker: ever announces.\n",
+			"synctang-unlocker: created a new transport identity at %s, so the id above is this host's.\n"+
+				"synctang-unlocker: if --device is a disk image for another machine, pass --machine-key-file pointing\n"+
+				"synctang-unlocker: into that image and re-run, or the key holder will pair against an id no machine\n"+
+				"synctang-unlocker: ever announces.\n",
 			*machineKeyFile)
 	}
 	return 0
@@ -231,7 +231,7 @@ func shouldWarnAboutNewIdentity(isNew bool, keyFile string) bool {
 // runAgentCLI is the "agent" subcommand: it runs the systemd password
 // agent, listening for a key holder to connect and answer one recovery
 // attempt at a time, until ctx (SIGTERM, which
-// dracut/90unlocker/unlocker-stop.sh sends) is cancelled.
+// dracut/90synctang/synctang-stop.sh sends) is cancelled.
 func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("agent", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -253,7 +253,7 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 
 	logLevel, err := parseLogLevel(*logLevelFlag)
 	if err != nil {
-		fmt.Fprintf(stderr, "unlocker: %v\n", err)
+		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
 		return 2
 	}
 	logger := newLogger(logLevel)
@@ -261,11 +261,11 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 
 	cert, err := transport.LoadOrCreateCert(*machineKeyFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "unlocker: %v\n", err)
+		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
 		return 1
 	}
 
-	fmt.Fprintf(stdout, "unlocker: waiting for a key holder, transport id %s\n", protocol.NewDeviceID(cert.Certificate[0]))
+	fmt.Fprintf(stdout, "synctang-unlocker: waiting for a key holder, transport id %s\n", protocol.NewDeviceID(cert.Certificate[0]))
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer cancel()
@@ -288,7 +288,7 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 		activeDevice := *device
 		if activeDevice == "" {
 			// The real dracut deployment has no --device to pass: the
-			// hook script that starts this (unlocker-start.sh) has no
+			// hook script that starts this (synctang-start.sh) has no
 			// way to know the device name either. Re-discover every
 			// attempt, not just once at startup, in case the volume
 			// was not yet visible in /proc/partitions the first time
@@ -315,12 +315,12 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 			transport.ListenOptions{DirectAddr: *directAddr}, tr)
 		switch {
 		case err == nil:
-			fmt.Fprintln(stdout, "unlocker: unlocked")
+			fmt.Fprintln(stdout, "synctang-unlocker: unlocked")
 			logger.Info("recovery attempt succeeded")
 		case ctx.Err() != nil:
 			// Shutting down; the error is just ctx being cancelled mid-attempt.
 		default:
-			fmt.Fprintf(stderr, "unlocker: %v\n", err)
+			fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
 			logger.Error("recovery attempt failed", "error", err)
 		}
 

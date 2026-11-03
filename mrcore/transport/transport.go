@@ -15,11 +15,11 @@ import (
 type Transport interface {
 	// Listen announces this identity and blocks until exactly one dialer
 	// connects and completes the TLS/identity handshake, or ctx is done.
-	// The machine (unlocker) always listens.
+	// The machine (synctang-unlocker) always listens.
 	Listen(ctx context.Context, opts ListenOptions) (Conn, error)
 
 	// Dial connects to a listening identity by its Device ID. The key
-	// holder (keyholder/Android) always dials.
+	// holder (synctang-keyholder/Android) always dials.
 	Dial(ctx context.Context, opts DialOptions) (Conn, error)
 }
 

@@ -191,7 +191,7 @@ func TestResolveNetwork(t *testing.T) {
 	if _, ok := resolveNetwork(bad, &out, &errOut); ok {
 		t.Error("a bad file must not be accepted")
 	}
-	if !strings.Contains(errOut.String(), "unlocker: ") || !strings.Contains(errOut.String(), bad) {
+	if !strings.Contains(errOut.String(), "synctang-unlocker: ") || !strings.Contains(errOut.String(), bad) {
 		t.Errorf("stderr %q should name the file", errOut.String())
 	}
 

@@ -41,8 +41,8 @@ func authorizedPeersFor(tok mrcore.Token) ([]string, error) {
 		}
 	}
 	if len(peers) == 0 {
-		return nil, errors.New("unlocker: no enrolled recipient has a transport id, so no key holder could be told apart from a stranger; " +
-			"enrol again with --recipient-transport-id (see 'unlocker status')")
+		return nil, errors.New("synctang-unlocker: no enrolled recipient has a transport id, so no key holder could be told apart from a stranger; " +
+			"enrol again with --recipient-transport-id (see 'synctang-unlocker status')")
 	}
 	return peers, nil
 }
@@ -55,7 +55,7 @@ func authorizedPeersFor(tok mrcore.Token) ([]string, error) {
 func runAgentOnce(ctx context.Context, device string, machineCert tls.Certificate, machineName string, askPasswordDir string, listenOpts transport.ListenOptions, tr transport.Transport) error {
 	deliver := func(keyMaterial []byte) error {
 		if err := answerAskPasswordFor(askPasswordDir, device, keyMaterial); err != nil {
-			return fmt.Errorf("unlocker: answering ask-password request: %w", err)
+			return fmt.Errorf("synctang-unlocker: answering ask-password request: %w", err)
 		}
 		return nil
 	}
@@ -63,7 +63,7 @@ func runAgentOnce(ctx context.Context, device string, machineCert tls.Certificat
 }
 
 // deliverFunc takes the recovered and verified key material and puts it to use:
-// the agent hands it to systemd, "unlocker open" opens the volume with it. It
+// the agent hands it to systemd, "synctang-unlocker open" opens the volume with it. It
 // must not keep the slice; the caller wipes it.
 type deliverFunc func(keyMaterial []byte) error
 
@@ -73,15 +73,15 @@ type deliverFunc func(keyMaterial []byte) error
 func serveOneExchange(ctx context.Context, device, machineName string, listenOpts transport.ListenOptions, tr transport.Transport, deliver deliverFunc) error {
 	dump, err := runCommand(nil, "cryptsetup", "luksDump", device)
 	if err != nil {
-		return fmt.Errorf("unlocker: reading LUKS header: %w", err)
+		return fmt.Errorf("synctang-unlocker: reading LUKS header: %w", err)
 	}
 
 	tok, existingTokenID, err := loadToken(string(dump), device, machineName, "")
 	if err != nil {
-		return fmt.Errorf("unlocker: loading token: %w", err)
+		return fmt.Errorf("synctang-unlocker: loading token: %w", err)
 	}
 	if existingTokenID < 0 {
-		return fmt.Errorf("unlocker: %s has no enrolled mr-1 recipients", device)
+		return fmt.Errorf("synctang-unlocker: %s has no enrolled mr-1 recipients", device)
 	}
 
 	authorizedPeers, err := authorizedPeersFor(tok)
@@ -94,7 +94,7 @@ func serveOneExchange(ctx context.Context, device, machineName string, listenOpt
 
 	conn, err := tr.Listen(ctx, opts)
 	if err != nil {
-		return fmt.Errorf("unlocker: listening: %w", err)
+		return fmt.Errorf("synctang-unlocker: listening: %w", err)
 	}
 	defer conn.Close()
 
@@ -154,29 +154,29 @@ func runExchange(
 		}
 	}
 	if matched == nil {
-		return fmt.Errorf("unlocker: connected peer %s does not match any enrolled recipient", conn.PeerID())
+		return fmt.Errorf("synctang-unlocker: connected peer %s does not match any enrolled recipient", conn.PeerID())
 	}
 
 	if err := mrcore.WriteMessage(conn, mrcore.Hello{Name: machineName}); err != nil {
-		return fmt.Errorf("unlocker: sending hello: %w", err)
+		return fmt.Errorf("synctang-unlocker: sending hello: %w", err)
 	}
 
 	e, X, err := mrcore.ChallengeStart(mrcore.P256(), matched.C)
 	if err != nil {
-		return fmt.Errorf("unlocker: starting challenge: %w", err)
+		return fmt.Errorf("synctang-unlocker: starting challenge: %w", err)
 	}
 	defer mrcore.Wipe(e)
 
 	if err := mrcore.WriteMessage(conn, mrcore.RecoverRequest{Kid: matched.Kid, X: X}); err != nil {
-		return fmt.Errorf("unlocker: sending recover request: %w", err)
+		return fmt.Errorf("synctang-unlocker: sending recover request: %w", err)
 	}
 
 	var resp mrcore.RecoverResponse
 	if err := mrcore.ReadMessage(conn, &resp); err != nil {
-		return fmt.Errorf("unlocker: reading recover response: %w", err)
+		return fmt.Errorf("synctang-unlocker: reading recover response: %w", err)
 	}
 	if resp.Error != "" {
-		return fmt.Errorf("unlocker: key holder declined: %s", mrcore.SafeLabel(resp.Error, 200))
+		return fmt.Errorf("synctang-unlocker: key holder declined: %s", mrcore.SafeLabel(resp.Error, 200))
 	}
 
 	// From here on the key holder has done its part and is waiting to
@@ -219,10 +219,10 @@ func runExchange(
 	case len(resp.XOnly) > 0:
 		P, err = mrcore.FinishXOnly(mrcore.P256(), e, *matched, resp.XOnly)
 	default:
-		return report(fmt.Errorf("unlocker: recover response carries neither Y nor XOnly"))
+		return report(fmt.Errorf("synctang-unlocker: recover response carries neither Y nor XOnly"))
 	}
 	if err != nil {
-		return report(fmt.Errorf("unlocker: finishing recovery: %w", err))
+		return report(fmt.Errorf("synctang-unlocker: finishing recovery: %w", err))
 	}
 	defer mrcore.Wipe(P)
 	if err := checkSecretLength(P); err != nil {
@@ -238,7 +238,7 @@ func runExchange(
 	defer mrcore.Wipe(keyMaterial)
 
 	if err := verifyPassphrase(device, keyMaterial); err != nil {
-		return report(fmt.Errorf("unlocker: recovered secret does not open %s: %w", device, err))
+		return report(fmt.Errorf("synctang-unlocker: recovered secret does not open %s: %w", device, err))
 	}
 
 	if err := deliver(keyMaterial); err != nil {
@@ -259,7 +259,7 @@ const volumeSecretLen = 32
 // to check it.
 func checkSecretLength(P []byte) error {
 	if len(P) != volumeSecretLen {
-		return fmt.Errorf("unlocker: recovered secret is %d bytes, expected %d; this token was not written by this tool", len(P), volumeSecretLen)
+		return fmt.Errorf("synctang-unlocker: recovered secret is %d bytes, expected %d; this token was not written by this tool", len(P), volumeSecretLen)
 	}
 	return nil
 }

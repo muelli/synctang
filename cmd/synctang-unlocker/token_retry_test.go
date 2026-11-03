@@ -56,7 +56,7 @@ func shortRetries(t *testing.T) {
 	t.Cleanup(func() { tokenReadRetryDelay = was })
 }
 
-// "unlocker status" run while "unlocker pair" was writing the header failed once
+// "synctang-unlocker status" run while "synctang-unlocker pair" was writing the header failed once
 // with "Failed to get token 0 for export" and worked a moment later: cryptsetup
 // reads a header that a concurrent writer is rewriting. A read that fails once
 // for that reason has to be tried again.
