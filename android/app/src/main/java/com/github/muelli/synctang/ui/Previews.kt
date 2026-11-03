@@ -12,7 +12,10 @@ import com.github.muelli.synctang.Identity
 import com.github.muelli.synctang.KeyHolderKey
 import com.github.muelli.synctang.KeyProblem
 import com.github.muelli.synctang.Machine
+import com.github.muelli.synctang.Progress
 import com.github.muelli.synctang.R
+import com.github.muelli.synctang.Route
+import com.github.muelli.synctang.Stage
 import com.github.muelli.synctang.Retry
 import com.github.muelli.synctang.UnlockUiState
 
@@ -97,7 +100,12 @@ private fun ReadyLargeFontPreview() = Frame {
 @Preview(name = "Connecting", widthDp = 360, heightDp = 640)
 @Composable
 private fun ConnectingPreview() = Frame {
-    Busy(stringResource(R.string.unlock_connecting), machine, onCancel = {})
+    Busy(
+        stringResource(R.string.unlock_connecting),
+        machine,
+        Progress(Stage.WAITING_FOR_REQUEST, attempt = 2, route = Route.RELAY, startedAtMillis = System.currentTimeMillis() - 12_000),
+        onCancel = {},
+    )
 }
 
 @Preview(name = "Pairing", widthDp = 360, heightDp = 640)

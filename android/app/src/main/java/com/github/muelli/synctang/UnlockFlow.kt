@@ -64,16 +64,17 @@ sealed interface UnlockUiState {
      */
     data class Ready(val machine: Machine, val identity: Identity, val replaced: Machine? = null) : UnlockUiState
 
-    data class Connecting(val machine: Machine) : UnlockUiState
+    /** Dialling [machine]; [progress] says how far the dial has got. */
+    data class Connecting(val machine: Machine, val progress: Progress = Progress()) : UnlockUiState
 
     /** Enrolling this phone on [machine] over the network. */
-    data class Pairing(val machine: Machine) : UnlockUiState
+    data class Pairing(val machine: Machine, val progress: Progress = Progress()) : UnlockUiState
 
     /** A recovery request has arrived and is waiting for approval. */
     data class Approve(val machine: Machine, val peerId: String, val kidHex: String) : UnlockUiState
 
     /** Authenticating, computing the answer, or sending it. */
-    data class Working(val machine: Machine) : UnlockUiState
+    data class Working(val machine: Machine, val progress: Progress = Progress()) : UnlockUiState
 
     data class Done(val machine: Machine) : UnlockUiState
 
@@ -131,6 +132,9 @@ internal const val APPROVAL_TIMED_OUT = "key holder did not answer in time"
  */
 internal const val APPROVE_WINDOW_MILLIS = 90_000L
 
+/** How often a busy screen asks how far the Go side has got: often enough to feel live, rare enough to cost nothing. */
+internal const val POLL_INTERVAL_MILLIS = 500L
+
 /** How many unknown parameter names a refusal lists, so a hostile link cannot fill the screen. */
 private const val MAX_NAMES_SHOWN = 3
 
@@ -148,6 +152,9 @@ interface MachineStore {
 interface MachineSession {
     /** Blocks until the machine has said what it wants, or throws. */
     fun connect()
+
+    /** How far this session has got, read while [connect] or [answer] runs; never blocks. */
+    fun progress(): Progress = Progress()
 
     /** Interrupts a [connect] running on another thread; returns at once. */
     fun cancel()
@@ -171,6 +178,9 @@ interface MachineSession {
 interface PairingAttempt {
     /** Blocks until the machine has enrolled this phone, or throws. */
     fun pair(machine: Machine, code: String, identity: Identity)
+
+    /** How far the pairing has got, read while [pair] runs; never blocks. */
+    fun progress(): Progress = Progress()
 
     /** Interrupts a [pair] running on another thread; returns at once. */
     fun cancel()
@@ -277,6 +287,10 @@ class UnlockFlow(
     // Run once per start, behind the home screen, so a key that died while the app
     // was closed is not offered for enrolment.
     private val checkKey: () -> Unit = {},
+    // How often the busy screens ask the Go side how far it has got, and the clock their
+    // elapsed time is counted on.
+    private val pollIntervalMillis: Long = POLL_INTERVAL_MILLIS,
+    private val clock: () -> Long = System::currentTimeMillis,
     private val strings: Strings,
     private val log: (String, Throwable) -> Unit = { _, _ -> },
 ) {
@@ -284,6 +298,10 @@ class UnlockFlow(
     val state: StateFlow<UnlockUiState> = _state.asStateFlow()
 
     private var session: MachineSession? = null
+
+    // Where the busy screens read progress from, and the coroutine that does; see [startPolling].
+    @Volatile private var progressSource: (() -> Progress)? = null
+    private var poller: Job? = null
 
     // Gives up on an Approve screen nobody answers; see [armApproveExpiry].
     private var approveExpiry: Job? = null
@@ -491,13 +509,15 @@ class UnlockFlow(
         val previous = store.machine()
         val attempt = InFlight()
         inFlight = attempt
-        _state.value = UnlockUiState.Pairing(machine)
+        _state.value = UnlockUiState.Pairing(machine, Progress(startedAtMillis = clock()))
+        startPolling()
 
         scope.launch {
             try {
                 val identity = withContext(io) { identity() }
                 withContext(io) {
                     val pairing = newPairing()
+                    progressSource = { pairing.progress() }
                     attempt.bind { pairing.cancel() }
                     pairing.pair(machine, code, identity)
                 }
@@ -522,13 +542,46 @@ class UnlockFlow(
         }
     }
 
+    /**
+     * Reads how far the Go side has got, every [pollIntervalMillis], for as long as the
+     * screen is a busy one, and puts it into the state. The loop ends by itself the first
+     * time it finds the state is not busy, without asking again, so nothing keeps polling
+     * once a dial, a pairing or an answer is over. Runs on [scope], so it never races the
+     * assignments to the state.
+     */
+    private fun startPolling() {
+        poller?.cancel()
+        poller = scope.launch {
+            while (true) {
+                delay(pollIntervalMillis)
+                val shown = _state.value
+                val current = when (shown) {
+                    is UnlockUiState.Connecting -> shown.progress
+                    is UnlockUiState.Pairing -> shown.progress
+                    is UnlockUiState.Working -> shown.progress
+                    else -> return@launch
+                }
+                val read = progressSource?.invoke() ?: continue
+                val next = read.copy(startedAtMillis = current.startedAtMillis)
+                if (next == current) continue
+                _state.value = when (shown) {
+                    is UnlockUiState.Connecting -> shown.copy(progress = next)
+                    is UnlockUiState.Pairing -> shown.copy(progress = next)
+                    is UnlockUiState.Working -> shown.copy(progress = next)
+                    else -> return@launch
+                }
+            }
+        }
+    }
+
     /** Dials the machine and waits for it to say what it wants. */
     fun connect() {
         val machine = store.machine() ?: return
         disarmApproveExpiry()
         val attempt = InFlight()
         inFlight = attempt
-        _state.value = UnlockUiState.Connecting(machine)
+        _state.value = UnlockUiState.Connecting(machine, Progress(startedAtMillis = clock()))
+        startPolling()
 
         scope.launch {
             var fresh: MachineSession? = null
@@ -536,6 +589,7 @@ class UnlockFlow(
                 withContext(io) {
                     closeSession()
                     val dialled = newSession(machine)
+                    progressSource = { dialled.progress() }
                     fresh = dialled
                     attempt.bind { dialled.cancel() }
                     dialled.connect()
@@ -579,7 +633,9 @@ class UnlockFlow(
         val machine = store.machine() ?: return
         val active = session ?: return
         disarmApproveExpiry()
-        _state.value = UnlockUiState.Working(machine)
+        _state.value = UnlockUiState.Working(machine, Progress(startedAtMillis = clock()))
+        progressSource = { active.progress() }
+        startPolling()
 
         scope.launch {
             // Before any prompt: a key that was retired, or is missing, is found
@@ -764,6 +820,8 @@ class UnlockFlow(
      */
     fun close() {
         disarmApproveExpiry()
+        poller?.cancel()
+        poller = null
         inFlight?.cancel()
         closeSession()
     }

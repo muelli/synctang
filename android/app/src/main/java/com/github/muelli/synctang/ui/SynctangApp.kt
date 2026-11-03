@@ -120,9 +120,12 @@ private fun SynctangScreens(gate: BiometricGate, model: UnlockViewModel) {
                 is UnlockUiState.NeedsPairing ->
                     PairingScreen(current, model::pair, model::keepCurrentMachine, onEnrolByHand = { aboutOpen = true })
                 is UnlockUiState.Ready -> ReadyScreen(current, model::connect, model::startPairing)
-                is UnlockUiState.Connecting -> Busy(stringResource(R.string.unlock_connecting), current.machine, model::cancel)
-                is UnlockUiState.Pairing -> Busy(stringResource(R.string.pair_working), current.machine, model::cancel)
-                is UnlockUiState.Working -> Busy(stringResource(R.string.unlock_working), current.machine)
+                is UnlockUiState.Connecting ->
+                    Busy(stringResource(R.string.unlock_connecting), current.machine, current.progress, onCancel = model::cancel)
+                is UnlockUiState.Pairing ->
+                    Busy(stringResource(R.string.pair_working), current.machine, current.progress, onCancel = model::cancel)
+                is UnlockUiState.Working ->
+                    Busy(stringResource(R.string.unlock_working), current.machine, current.progress)
                 is UnlockUiState.Approve -> ApproveScreen(current, { model.approve(gate) }, model::cancel)
                 is UnlockUiState.Done -> DoneScreen(current, model::refresh)
                 is UnlockUiState.Failed -> FailedScreen(current, model::refresh, model::startPairing)

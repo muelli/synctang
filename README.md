@@ -175,6 +175,10 @@ the app, or on the laptop:
 The key holder shows the machine's name, waits for Enter (or `--yes`),
 and answers once. The machine checks the recovered secret actually opens the volume
 before handing it to systemd, and tells the key holder how it went.
+While the app connects, pairs or sends its answer, it says what it is doing (looking
+for the machine, connected through a relay or on the local network and waiting for the
+machine to ask, waiting for you to confirm on the machine), how long it has been, and
+which attempt it is on after the first.
 
 Kernel command line options:
 

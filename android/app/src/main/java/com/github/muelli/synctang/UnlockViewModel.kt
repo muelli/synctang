@@ -140,6 +140,14 @@ private class GoSession(
     override fun connect() = classified(session::lastFailure, session::lastFailureDetail) {
         MulticastLease.holding(multicastLock) { session.connect() }
     }
+    // Plain getters on the Go side that never wait for a call in progress, so this is safe
+    // to read from the main thread while connect() or answer() runs on another.
+    override fun progress() = Progress(
+        Stage.fromGo(session.stage()),
+        session.attempt().toInt(),
+        Route.fromGo(session.route()),
+    )
+
     override fun cancel() = session.cancel()
     override fun close() = session.close()
     override fun decline(reason: String) = session.decline(reason)
@@ -191,6 +199,12 @@ private class GoPairing(
                 )
             }
         }
+
+    override fun progress() = Progress(
+        Stage.fromGo(pairer.stage()),
+        pairer.attempt().toInt(),
+        Route.fromGo(pairer.route()),
+    )
 
     override fun cancel() = pairer.cancel()
 

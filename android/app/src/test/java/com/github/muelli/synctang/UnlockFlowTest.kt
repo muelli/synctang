@@ -13,6 +13,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -88,6 +89,7 @@ class UnlockFlowTest {
             "OLD-PHONE-ID"
         },
         approveWindowMillis = 1_500,
+        pollIntervalMillis = 20,
         keyUseTimeoutSeconds = 1,
         checkKey = {
             keyChecks.incrementAndGet()
@@ -294,6 +296,131 @@ class UnlockFlowTest {
         pairings.single().finish()
         await<UnlockUiState.Ready>()
         assertEquals("https://d.example.net/v2/", store.saved?.discovery)
+    }
+
+    // Progress: the busy screens say what the dial, the pairing and the answer are doing,
+    // read from the Go side while they run, and stop reading when they are over.
+
+    private inline fun <reified T : UnlockUiState> awaitState(crossinline condition: (T) -> Boolean): T {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (System.nanoTime() < deadline) {
+            val now = flow.state.value
+            if (now is T && condition(now)) return now
+            Thread.sleep(5)
+        }
+        fail("never matched, still ${flow.state.value}")
+        throw AssertionError()
+    }
+
+    @Test
+    fun theConnectingScreenFollowsWhatTheDialIsDoing() {
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        onMain { flow.connect() }
+        await<UnlockUiState.Connecting>()
+        val session = sessions.awaitOne()
+
+        session.shown = Progress(Stage.LOOKING_UP, attempt = 1)
+        assertEquals(Stage.LOOKING_UP, awaitState<UnlockUiState.Connecting> { it.progress.stage == Stage.LOOKING_UP }.progress.stage)
+
+        session.shown = Progress(Stage.CONNECTING, attempt = 2, route = Route.RELAY)
+        val now = awaitState<UnlockUiState.Connecting> { it.progress.stage == Stage.CONNECTING }
+        assertEquals(2, now.progress.attempt)
+        assertEquals(Route.RELAY, now.progress.route)
+        onMain { flow.cancel() }
+        await<UnlockUiState.Ready>()
+    }
+
+    @Test
+    fun theTimeSpentIsKeptFromTheStartAndNotRestartedByEachUpdate() {
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        onMain { flow.connect() }
+        val first = await<UnlockUiState.Connecting>().progress.startedAtMillis
+        val session = sessions.awaitOne()
+        session.shown = Progress(Stage.CHECKING_IDENTITY, attempt = 1)
+        val later = awaitState<UnlockUiState.Connecting> { it.progress.stage == Stage.CHECKING_IDENTITY }
+        assertEquals(first, later.progress.startedAtMillis)
+        onMain { flow.cancel() }
+    }
+
+    @Test
+    fun thePairingScreenSaysItIsWaitingForTheOperator() {
+        onMain { flow.refresh() }
+        await<UnlockUiState.NeedsPairing>()
+        onMain { flow.pair(payload(machineB)) }
+        await<UnlockUiState.Pairing>()
+        val pairing = pairings.awaitOne()
+        pairing.started.await(5, TimeUnit.SECONDS)
+
+        pairing.shown = Progress(Stage.WAITING_FOR_OPERATOR, attempt = 1)
+        awaitState<UnlockUiState.Pairing> { it.progress.stage == Stage.WAITING_FOR_OPERATOR }
+        pairing.finish()
+        await<UnlockUiState.Ready>()
+    }
+
+    @Test
+    fun theWorkingScreenFollowsTheAnswer() {
+        val session = connectToARequest()
+        val release = CountDownLatch(1)
+        onMain {
+            flow.approve { _, _, _ ->
+                // Off the main thread, which the poller needs to run on while the prompt is up.
+                withContext(Dispatchers.IO) { release.await() }
+                AuthOutcome.SUCCEEDED
+            }
+        }
+        await<UnlockUiState.Working>()
+        session.shown = Progress(Stage.WAITING_FOR_VERDICT, attempt = 1)
+        awaitState<UnlockUiState.Working> { it.progress.stage == Stage.WAITING_FOR_VERDICT }
+        release.countDown()
+        await<UnlockUiState.Done>()
+    }
+
+    /** Nothing keeps asking once the screen is no longer a busy one. */
+    @Test
+    fun nothingIsPolledAfterTheBusyStateIsLeft() {
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        onMain { flow.connect() }
+        await<UnlockUiState.Connecting>()
+        val session = sessions.awaitOne()
+        awaitCalls(session) { it > 2 } // it is being polled while busy
+
+        onMain { flow.cancel() }
+        await<UnlockUiState.Ready>()
+        Thread.sleep(100) // a poll in flight at the moment of leaving may still land
+        val calls = session.progressCalls.get()
+        Thread.sleep(300) // many intervals
+        assertEquals("the session was polled after the screen left the busy state", calls, session.progressCalls.get())
+    }
+
+    @Test
+    fun nothingIsPolledAfterAPairingEnds() {
+        onMain { flow.refresh() }
+        await<UnlockUiState.NeedsPairing>()
+        onMain { flow.pair(payload(machineB)) }
+        await<UnlockUiState.Pairing>()
+        val pairing = pairings.awaitOne()
+        pairing.started.await(5, TimeUnit.SECONDS)
+        pairing.finish()
+        await<UnlockUiState.Ready>()
+        Thread.sleep(100)
+        val calls = pairing.progressCalls.get()
+        Thread.sleep(300)
+        assertEquals(calls, pairing.progressCalls.get())
+    }
+
+    private fun awaitCalls(session: FakeSession, condition: (Int) -> Boolean) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (System.nanoTime() < deadline) {
+            if (condition(session.progressCalls.get())) return
+            Thread.sleep(5)
+        }
+        fail("never polled enough: ${session.progressCalls.get()}")
     }
 
     // Undoing a replacement
@@ -1070,6 +1197,14 @@ private class FakeSession(
         declines += reason
     }
 
+    /** What the Go side would say it is doing; the test changes it. */
+    @Volatile var shown = Progress()
+    val progressCalls = java.util.concurrent.atomic.AtomicInteger()
+    override fun progress(): Progress {
+        progressCalls.incrementAndGet()
+        return shown
+    }
+
     override fun machineName() = "machine"
     override fun peerId() = "PEER"
     override fun hasRequest() = true
@@ -1093,6 +1228,13 @@ private class FakePairing(private val failWith: Exception? = null) : PairingAtte
     }
 
     @Volatile var machine: Machine? = null
+
+    @Volatile var shown = Progress()
+    val progressCalls = java.util.concurrent.atomic.AtomicInteger()
+    override fun progress(): Progress {
+        progressCalls.incrementAndGet()
+        return shown
+    }
 
     override fun pair(machine: Machine, code: String, identity: Identity) {
         this.machine = machine
