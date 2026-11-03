@@ -59,7 +59,7 @@ applied.
 | `DialOptions{PeerID, DirectAddr}` | struct | `cmd/`, `mobile` | **keep** |
 
 `DirectAddr` is documented as a test and pairing aid but is used in
-production by `unlocker pair` and `mobile/pair.go`. Keep it, and
+production by `synctang-unlocker pair` and `mobile/pair.go`. Keep it, and
 describe it as "plain TCP, identity still pinned" rather than as test-only.
 
 ### Implementations

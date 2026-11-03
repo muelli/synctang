@@ -175,7 +175,7 @@
   reads EOF, because nobody on the other end is writing to it. Two
   parts to living with this: `Multi.race` must close a second,
   late-arriving success rather than leak it (a real, authenticated
-  connection nobody asked for), and the caller (`keyholder unlock`)
+  connection nobody asked for), and the caller (`synctang-keyholder unlock`)
   must retry the whole attempt on failure rather than give up after
   one, since a fresh attempt is a fresh independent race that
   converges.
@@ -304,7 +304,7 @@
   model; AES-GCM needs no new dependency, already in `crypto/cipher`).
 - One Go module (`github.com/muelli/synctang`) for `mrcore`,
   `transport`, `cmd/synctang-unlocker`, `cmd/synctang-keyholder`, not one per component.
-- `keyholder`'s long-term MR-1 scalar and its transport identity are
+- `synctang-keyholder`'s long-term MR-1 scalar and its transport identity are
   two separate files (raw scalar vs. TLS keypair, different protocols,
   independently rotatable), never combined.
 - The MR-1 wire messages live in `mrcore`, not duplicated in

@@ -27,15 +27,15 @@ its last version is `git show 6a5c646:TESTREPORT.md`. Mentions of it below and i
   discovery), `LocalDiscovery` (LAN multicast, no Internet needed),
   and `Multi` (races the two). Battle-tested against a real
   deployment; see `AGENTS.md` for what that surfaced.
-- **WP3** (`unlocker`): `enrol` (add, `--remove`, or `--replace` a
+- **WP3** (`synctang-unlocker`): `enrol` (add, `--remove`, or `--replace` a
   recipient), `agent`, `status` and `pair` all done. `pair` shows a QR
   code carrying this machine's Device ID and a one-time code, then
   enrols the key holder that answers it, so a phone no longer needs its
   public key copied across by hand.
-- **WP4** (`keyholder`): `init`/`unlock`/`export-pubkey` (file backend)
-  done. The TPM2 backend is not started, and neither is `keyholder
+- **WP4** (`synctang-keyholder`): `init`/`unlock`/`export-pubkey` (file backend)
+  done. The TPM2 backend is not started, and neither is `synctang-keyholder
   pair`: the laptop can still only be enrolled the manual way
-  (`export-pubkey` into `unlocker enrol`), since the QR-code path was
+  (`export-pubkey` into `synctang-unlocker enrol`), since the QR-code path was
   built for the phone, where copying a public key across is worst. The
   machine side is transport-agnostic, so a laptop `pair` is a client
   for the protocol that already exists rather than new protocol work.
@@ -89,7 +89,7 @@ its last version is `git show 6a5c646:TESTREPORT.md`. Mentions of it below and i
   is not gated behind a biometric prompt, so the unlock flow can be
   driven end to end without a human; release builds cannot have it and
   the ungated key uses its own Keystore alias.
-- **WP6** (dracut module `90unlocker`): done. `enrol` auto-rebuilding
+- **WP6** (dracut module `90synctang`): done. `enrol` auto-rebuilding
   the initrd is not wired in; currently a manual `dracut --force` step.
 - **WP7** (VM acceptance): **all eleven acceptance items pass**; see
   `TESTREPORT.md`. A4 was the last, verified 2026-09-21 on a real
@@ -152,8 +152,8 @@ Green: `go-test`, `go-test-privileged`, `lint`, `em-dash-check`,
 ## Packaging
 
 `build-deb` produces three Debian packages for amd64 and arm64:
-`synctang-unlocker` (`/usr/sbin/unlocker`), `synctang-keyholder`
-(`/usr/bin/keyholder`), and `synctang-dracut` (the 90unlocker module,
+`synctang-unlocker` (`/usr/sbin/synctang-unlocker`), `synctang-keyholder`
+(`/usr/bin/synctang-keyholder`), and `synctang-dracut` (the 90synctang module,
 arch: all). It verifies the cross-built package really holds an aarch64
 binary, attests build provenance with
 `actions/attest-build-provenance` (pushes to `main` only, since a fork
@@ -218,7 +218,7 @@ reproducibility are untested and not claimed.
   - Scanning any QR code replaces the paired machine before pairing
     succeeds (Android).
 - `[U]` Whether `go-tpm`'s ECDH support is reachable for the
-  `keyholder` TPM2 backend; may remain a stub with tests skipped.
+  `synctang-keyholder` TPM2 backend; may remain a stub with tests skipped.
 - `[U]` Two fixes for `syncthing-socket` (`ensureResolver` accepting a
   loopback-only stub, `RunClient` not retrying a stale discovery
   record) were reported to the user as a written summary; whether they

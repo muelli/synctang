@@ -95,8 +95,8 @@ verify` will show both.
 
 | Artefact | SBOM | Where the list comes from |
 |---|---|---|
-| `synctang-unlocker_*.deb` | `unlocker.cdx.json` | Go build info in the shipped binary |
-| `synctang-keyholder_*.deb` | `keyholder.cdx.json` | Go build info in the shipped binary |
+| `synctang-unlocker_*.deb` | `synctang-unlocker.cdx.json` | Go build info in the shipped binary |
+| `synctang-keyholder_*.deb` | `synctang-keyholder.cdx.json` | Go build info in the shipped binary |
 | the APK | `app-go.cdx.json` | Go build info in the `libgojni.so` gomobile built |
 | the APK | `app-jvm.cdx.json` | Gradle's resolved runtime classpath |
 

@@ -46,7 +46,7 @@ What the key holder does to help, cheapest first:
 - It shows the requester's Device ID and name before approving
   (`mrcore.Hello`), and answers at most once per session. The name is
   chosen by the machine and proves nothing; the Device ID is the verified
-  one. `[V]` `keyholder unlock` waits for the human to press Enter (or
+  one. `[V]` `synctang-keyholder unlock` waits for the human to press Enter (or
   pass `--yes`) before answering.
 - There is no confirm code. An earlier version had the machine print a
   code on its console and send the same code to the key holder, to be

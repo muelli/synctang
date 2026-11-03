@@ -15,16 +15,16 @@ Work in progress; see `STATUS.md` for what is built and what is not.
 
 ## What is here
 
-- `unlocker`: the machine side. Runs in the dracut initrd as a systemd
+- `synctang-unlocker`: the machine side. Runs in the dracut initrd as a systemd
   password agent, and on the booted system to enrol and revoke key
   holders. Subcommands: `pair`, `enrol`, `status`, `agent`.
-- `keyholder`: the laptop CLI. Subcommands: `init`, `export-pubkey`,
+- `synctang-keyholder`: the laptop CLI. Subcommands: `init`, `export-pubkey`,
   `unlock`.
 - The Android app (`android/`): the phone key holder. Pairs by scanning a
   QR code; unlocks behind a biometric prompt. Its key is kept wrapped by a
   key in the Android Keystore that opens only for a fingerprint, once for each
   unlock.
-- `dracut/90unlocker`: the dracut module that starts the agent at boot.
+- `dracut/90synctang`: the dracut module that starts the agent at boot.
 
 ## Threat model, in short
 
@@ -57,7 +57,7 @@ initrds):
     sudo apt install ./dist/synctang-keyholder_*.deb                                # a laptop key holder
 
 Without Debian packaging, `go build ./cmd/synctang-unlocker ./cmd/synctang-keyholder`,
-install the binary as `unlocker` on the machine, run `just install-dracut`,
+install the binary as `synctang-unlocker` on the machine, run `just install-dracut`,
 then `dracut --force`.
 
 **Phone.** Install an F-Droid client, add the repository
@@ -80,12 +80,12 @@ uses stdin for its confirmation question.)
     read -rsp 'LUKS passphrase: ' PASS
 
 The first `pair` or `enrol` creates the machine's network identity in
-`/etc/unlocker/machine.pem`. Run `dracut --force` after it, so the initrd
+`/etc/synctang/machine.pem`. Run `dracut --force` after it, so the initrd
 carries that identity; the token itself is read from the disk at boot.
 
 ### Pair a phone
 
-    unlocker pair --device /dev/sdXN --name my-machine \
+    synctang-unlocker pair --device /dev/sdXN --name my-machine \
       --existing-passphrase-file <(printf %s "$PASS")
 
 Tests the passphrase against the header first (a typo stops it before anything
@@ -113,22 +113,22 @@ sequence is wrapped for tmux's `allow-passthrough`).
 
 On the laptop:
 
-    keyholder init
-    keyholder export-pubkey
+    synctang-keyholder init
+    synctang-keyholder export-pubkey
 
 On the machine, with the two values that printed:
 
-    unlocker enrol --device /dev/sdXN --name my-laptop \
+    synctang-unlocker enrol --device /dev/sdXN --name my-laptop \
       --pubkey <public key> --recipient-transport-id <transport id> \
       --existing-passphrase-file <(printf %s "$PASS")
 
 This adds a LUKS2 keyslot holding a fresh secret and an `mr-1` token
 entry for that key holder, and prints the machine's own transport ID,
-which the laptop needs to dial it. (`keyholder pair` is not built yet.)
+which the laptop needs to dial it. (`synctang-keyholder pair` is not built yet.)
 
 ### See who can unlock
 
-    unlocker status --device /dev/sdXN
+    synctang-unlocker status --device /dev/sdXN
 
 Prints the machine's transport ID and name and, for each enrolled key
 holder, its transport ID, keyslot and a short key id. Read-only. Run it
@@ -141,7 +141,7 @@ At boot the agent starts alongside the ordinary console prompt; whoever
 answers first wins, so the console keeps working. To unlock, tap Unlock in
 the app, or on the laptop:
 
-    keyholder unlock <machine transport id>
+    synctang-keyholder unlock <machine transport id>
 
 The key holder shows the machine's name, waits for Enter (or `--yes`),
 and answers once. The machine checks the recovered secret actually opens the volume
@@ -149,13 +149,11 @@ before handing it to systemd, and tells the key holder how it went.
 
 Kernel command line options:
 
-- `rd.unlocker=0` does not start the agent; the escape hatch for when the
+- `rd.synctang=0` does not start the agent; the escape hatch for when the
   network path is what is broken.
 - `rd.synctang.relay=URL` and `rd.synctang.discovery=URL` use your own relay
   and discovery server instead of the public ones, for this boot; see
-  "Use your own relay and discovery server" below. (The older `rd.unlocker=0`
-  and `/etc/unlocker/machine.pem` keep the `unlocker` name for now; the new
-  settings are named for the project.)
+  "Use your own relay and discovery server" below.
 
 Off the local network the phone needs Internet access; on the same
 network it does not. Both sides try local discovery (a multicast on the
@@ -175,11 +173,11 @@ the initrd (for example `sudo dracut --force`):
 `relay-pool` is either a relay pool URL or, as here, one relay of your own;
 `discovery-announce=` is only needed when announcements go to a different
 URL than lookups. Only the machine needs a relay setting: a key holder learns the relay from
-discovery. `unlocker pair` then puts the discovery server in the pairing
+discovery. `synctang-unlocker pair` then puts the discovery server in the pairing
 link, so a phone paired by QR code follows the machine's choice and nobody
 types a URL on it (update the app first: an older one ignores it and looks
 on the public servers). On a laptop, give the discovery server with
-`keyholder unlock --discovery URL`, or in `~/.config/keyholder/config`. Both
+`synctang-keyholder unlock --discovery URL`, or in `~/.config/synctang-keyholder/config`. Both
 sides must use the same discovery server. A private discovery server with a
 self-signed certificate is trusted by its Device ID, written in the URL as
 `?id=<Device ID>` (or `?insecure` to skip the check); with neither, the
@@ -195,7 +193,7 @@ real root. For a volume that is not asking for a password at boot, an
 external drive plugged in later say, there is a command that waits for a key
 holder and then opens the volume itself:
 
-    sudo unlocker open /dev/sdb1 backup
+    sudo synctang-unlocker open /dev/sdb1 backup
 
 It prints this machine's transport id, waits (five minutes, `--timeout`) for
 a key holder to approve, checks that the recovered secret really opens the
@@ -205,12 +203,12 @@ Nothing keeps running. Without a name the volume is called
 `cryptsetup close backup` closes it.
 
 The drive has to have a key holder enrolled first, which writes a keyslot and a
-token into the drive's own LUKS header: run `unlocker pair --device /dev/sdb1`
+token into the drive's own LUKS header: run `synctang-unlocker pair --device /dev/sdb1`
 (or `enrol`) once, with the drive's passphrase, as for any other volume, and
 back its header up first. The token names key holders, not a machine, so the
-drive can be opened on any computer that runs the unlocker and whose transport
+drive can be opened on any computer that runs `synctang-unlocker` and whose transport
 id the key holder knows. The phone app keeps one paired machine at a time; the
-laptop's `keyholder unlock <transport id>` takes any.
+laptop's `synctang-keyholder unlock <transport id>` takes any.
 
 ### Keyboard use of the app
 
@@ -244,15 +242,15 @@ machine".
 Revoke destroys that key holder's keyslot and removes its token entry,
 leaving the others alone:
 
-    unlocker enrol --device /dev/sdXN --remove <transport id> \
+    synctang-unlocker enrol --device /dev/sdXN --remove <transport id> \
       --existing-passphrase-file <(printf %s "$PASS")
 
 Rotate replaces a key holder's key in one command. The new key is enrolled
 before the old one is revoked, so it can open the volume throughout:
 
-    keyholder init --force        # on the laptop: new key, same transport id
-    keyholder export-pubkey
-    unlocker enrol --device /dev/sdXN --replace <transport id> --pubkey <new public key> \
+    synctang-keyholder init --force        # on the laptop: new key, same transport id
+    synctang-keyholder export-pubkey
+    synctang-unlocker enrol --device /dev/sdXN --replace <transport id> --pubkey <new public key> \
       --existing-passphrase-file <(printf %s "$PASS")
 
 To pair the phone with a different machine, or with the same one again,

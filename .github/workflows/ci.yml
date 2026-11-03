@@ -290,7 +290,7 @@ jobs:
             base=$(basename "$deb" .deb)
             pkg=${base%%_*}
             arch=${base##*_}
-            ./scripts/generate-sbom.sh "$deb" "sbom/${pkg#synctang-}-${arch}.cdx.json"
+            ./scripts/generate-sbom.sh "$deb" "sbom/${pkg}-${arch}.cdx.json"
           done
       - name: Check the SBOMs against the source
         # Reading a binary trusts one tool's parse of one file: a
@@ -303,7 +303,7 @@ jobs:
           for cmd in synctang-unlocker synctang-keyholder; do
             for arch in amd64 arm64; do
               ./scripts/verify-sbom-against-source.py \
-                "sbom/${cmd#synctang-}-${arch}.cdx.json" "./cmd/${cmd}" linux "$arch"
+                "sbom/${cmd}-${arch}.cdx.json" "./cmd/${cmd}" linux "$arch"
             done
           done
       - uses: actions/attest-build-provenance@v2
@@ -323,22 +323,22 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         with:
           subject-path: dist/synctang-unlocker_*_amd64.deb
-          sbom-path: sbom/unlocker-amd64.cdx.json
+          sbom-path: sbom/synctang-unlocker-amd64.cdx.json
       - uses: actions/attest-sbom@v2
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         with:
           subject-path: dist/synctang-unlocker_*_arm64.deb
-          sbom-path: sbom/unlocker-arm64.cdx.json
+          sbom-path: sbom/synctang-unlocker-arm64.cdx.json
       - uses: actions/attest-sbom@v2
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         with:
           subject-path: dist/synctang-keyholder_*_amd64.deb
-          sbom-path: sbom/keyholder-amd64.cdx.json
+          sbom-path: sbom/synctang-keyholder-amd64.cdx.json
       - uses: actions/attest-sbom@v2
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         with:
           subject-path: dist/synctang-keyholder_*_arm64.deb
-          sbom-path: sbom/keyholder-arm64.cdx.json
+          sbom-path: sbom/synctang-keyholder-arm64.cdx.json
       - uses: actions/upload-artifact@v4
         with:
           name: synctang-debs

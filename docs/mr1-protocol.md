@@ -47,7 +47,7 @@ holder dials in, though nothing in MR-1 depends on which side dials):
    (`mrcore.RecoverRequest`).
 2. The key holder answers in one of two ways, depending on what its key
    storage can do:
-   - A key holder that holds `s` directly (the `keyholder` file backend,
+   - A key holder that holds `s` directly (the `synctang-keyholder` file backend,
      or Tang's server) computes the full point `Y = s.X` and returns it.
      `[V]` `mrcore.FinishFullPoint`.
    - A key holder whose key lives in hardware that only offers ECDH
@@ -101,7 +101,7 @@ test vectors, is in [mr1-spec.md](mr1-spec.md).
 
 ## Pairing
 
-`unlocker pair` shows a QR code and a one-time code, then enrols the key
+`synctang-unlocker pair` shows a QR code and a one-time code, then enrols the key
 holder that answers it. The QR payload is
 `synctang://pair?machine=<device id>&name=<name>&psk=<base32 secret>`.
 

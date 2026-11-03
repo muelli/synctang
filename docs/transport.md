@@ -2,7 +2,7 @@
 
 # Transport: local network and the Internet, at once
 
-`unlocker agent` and `keyholder unlock` do not have to guess in advance
+`synctang-unlocker agent` and `synctang-keyholder unlock` do not have to guess in advance
 whether the Internet is reachable. Unless `--direct-addr` is given
 (which bypasses both, for offline tests and manual same-network
 pairing), both sides run two transports at once and use whichever

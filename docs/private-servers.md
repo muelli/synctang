@@ -43,7 +43,7 @@ tool adds the `dynamic+` itself). `relay://` needs the relay's Device ID,
 which `strelaysrv` prints at start-up as its `URI:` line, so copy the whole
 line. The library checks the relay's certificate against it and, on a
 mismatch, fails with "relay id does not match" `[I]` (read in `lib/relay/client`,
-not run). Which form was understood is printed at start: `unlocker: using single
+not run). Which form was understood is printed at start: `synctang-unlocker: using single
 relay 192.0.2.10:22067, discovery disco.example.org`.
 
 A wrong value is an error that stops the command and names the setting. It
@@ -75,7 +75,7 @@ back `[I]`; this one checks during the TLS handshake, which also runs for a
 resumed session.)
 
 Plain `http://` is for looking up only, never for announcing: the setting a
-machine announces to must be `https`, and `unlocker` says so and stops when it
+machine announces to must be `https`, and `synctang-unlocker` says so and stops when it
 is not. A dialling side (laptop, phone) may use `http://...?insecure` for its
 `discovery`. A machine may give a plain-`http` `discovery` (which is what its
 pairing link hands the phone) only together with an `https`
@@ -134,7 +134,7 @@ What is verified, with the tests that show it:
 ## Where they are set
 
 - **Machine:** `/etc/synctang/network.conf`, one `key=value` per line, `#`
-  comments. Read by `unlocker agent`, `pair` and `open` (`--network-conf`
+  comments. Read by `synctang-unlocker agent`, `pair` and `open` (`--network-conf`
   names another file). The dracut module copies it into the initrd when it
   exists, so after changing it rebuild the initrd (for example
   `sudo dracut --force`). `[V]` that the module's helper finds the file and
@@ -150,21 +150,19 @@ What is verified, with the tests that show it:
 - **Kernel command line**, which wins over the file: `rd.synctang.relay=URL`
   and `rd.synctang.discovery=URL`. The agent reads `/proc/cmdline` itself, so
   nothing is installed for this. It is the setting a person can change at the
-  boot prompt when the network path is what is broken, as `rd.unlocker=0` is
-  for switching the agent off. (The new settings are named for the project,
-  `synctang`, while `rd.unlocker=0` and `/etc/unlocker/machine.pem` keep the
-  older `unlocker` name for now.) A discovery server given here replaces the
+  boot prompt when the network path is what is broken, as `rd.synctang=0` is
+  for switching the agent off. A discovery server given here replaces the
   file's discovery server and its announce endpoint together `[V]`.
-- **Laptop:** `keyholder unlock --discovery URL [--discovery-announce URL]`, or
-  the same keys in `~/.config/keyholder/config`
-  (the user config directory, so `$XDG_CONFIG_HOME/keyholder/config` if set;
+- **Laptop:** `synctang-keyholder unlock --discovery URL [--discovery-announce URL]`, or
+  the same keys in `~/.config/synctang-keyholder/config`
+  (the user config directory, so `$XDG_CONFIG_HOME/synctang-keyholder/config` if set;
   `--config` names another file). Flags win over the file.
 - **Phone:** from the pairing link, below. There is no field to type a URL
   into in this version.
 
 ## The pairing link
 
-`unlocker pair` adds `discovery=` (URL-escaped) to the `synctang://pair?...`
+`synctang-unlocker pair` adds `discovery=` (URL-escaped) to the `synctang://pair?...`
 link and its QR code when the machine has one set, and nothing when it has
 not, so the link for the public servers is unchanged `[V]`
 (`TestPairingURLCarriesTheNetworkSettings`). Neither the relay nor the announce
