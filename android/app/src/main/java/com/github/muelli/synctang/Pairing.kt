@@ -204,6 +204,23 @@ object PairingPayload {
     }
 
     /**
+     * Whether a scanned link's discovery server is plain `http` without
+     * `?insecure`. Plain http is for a lookup that says it is meant (as in
+     * Syncthing's own discovery URLs); the Go side refuses the rest when the
+     * server is used, so the app refuses it here, where it is scanned.
+     */
+    fun plainHttpDiscoveryWithoutInsecure(scanned: String): Boolean {
+        val text = scanned.trim()
+        if (!text.startsWith(SCHEME, ignoreCase = true)) return false
+        val discovery = fields(text)["discovery"].orEmpty()
+        if (!discovery.startsWith("http://", ignoreCase = true)) return false
+        val insecure = discovery.substringAfter('?', "").split('&')
+            .firstOrNull { it.substringBefore('=') == "insecure" }
+            ?: return true
+        return insecure.substringAfter('=', "") == "false"
+    }
+
+    /**
      * Accepts a Device ID in any of the shapes a human might paste it
      * in, and returns the canonical dashed upper-case form, or null if
      * it is not a Device ID at all.

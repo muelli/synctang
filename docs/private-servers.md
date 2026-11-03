@@ -180,7 +180,10 @@ naming it, and nothing is paired. Ignoring it could pair the phone against
 servers the owner chose not to use. That includes an old link that carries
 `relay=`: the message names `relay` `[V]` (`aLinkWithARelaySettingIsRefusedAsAnUnknownParameter`,
 `aLinkWithARelaySettingIsRefusedAndSaysWhich`, JVM tests). A `discovery` value
-that is not a server URL is refused too `[V]`. The reverse does not hold: a
+that is not a server URL is refused too `[V]`, and so is one over plain
+`http` without `?insecure`, with its own message `[V]`
+(`aDiscoveryServerOverPlainHttpNeedsInsecure`, `aLinkWithAnHttpDiscoveryServerWithoutInsecureIsRefusedAndSaysSo`;
+the Go side still refuses it too, at unlock time). The reverse does not hold: a
 phone running an app from before this change ignores `discovery=`, looks the
 machine up on the public servers, and does not find it `[I]` (read from the
 old parser). Update the app first.

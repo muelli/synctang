@@ -257,6 +257,18 @@ class UnlockFlowTest {
     }
 
     @Test
+    fun aLinkWithAnHttpDiscoveryServerWithoutInsecureIsRefusedAndSaysSo() {
+        onMain { flow.refresh() }
+        await<UnlockUiState.NeedsPairing>()
+        onMain { flow.pair(payload(machineB) + "&discovery=http%3A%2F%2F10.0.0.6%3A8443%2Fv2%2F") }
+        val failed = await<UnlockUiState.Failed>()
+        assertEquals(Retry.SCAN_AGAIN, failed.retry)
+        assertEquals("res:${R.string.pair_plain_http_discovery}", failed.message)
+        assertNull(store.saved)
+        assertTrue(pairings.isEmpty())
+    }
+
+    @Test
     fun aLinkWithABadSettingIsRefusedAndSaysWhich() {
         onMain { flow.refresh() }
         await<UnlockUiState.NeedsPairing>()

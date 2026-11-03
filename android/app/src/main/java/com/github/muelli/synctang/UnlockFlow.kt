@@ -232,6 +232,9 @@ sealed interface PairingPlan {
 
     /** The link's [name] setting (discovery) is not a server URL. */
     data class BadSetting(val name: String) : PairingPlan
+
+    /** The link's discovery server is plain http without `?insecure`. */
+    object PlainHttpDiscovery : PairingPlan
 }
 
 fun planPairing(scanned: String): PairingPlan {
@@ -239,6 +242,7 @@ fun planPairing(scanned: String): PairingPlan {
     PairingPayload.unknownParameters(scanned).takeIf { it.isNotEmpty() }
         ?.let { return PairingPlan.UnknownParameters(it) }
     PairingPayload.badSetting(scanned)?.let { return PairingPlan.BadSetting(it) }
+    if (PairingPayload.plainHttpDiscoveryWithoutInsecure(scanned)) return PairingPlan.PlainHttpDiscovery
     val code = PairingPayload.pairingCode(scanned) ?: return PairingPlan.Remember(machine)
     return PairingPlan.Enrol(machine, code)
 }
@@ -472,6 +476,11 @@ class UnlockFlow(
             is PairingPlan.BadSetting -> _state.value = UnlockUiState.Failed(
                 null,
                 strings.get(R.string.pair_bad_setting, plan.name),
+                Retry.SCAN_AGAIN,
+            )
+            PairingPlan.PlainHttpDiscovery -> _state.value = UnlockUiState.Failed(
+                null,
+                strings.get(R.string.pair_plain_http_discovery),
                 Retry.SCAN_AGAIN,
             )
         }

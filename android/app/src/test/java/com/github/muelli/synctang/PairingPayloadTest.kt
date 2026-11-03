@@ -121,6 +121,21 @@ class PairingPayloadTest {
         }
     }
 
+    // Plain http is for a lookup that says it is meant: the Go side refuses an http discovery
+    // server without ?insecure at unlock time, so the app refuses it where it is scanned.
+    @Test
+    fun aDiscoveryServerOverPlainHttpNeedsInsecure() {
+        fun plan(discovery: String) =
+            planPairing("synctang://pair?machine=$id&psk=ABC&discovery=" + java.net.URLEncoder.encode(discovery, "UTF-8"))
+        assertTrue(plan("http://10.0.0.6:8443/v2/") is PairingPlan.PlainHttpDiscovery)
+        assertTrue(plan("HTTP://10.0.0.6:8443/v2/?x=1") is PairingPlan.PlainHttpDiscovery)
+        assertTrue(plan("http://10.0.0.6:8443/v2/?insecure=false") is PairingPlan.PlainHttpDiscovery)
+        assertTrue(plan("http://10.0.0.6:8443/v2/?insecure") is PairingPlan.Enrol)
+        assertTrue(plan("http://10.0.0.6:8443/v2/?x=1&insecure=true") is PairingPlan.Enrol)
+        assertTrue(plan("https://10.0.0.6:8443/v2/") is PairingPlan.Enrol)
+        assertTrue(plan("https://10.0.0.6:8443/v2/?id=P56IOI7-MZJNU2Y") is PairingPlan.Enrol)
+    }
+
     @Test
     fun rejectsAnythingThatIsNotADeviceId() {
         assertNull(PairingPayload.parse(""))
