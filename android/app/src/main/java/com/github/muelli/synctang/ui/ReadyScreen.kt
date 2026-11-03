@@ -50,6 +50,7 @@ internal fun ReadyScreen(state: UnlockUiState.Ready, onUnlock: () -> Unit, onPai
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+    ReadinessChip(state.readiness)
     Button(
         onClick = onUnlock,
         modifier = Modifier

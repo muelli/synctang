@@ -84,6 +84,16 @@
     <string name="stage_enrolled">Paired</string>
     <string name="approve_time_left">%1$d s left to answer</string>
     <string name="approve_running_out">Time is running out: answer soon, or the machine will give up.</string>
+    <string name="readiness_checking">Checking the machine</string>
+    <string name="readiness_waiting">The machine is waiting for you</string>
+    <string name="readiness_stale_minutes">The machine announced itself %1$d min ago. It may not be at its prompt</string>
+    <string name="readiness_stale_hours">The machine announced itself %1$d h ago. It may not be at its prompt</string>
+    <string name="readiness_stale_days">The machine announced itself %1$d days ago. It may not be at its prompt</string>
+    <string name="readiness_stale_unknown">The machine announced itself at some point. It may not be at its prompt</string>
+    <string name="readiness_stale_announce">The machine announced itself a while ago. It may not be at its prompt</string>
+    <string name="readiness_absent">The machine has not announced itself. It may still be starting, or switched off</string>
+    <string name="readiness_no_network">Cannot check: this phone cannot reach the discovery server</string>
+    <string name="failure_last_status">Last known status of the machine: %1$s</string>
     <string name="busy_elapsed">%1$d s</string>
     <string name="busy_attempt">Attempt %1$d</string>
     <string name="busy_cancel">Cancel</string>

@@ -64,6 +64,11 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
             override fun get(id: Int, vararg args: Any) = application.getString(id, *args)
         },
         appLog = AppLog.logcat,
+        checkStatus = { machine ->
+            // One lookup on the machine's discovery server; no connection to the machine.
+            val status = Mobile.checkMachineStatus(machine.deviceId, machine.discovery)
+            Readiness(ReadinessState.fromGo(status.state), status.ageSeconds.toInt())
+        },
     )
 
     val state: StateFlow<UnlockUiState> = flow.state
@@ -106,6 +111,7 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
 
     fun refresh() = flow.refresh()
     fun returnedToForeground() = flow.returnedToForeground()
+    fun movedToBackground() = flow.movedToBackground()
     fun startPairing() = flow.startPairing()
     fun keepCurrentMachine() = flow.keepCurrentMachine()
     fun allowSoftwareKey() = flow.allowSoftwareKey()

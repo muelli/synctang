@@ -108,3 +108,38 @@ the default, uses it when the socket exists. `open` and `pair` log to the consol
 deadline, the fallback said once, and that no pairing code, secret, passphrase or key
 appears in what the agent logs while pairing at trace level); the shell side
 (`scripts/test-agent-log.sh`). `[U]` against a real journald in a real initrd.
+
+## The machine's status on the main screen
+
+The dot and the line under "Paired with ..." come from one lookup on the machine's discovery
+server every five seconds, only while that screen is showing and the app is in the foreground.
+The app never connects to the machine to find out: it serves one session, and a probe would use
+it up. A machine that is waiting (the agent in the initrd, or `synctang-unlocker open` or `pair`)
+republishes its record every minute, and the app calls a record at most 150 seconds old
+"waiting":
+
+| Dot and words | Meaning |
+| --- | --- |
+| green, "The machine is waiting for you" | announced within 150 s (a timestamp in the future counts as now) |
+| amber, "The machine announced itself N min ago. It may not be at its prompt" | a record that is older, or has no timestamp |
+| red, "The machine has not announced itself. It may still be starting, or switched off" | discovery has no record |
+| grey, "Cannot check: this phone cannot reach the discovery server" | the lookup itself failed, so nothing is known about the machine |
+| light grey, "Checking the machine" | before the first answer |
+
+It says what the machine published and when. It does not say that an unlock will work: a record
+can be fresh and the machine's relay gone a moment later, and an old one does not mean the
+machine cannot be unlocked. Colour is never the only signal (the words are always there), the
+state is announced politely to a screen reader when it changes and not on every poll, and the
+Unlock button is never disabled. When a dial gives up, the technical details of the failure
+(not the headline) carry what the status last said, for example "Last known status of the
+machine: The machine announced itself 47 min ago ...". Each check is in the log (`adb logcat -s
+synctang`, "status waiting age=12") and the Go side's at trace.
+
+`[V]` the decision against a fake discovery server pinned by Device ID with a self-signed
+certificate (`mobile/status_test.go`: seconds ago, at the limit, just over it, an hour ago,
+a future timestamp, no timestamp, an unreadable one, no record, a dead server, the wrong
+server), the poller's lifecycle in `UnlockFlowTest` (asks while Ready and in the foreground,
+stops on any other screen and in the background, resumes), the strings, the colours' contrast
+against the dark theme (3:1 or better) and the announce-on-change rule (`ReadinessTest`).
+`[U]` on a phone: how the chip looks and reads, which is compiled
+(`ReadinessChipTest`) and not run.

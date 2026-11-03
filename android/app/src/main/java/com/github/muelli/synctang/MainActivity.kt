@@ -54,6 +54,12 @@ class MainActivity : FragmentActivity() {
      * Back from Settings, say, where a finger may have been enrolled and the key
      * retired: the key is checked again, in the background.
      */
+    override fun onStop() {
+        // Not asking about the machine while nobody is looking.
+        ViewModelProvider(this)[UnlockViewModel::class.java].movedToBackground()
+        super.onStop()
+    }
+
     override fun onStart() {
         super.onStart()
         ViewModelProvider(this)[UnlockViewModel::class.java].returnedToForeground()

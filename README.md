@@ -191,6 +191,10 @@ for the machine, connected through a relay or on the local network and waiting f
 machine to ask, waiting for you to confirm on the machine), how long it has been, and
 which attempt it is on after the first.
 
+The app's main screen shows a dot and a line of words saying whether the machine has announced
+itself to the discovery server lately (waiting, announced some minutes ago, not announced, or
+cannot check); it is what the machine published, not a promise that an unlock will work, and it
+never stops you pressing Unlock. A machine that is waiting republishes every minute.
 A debug build of the app logs what it is doing, and `adb logcat -v time -s synctang GoLog`
 follows it; release builds log warnings only (`docs/debugging.md`).
 

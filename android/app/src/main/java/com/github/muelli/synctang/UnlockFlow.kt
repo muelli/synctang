@@ -64,7 +64,12 @@ sealed interface UnlockUiState {
      * [replaced] is the machine a pairing has just replaced, which the
      * screen offers to go back to.
      */
-    data class Ready(val machine: Machine, val identity: Identity, val replaced: Machine? = null) : UnlockUiState
+    data class Ready(
+        val machine: Machine,
+        val identity: Identity,
+        val replaced: Machine? = null,
+        val readiness: Readiness = Readiness(),
+    ) : UnlockUiState
 
     /** Dialling [machine]; [progress] says how far the dial has got. */
     data class Connecting(val machine: Machine, val progress: Progress = Progress()) : UnlockUiState
@@ -315,6 +320,10 @@ class UnlockFlow(
     // Run once per start, behind the home screen, so a key that died while the app
     // was closed is not offered for enrolment.
     private val checkKey: () -> Unit = {},
+    // How the Ready screen finds out whether the machine looks like it is waiting: one lookup
+    // on the discovery server, never a connection to the machine. Blocks; runs on [io].
+    private val checkStatus: (Machine) -> Readiness = { Readiness() },
+    private val readinessPollMillis: Long = READINESS_POLL_MILLIS,
     // How often the busy screens ask the Go side how far it has got, and the clock their
     // elapsed time is counted on.
     private val pollIntervalMillis: Long = POLL_INTERVAL_MILLIS,
@@ -334,12 +343,66 @@ class UnlockFlow(
                 val before = flow.value
                 flow.value = next
                 if (before != next) appLog.d { "state " + describeForLog(next) }
+                followReadiness(next)
             }
 
         fun asStateFlow(): StateFlow<UnlockUiState> = flow.asStateFlow()
     }
 
+    // The status of the paired machine as last looked up, kept so that the Ready screen
+    // comes back showing it and a failed dial can say what it was.
+    private val lastReadiness = HashMap<String, Readiness>()
+    private var readinessJob: Job? = null
+    private var readinessMachine: String? = null
+    @Volatile private var appForeground = true
+
     private val _state = LoggedState(UnlockUiState.Working(Machine("", "")))
+
+    /** The app has left the foreground: stop asking about the machine until it is back. */
+    fun movedToBackground() {
+        appLog.d { "action moved to background" }
+        appForeground = false
+    }
+
+    /**
+     * Starts asking about the machine while the Ready screen is showing, and stops the
+     * moment the state is anything else. Asks at once, then every [readinessPollMillis], not
+     * at all while the app is in the background, and one lookup at a time. Each answer goes
+     * into the Ready state (which never changes what Unlock does), is kept for a failed dial
+     * to quote, and is written to the log.
+     */
+    private fun followReadiness(state: UnlockUiState) {
+        if (state !is UnlockUiState.Ready) {
+            readinessJob?.cancel()
+            readinessJob = null
+            readinessMachine = null
+            return
+        }
+        if (readinessJob?.isActive == true && readinessMachine == state.machine.deviceId) return
+        readinessJob?.cancel()
+        readinessMachine = state.machine.deviceId
+        val machine = state.machine
+        readinessJob = scope.launch {
+            while (true) {
+                if (appForeground) {
+                    val answer = withContext(io) {
+                        try {
+                            checkStatus(machine)
+                        } catch (e: Exception) {
+                            Readiness(ReadinessState.NO_NETWORK)
+                        }
+                    }
+                    val now = _state.value
+                    if (now !is UnlockUiState.Ready || now.machine.deviceId != machine.deviceId) return@launch
+                    lastReadiness[machine.deviceId] = answer
+                    appLog.d { "status ${answer.state.name.lowercase()} age=${answer.ageSeconds}" }
+                    if (now.readiness != answer) _state.value = now.copy(readiness = answer)
+                }
+                delay(readinessPollMillis)
+                if (_state.value !is UnlockUiState.Ready) return@launch
+            }
+        }
+    }
     val state: StateFlow<UnlockUiState> = _state.asStateFlow()
 
     // A failure, to the log hook and to the log at warn, with its whole cause chain.
@@ -396,6 +459,7 @@ class UnlockFlow(
      */
     fun returnedToForeground() {
         appLog.d { "action returned to foreground" }
+        appForeground = true
         runKeyCheck()
     }
 
@@ -517,7 +581,7 @@ class UnlockFlow(
             if (machine == null || forcePairing) {
                 UnlockUiState.NeedsPairing(identity, previous)
             } else {
-                UnlockUiState.Ready(machine, identity)
+                UnlockUiState.Ready(machine, identity, readiness = lastReadiness[machine.deviceId] ?: Readiness())
             }
         } catch (e: SoftwareKeyRefused) {
             UnlockUiState.SoftwareKeyRefused
@@ -886,8 +950,21 @@ class UnlockFlow(
             strings.get(explained.message),
             retry,
             explained.detail,
-            explained.technical,
+            explained.technical + lastKnownStatus(machine, e),
         )
+    }
+
+    /**
+     * After a dial that could not reach the machine, what discovery last said about it,
+     * for the technical details (never the headline): "It last announced itself 47 min ago"
+     * says more than a timeout does. Nothing if it was never looked up, or was still being.
+     */
+    private fun lastKnownStatus(machine: Machine?, e: Exception): String {
+        if (machine == null || e !is MachineFailure || e.kind != FailureKind.UNREACHABLE) return ""
+        val last = lastReadiness[machine.deviceId] ?: return ""
+        if (last.state == ReadinessState.CHECKING) return ""
+        val label = readinessLabel(last)
+        return "\n" + strings.get(R.string.failure_last_status, strings.get(label.res, *label.args.toTypedArray()))
     }
 
     private suspend fun declineQuietly(active: MachineSession) = withContext(io) {

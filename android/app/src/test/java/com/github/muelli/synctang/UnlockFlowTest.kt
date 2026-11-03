@@ -63,6 +63,10 @@ class UnlockFlowTest {
     @Volatile private var identityResets = 0
     private val logged = Collections.synchronizedList(mutableListOf<Throwable>())
 
+    /** What the status check answers, and how often it was asked. */
+    @Volatile private var statusAnswer = Readiness()
+    private val statusCalls = AtomicInteger()
+
     /** Every line the flow writes through the facade, at the most verbose level. */
     private val logLines = Collections.synchronizedList(mutableListOf<String>())
     private val appLog = AppLog({ _, _, line, _ -> logLines += line }) { AppLog.Level.DEBUG }
@@ -97,6 +101,8 @@ class UnlockFlowTest {
         },
         approveWindowMillis = 1_500,
         pollIntervalMillis = 20,
+        readinessPollMillis = 20,
+        checkStatus = { _ -> statusCalls.incrementAndGet(); statusAnswer },
         keyUseTimeoutSeconds = 1,
         checkKey = {
             keyChecks.incrementAndGet()
@@ -321,6 +327,95 @@ class UnlockFlowTest {
         pairings.single().finish()
         await<UnlockUiState.Ready>()
         assertEquals("https://d.example.net/v2/", store.saved?.discovery)
+    }
+
+    // The readiness chip: while the Ready screen is showing, and the app is in the foreground,
+    // the machine's announcement is looked up every few seconds and put into the state.
+
+    private fun awaitReadiness(condition: (Readiness) -> Boolean): UnlockUiState.Ready {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (System.nanoTime() < deadline) {
+            val now = flow.state.value
+            if (now is UnlockUiState.Ready && condition(now.readiness)) return now
+            Thread.sleep(5)
+        }
+        fail("readiness never matched, still ${flow.state.value}")
+        throw AssertionError()
+    }
+
+    @Test
+    fun theReadyScreenFollowsTheMachinesStatusAndStartsAsChecking() {
+        store.saved = machineA
+        statusAnswer = Readiness(ReadinessState.WAITING, 12)
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        assertEquals(ReadinessState.WAITING, awaitReadiness { it.state == ReadinessState.WAITING }.readiness.state)
+        statusAnswer = Readiness(ReadinessState.STALE, 2_820)
+        val stale = awaitReadiness { it.state == ReadinessState.STALE }
+        assertEquals(2_820, stale.readiness.ageSeconds)
+        // Unlock is not touched by any of it: the state is still the one the Unlock button is on.
+        assertEquals(machineA, stale.machine)
+    }
+
+    @Test
+    fun theStatusIsNotAskedOnceTheReadyScreenIsLeftAndResumesWhenItIsBack() {
+        store.saved = machineA
+        statusAnswer = Readiness(ReadinessState.WAITING, 12)
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        awaitReadiness { it.state == ReadinessState.WAITING }
+
+        nextSession = { FakeSession() }
+        onMain { flow.connect() }
+        await<UnlockUiState.Connecting>()
+        Thread.sleep(100)
+        val calls = statusCalls.get()
+        Thread.sleep(300)
+        assertEquals("the status was asked for while connecting", calls, statusCalls.get())
+
+        onMain { flow.cancel() }
+        await<UnlockUiState.Ready>()
+        val before = statusCalls.get()
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (statusCalls.get() <= before && System.nanoTime() < deadline) Thread.sleep(5)
+        assertTrue("polling did not resume on the Ready screen", statusCalls.get() > before)
+    }
+
+    @Test
+    fun theStatusIsNotAskedWhileTheAppIsInTheBackground() {
+        store.saved = machineA
+        statusAnswer = Readiness(ReadinessState.WAITING, 12)
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        awaitReadiness { it.state == ReadinessState.WAITING }
+
+        onMain { flow.movedToBackground() }
+        Thread.sleep(100)
+        val calls = statusCalls.get()
+        Thread.sleep(300)
+        assertEquals("asked while in the background", calls, statusCalls.get())
+
+        onMain { flow.returnedToForeground() }
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (statusCalls.get() <= calls && System.nanoTime() < deadline) Thread.sleep(5)
+        assertTrue("polling did not resume in the foreground", statusCalls.get() > calls)
+    }
+
+    /** The last status goes in the technical details of an unreachable failure, never the headline. */
+    @Test
+    fun anUnreachableMachineHasItsLastKnownStatusInTheTechnicalDetails() {
+        store.saved = machineA
+        statusAnswer = Readiness(ReadinessState.STALE, 47 * 60)
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        awaitReadiness { it.state == ReadinessState.STALE }
+        nextSession = { FakeSession(failWith = MachineFailure(FailureKind.UNREACHABLE, "", "mobile: gave up dialling", null)) }
+        onMain { flow.connect() }
+        val failed = await<UnlockUiState.Failed>()
+        assertEquals("res:${R.string.failure_unreachable}", failed.message)
+        val technical = failed.technical.orEmpty()
+        assertTrue(technical, technical.contains("res:${R.string.failure_last_status}"))
+        assertTrue(technical, technical.contains("47"))
     }
 
     // The log: what the flow does is followable from logcat, and none of it is a secret.
