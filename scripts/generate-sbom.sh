@@ -72,7 +72,7 @@ esac
 # The component list comes from the artefact, but licences cannot: a
 # compiled binary carries no LICENSE files. Pointing syft at the local
 # module cache lets it read each module's licence from the source it was
-# built from, which takes a Go SBOM of cmd/unlocker from 1 component in
+# built from, which takes a Go SBOM of cmd/synctang-unlocker from 1 component in
 # 29 carrying a licence to 27 (measured 2026-10-22). The module cache is
 # populated by the build that produced the artefact, so this needs
 # nothing fetched.

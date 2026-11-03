@@ -29,11 +29,11 @@ one use outside `mrcore` except the following:
 
 - `mrcore.Group` has exactly one reference outside `mrcore`: the
   parameter type of a test helper, `recoverPForTest` in
-  `cmd/unlocker/enrol_test.go` `[V]`. No production code names the type.
+  `cmd/synctang-unlocker/enrol_test.go` `[V]`. No production code names the type.
 - Of the seven `Group` methods, production code outside `mrcore` calls
-  only `RandomScalar`, `ScalarBaseMult` (`cmd/keyholder/keystore.go`),
-  `ScalarMult` (`cmd/keyholder/unlock.go`) and `PointToX`
-  (`cmd/unlocker/pair.go`, used purely to validate a public key) `[V]`.
+  only `RandomScalar`, `ScalarBaseMult` (`cmd/synctang-keyholder/keystore.go`),
+  `ScalarMult` (`cmd/synctang-keyholder/unlock.go`) and `PointToX`
+  (`cmd/synctang-unlocker/pair.go`, used purely to validate a public key) `[V]`.
   `Add`, `Negate` and `LiftX` are called only inside `mrcore` `[V]`
   (a grep for `.Add(` outside `mrcore` finds only `time.Time.Add` and
   `sync.WaitGroup.Add`). `mobile/mobile.go` uses `P256()` only to pass
@@ -84,7 +84,7 @@ implementer must write.
 ### 3.2 Pairing symbols
 
 `PairChallenge`, `PairRequest` and `PairResult` are exported because
-`cmd/unlocker`, `cmd/keyholder` and `mobile` all construct them `[V]`;
+`cmd/synctang-unlocker`, `cmd/synctang-keyholder` and `mobile` all construct them `[V]`;
 they stay. The pairing helpers `NewPairingSecret`, `DecodePairingSecret`
 and `PairProof` are also used by those packages and stay. If the
 pairing step is split into its own module later, these six symbols

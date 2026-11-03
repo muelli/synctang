@@ -18,8 +18,8 @@ em-dash-check:
 	./scripts/check-em-dash.sh
 
 install-dracut:
-	sudo install -d /usr/lib/dracut/modules.d/90unlocker
-	sudo install -m 0755 dracut/90unlocker/*.sh /usr/lib/dracut/modules.d/90unlocker/
+	sudo install -d /usr/lib/dracut/modules.d/90synctang
+	sudo install -m 0755 dracut/90synctang/*.sh /usr/lib/dracut/modules.d/90synctang/
 
 # Build the three .debs (synctang-unlocker, synctang-keyholder, synctang-dracut).
 #

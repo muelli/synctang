@@ -12,8 +12,8 @@
 # shellcheck disable=SC1091
 type getarg > /dev/null 2>&1 || . /lib/dracut-lib.sh
 
-[ -s /run/unlocker-luks.pid ] || return 0
+[ -s /run/synctang-luks.pid ] || return 0
 
-read -r agent_pid < /run/unlocker-luks.pid
+read -r agent_pid < /run/synctang-luks.pid
 [ -n "$agent_pid" ] && kill -TERM "$agent_pid" 2> /dev/null
-rm -f /run/unlocker-luks.pid
+rm -f /run/synctang-luks.pid

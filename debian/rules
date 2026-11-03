@@ -49,8 +49,8 @@ endif
 # untracked file lying around). That is exactly the kind of accidental
 # input a reproducible build must not depend on.
 override_dh_auto_build:
-	GOARCH=$(GOARCH_HOST) go build -buildvcs=false -ldflags "-s -w" -o unlocker ./cmd/unlocker
-	GOARCH=$(GOARCH_HOST) go build -buildvcs=false -ldflags "-s -w" -o keyholder ./cmd/keyholder
+	GOARCH=$(GOARCH_HOST) go build -buildvcs=false -ldflags "-s -w" -o synctang-unlocker ./cmd/synctang-unlocker
+	GOARCH=$(GOARCH_HOST) go build -buildvcs=false -ldflags "-s -w" -o synctang-keyholder ./cmd/synctang-keyholder
 
 override_dh_auto_test:
 	# Deliberately empty. The test suite needs real cryptsetup (loopback
@@ -60,15 +60,15 @@ override_dh_auto_test:
 	# (the go-test and go-test-privileged jobs).
 
 override_dh_auto_install:
-	install -D -m 0755 unlocker debian/tmp/usr/sbin/unlocker
-	install -D -m 0755 keyholder debian/tmp/usr/bin/keyholder
-	install -d debian/tmp/usr/lib/dracut/modules.d/90unlocker
-	install -m 0755 dracut/90unlocker/module-setup.sh dracut/90unlocker/unlocker-start.sh \
-		dracut/90unlocker/unlocker-stop.sh dracut/90unlocker/secure-initrd.sh \
-		debian/tmp/usr/lib/dracut/modules.d/90unlocker/
+	install -D -m 0755 synctang-unlocker debian/tmp/usr/sbin/synctang-unlocker
+	install -D -m 0755 synctang-keyholder debian/tmp/usr/bin/synctang-keyholder
+	install -d debian/tmp/usr/lib/dracut/modules.d/90synctang
+	install -m 0755 dracut/90synctang/module-setup.sh dracut/90synctang/synctang-start.sh \
+		dracut/90synctang/synctang-stop.sh dracut/90synctang/secure-initrd.sh \
+		debian/tmp/usr/lib/dracut/modules.d/90synctang/
 
 override_dh_auto_clean:
-	rm -f unlocker keyholder
+	rm -f synctang-unlocker synctang-keyholder
 	rm -rf $(CURDIR)/.gocache
 
 # CGO_ENABLED=0 above means both binaries are fully static, so none of

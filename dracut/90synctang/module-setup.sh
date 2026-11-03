@@ -6,7 +6,7 @@
 # syncthing-socket's contrib/dracut-luks/90syncthing-socket, which this project's
 # transport is built on; see THIRD_PARTY.md.
 #
-# INSTALLATION: /usr/lib/dracut/modules.d/90unlocker/
+# INSTALLATION: /usr/lib/dracut/modules.d/90synctang/
 #
 # Ubuntu 26.04 and later ship dracut rather than initramfs-tools; its initrd has no
 # /lib/cryptsetup/askpass and no passfifo to race. It uses systemd-cryptsetup, which
@@ -16,19 +16,19 @@
 
 # shellcheck disable=SC2154
 
-# unlocker_path finds the agent binary even when it is not on the PATH this
+# synctang_path finds the agent binary even when it is not on the PATH this
 # script happens to run with. A kernel upgrade rebuilds the initrd from a dpkg
 # maintainer script, and dpkg runs those with a PATH that does not include
-# /usr/local/bin. A plain "require_binaries unlocker" therefore fails there,
+# /usr/local/bin. A plain "require_binaries synctang-unlocker" therefore fails there,
 # check() returns 1, dracut silently drops this whole module, and the machine
 # comes up with an initrd that has no agent in it at all: remote unlock stops
 # working after an unattended kernel upgrade, with nothing to show for it but a
 # console prompt nobody is standing in front of. Observed exactly that on the
 # test VM, whose 7.0.0-31 initrd contained no unlocker files whatsoever.
-unlocker_path() {
-	command -v unlocker 2>/dev/null && return 0
-	for candidate in /usr/local/sbin/unlocker /usr/local/bin/unlocker \
-		/usr/sbin/unlocker /usr/bin/unlocker; do
+synctang_path() {
+	command -v synctang-unlocker 2>/dev/null && return 0
+	for candidate in /usr/local/sbin/synctang-unlocker /usr/local/bin/synctang-unlocker \
+		/usr/sbin/synctang-unlocker /usr/bin/synctang-unlocker; do
 		if [ -x "$candidate" ]; then
 			echo "$candidate"
 			return 0
@@ -37,7 +37,7 @@ unlocker_path() {
 	return 1
 }
 
-# unlocker_ca_bundles prints the CA bundles that exist, under the optional root
+# synctang_ca_bundles prints the CA bundles that exist, under the optional root
 # given as $1 (empty for the real system; the test points it at a temporary
 # tree). These are the paths Go's crypto/x509 looks the system trust store up
 # at, which differ between distributions: Debian and Ubuntu have
@@ -45,7 +45,7 @@ unlocker_path() {
 # Debian name is not there), openSUSE and Alpine have their own. A bundle at
 # only one of them was all this module knew, so a Fedora initrd carried no
 # trust store and the agent could not verify the relay pool or discovery.
-unlocker_ca_bundles() {
+synctang_ca_bundles() {
 	local root=${1:-} candidate
 	for candidate in \
 		/etc/ssl/certs/ca-certificates.crt \
@@ -61,7 +61,7 @@ unlocker_ca_bundles() {
 }
 
 # synctang_network_conf prints /etc/synctang/network.conf if there is one, under
-# the optional root given as $1 (as for unlocker_ca_bundles). It is the file that
+# the optional root given as $1 (as for synctang_ca_bundles). It is the file that
 # names a private relay pool and discovery server, and the agent in the initrd has
 # no other place to read them from. -r follows symlinks, so a dangling one is not
 # reported, which inst_simple would turn into a failed initrd build.
@@ -72,7 +72,7 @@ synctang_network_conf() {
 }
 
 check() {
-	unlocker_path > /dev/null || return 1
+	synctang_path > /dev/null || return 1
 	return 0
 }
 
@@ -85,7 +85,7 @@ depends() {
 }
 
 install() {
-	inst_binary "$(unlocker_path)" /usr/local/bin/unlocker
+	inst_binary "$(synctang_path)" /usr/local/bin/synctang-unlocker
 
 	# 70crypt installs the cryptsetup binary only on its non-systemd branch: with
 	# systemd present it installs dracut-crypt-generator and relies on
@@ -97,13 +97,13 @@ install() {
 	# Discovery and the relay pool are reached over HTTPS, so the trust store has
 	# to come along.
 	local bundle have_bundle=
-	for bundle in $(unlocker_ca_bundles); do
+	for bundle in $(synctang_ca_bundles); do
 		inst_simple "$bundle"
 		have_bundle=yes
 	done
 	if [ -z "$have_bundle" ]; then
-		dwarn "unlocker: no CA bundle found (looked for ca-certificates.crt, ca-bundle.crt and"
-		dwarn "unlocker: the other usual names). Install ca-certificates, or discovery will fail at boot."
+		dwarn "synctang-unlocker: no CA bundle found (looked for ca-certificates.crt, ca-bundle.crt and"
+		dwarn "synctang-unlocker: the other usual names). Install ca-certificates, or discovery will fail at boot."
 	fi
 
 	# The human who ran "unlocker enrol" already generated this machine's
@@ -131,7 +131,7 @@ install() {
 	# non-loopback interface, but networkd is only waited on when rd.neednet is
 	# set. Without this the agent can start before there is a network to use.
 	mkdir -p "$initdir/etc/cmdline.d"
-	echo "rd.neednet=1" > "$initdir/etc/cmdline.d/95unlocker.conf"
+	echo "rd.neednet=1" > "$initdir/etc/cmdline.d/95synctang.conf"
 
 	# The initqueue is the only hook point that runs alongside the password
 	# prompt.
@@ -144,7 +144,7 @@ install() {
 	# systemd-cryptsetup asking.
 	#
 	# 99 puts this after 99-networkd-run.sh, which is what starts the network.
-	inst_hook initqueue/settled 99 "$moddir/unlocker-start.sh"
+	inst_hook initqueue/settled 99 "$moddir/synctang-start.sh"
 
 	# dracut-initqueue.service is conditional on this marker. The network module
 	# creates it too, but relying on that would make the unlock depend on which
@@ -154,5 +154,5 @@ install() {
 
 	# pre-pivot corresponds to local-bottom. The agent is an endless loop and must
 	# not survive the switch to the real root.
-	inst_hook pre-pivot 05 "$moddir/unlocker-stop.sh"
+	inst_hook pre-pivot 05 "$moddir/synctang-stop.sh"
 }

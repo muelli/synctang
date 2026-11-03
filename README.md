@@ -56,7 +56,7 @@ initrds):
     sudo apt install ./dist/synctang-unlocker_*.deb ./dist/synctang-dracut_*.deb   # the machine
     sudo apt install ./dist/synctang-keyholder_*.deb                                # a laptop key holder
 
-Without Debian packaging, `go build ./cmd/unlocker ./cmd/keyholder`,
+Without Debian packaging, `go build ./cmd/synctang-unlocker ./cmd/synctang-keyholder`,
 install the binary as `unlocker` on the machine, run `just install-dracut`,
 then `dracut --force`.
 

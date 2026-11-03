@@ -24,7 +24,7 @@ point `S = s.G` and `kid = SHA-256(S)`.
    truncates a raw binary answer at its first embedded NUL byte, which
    a uniformly random 32-byte secret contains roughly one enrolment in
    eight. Found running against a real deployment; see `STATUS.md`.
-   `[V]` `mrcore.Enrol`, `cmd/unlocker`'s `enrolRecipient` and
+   `[V]` `mrcore.Enrol`, `cmd/synctang-unlocker`'s `enrolRecipient` and
    `luksKeyMaterial`.
 2. Pick a random scalar `c`, compute `C = c.G` and `K = c.S`. Derive
    `k = HKDF-SHA256(x(K), salt = kid, info = "mr-1 enrol")`.

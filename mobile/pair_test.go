@@ -17,7 +17,7 @@ import (
 
 // fakeMachine plays the machine's side of a pairing window: challenge,
 // verify the proof, answer. Deliberately written against the wire
-// messages rather than calling into cmd/unlocker, so that a change to
+// messages rather than calling into cmd/synctang-unlocker, so that a change to
 // either side that breaks the other shows up here.
 func fakeMachine(t *testing.T, addr, machineSeed string, secret []byte, accept bool) <-chan mrcore.PairRequest {
 	t.Helper()

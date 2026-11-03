@@ -57,7 +57,7 @@ There are two roles. The **key holder** has a long-term scalar `s` and
 publishes `S = s.G`. The **machine** stores a token and, at recovery
 time, listens for the key holder to connect and then asks it for help.
 In the reference implementation the machine listens and the key holder
-dials `[I]` (`cmd/unlocker/agent.go`, `cmd/keyholder/unlock.go`); MR-1
+dials `[I]` (`cmd/synctang-unlocker/agent.go`, `cmd/synctang-keyholder/unlock.go`); MR-1
 itself does not depend on which side dials. Both
 roles MUST speak over a channel that authenticates the peer's identity
 and protects confidentiality and integrity; MR-1 does not provide that
@@ -157,7 +157,7 @@ and later handed to the password agent is not `P` but
     keyMaterial = hex(P)
 
 that is, 64 lowercase ASCII hexadecimal characters `[I]` (read: `hex.EncodeToString`
-in `cmd/unlocker/cryptsetup.go`, `luksKeyMaterial`). Enrolment installs
+in `cmd/synctang-unlocker/cryptsetup.go`, `luksKeyMaterial`). Enrolment installs
 `keyMaterial`, and recovery delivers `keyMaterial` computed from the
 recovered `P`; the raw `P` is never installed or delivered. This is a
 property of the application, outside the MR-1 core: `mrcore` returns the
@@ -241,7 +241,7 @@ this `[V]` (`mrcore/mr1.go`; probe call with a 1-byte nonce returns the
 error `invalid nonce length 1, want 12`). `mrcore` does not check the
 length of the recovered plaintext, since it treats `P` as opaque; an
 application that expects 32 bytes MUST. The reference LUKS application
-does (`checkSecretLength` in `cmd/unlocker/agent.go`, `[V]` by its unit
+does (`checkSecretLength` in `cmd/synctang-unlocker/agent.go`, `[V]` by its unit
 test).
 
 ## 6. The token
@@ -282,13 +282,13 @@ fields inside a recipient or `machine` are discarded on rewrite `[I]`
 
 Number of keyslots and recipients: the reference implementation
 maintains one keyslot per recipient and refuses to guess when the counts
-differ `[I]` (`cmd/unlocker/enrol.go`); that check is application
+differ `[I]` (`cmd/synctang-unlocker/enrol.go`); that check is application
 policy and not part of MR-1.
 
 Several recipients may share one token. Each recipient is enrolled
 independently with its own random `P` (section 7), so recovering through
 one recipient yields that recipient's `P`, which opens that recipient's
-keyslot and no other `[I]` (`cmd/unlocker/enrol.go` calls `Enrol` once
+keyslot and no other `[I]` (`cmd/synctang-unlocker/enrol.go` calls `Enrol` once
 per recipient and adds one keyslot per call).
 
 ## 7. Enrolment
@@ -339,7 +339,7 @@ keeps `K` and `P` from the key holder and from an eavesdropper.
    operator declines, reply with `RecoverResponse{error}` and stop.
    The reference laptop key holder does not do either: it holds one
    scalar, ignores `kid`, and closes the channel with an error instead of
-   sending an `error` response `[I]` (`cmd/keyholder/unlock.go`). The
+   sending an `error` response `[I]` (`cmd/synctang-keyholder/unlock.go`). The
    phone also ignores `kid`, which it keeps for display only `[I]`
    (`mobile/mobile.go`). Only the
    phone sends one `[I]` (`mobile/mobile.go`). A machine MUST therefore
@@ -441,8 +441,8 @@ Fields documented as omitted when empty are omitted from the JSON, not
 sent as `null` or `""` `[V]` (probe: `{"xOnly":"..."}`, `{"ok":true}`);
 `name` is always present.
 
-Rules, from the reference machine (`cmd/unlocker/agent.go`) and key
-holder (`cmd/keyholder/unlock.go`) `[I]` (read, and the machine and key
+Rules, from the reference machine (`cmd/synctang-unlocker/agent.go`) and key
+holder (`cmd/synctang-keyholder/unlock.go`) `[I]` (read, and the machine and key
 holder exercised together by the project's test suite, which this
 document did not run separately):
 
@@ -639,7 +639,7 @@ usually validates the peer point itself, but a key holder SHOULD still
 check, so the operation is refused visibly rather than silently
 performed. In the reference implementation, `ValidateChallengePoint`
 rejects empty input, `O`, and anything that does not decode to a curve
-point. Both key holders call it (`cmd/keyholder/unlock.go`,
+point. Both key holders call it (`cmd/synctang-keyholder/unlock.go`,
 `mobile/mobile.go`; `[I]`, from reading). The phone calls it as soon as
 the request is read, before the point is kept or shown to the Kotlin
 side, and again inside the answer step `[V]`
@@ -796,7 +796,7 @@ against the code; none of them is a cryptographic disagreement.
    says the keyslot gets the hex form and cites `luksKeyMaterial`, but
    its enrolment step 1 reads as though the protocol hex-encodes `P`. In
    the code `mrcore.Enrol` returns raw `P`; the hexadecimal form is
-   applied by the LUKS application (`luksKeyMaterial` in `cmd/unlocker`).
+   applied by the LUKS application (`luksKeyMaterial` in `cmd/synctang-unlocker`).
 3. **Gaps rather than conflicts.** The document does not state the JSON
    encoding of byte fields (standard padded base64), the message-size
    limit (65536 bytes), that `X` and `Y` are validated, that

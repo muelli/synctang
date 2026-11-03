@@ -1,14 +1,14 @@
 #!/bin/bash
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# Tests dracut/90unlocker/secure-initrd.sh against a temporary /boot.
+# Tests dracut/90synctang/secure-initrd.sh against a temporary /boot.
 #
 # The helpers below are called through check, which shellcheck cannot see.
 # shellcheck disable=SC2329
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
-script="$here/../dracut/90unlocker/secure-initrd.sh"
+script="$here/../dracut/90synctang/secure-initrd.sh"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 fail=0

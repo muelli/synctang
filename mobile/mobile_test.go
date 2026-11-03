@@ -278,7 +278,7 @@ func (e errString) Error() string { return string(e) }
 // A relay session can die between being established and being used,
 // and both sides then see EOF partway through the exchange rather than
 // a dial failure. The laptop client survives that by retrying the
-// whole attempt (cmd/keyholder's runUnlock loop); a fresh attempt is a
+// whole attempt (cmd/synctang-keyholder's runUnlock loop); a fresh attempt is a
 // fresh, independent race on both sides, so retrying converges rather
 // than repeating the same mismatch.
 //

@@ -124,7 +124,7 @@ also asks the compiler the same question independently
 to agree exactly. A misparse, a binary stripped of its build info, or
 an SBOM generated against the wrong artefact would otherwise be a
 confidently wrong document rather than a visible failure. Measured on
-`cmd/unlocker`: 26 third-party modules from the binary, the same 26
+`cmd/synctang-unlocker`: 26 third-party modules from the binary, the same 26
 from `go list -deps` `[V]` (2026-10-22, after `syncthing-socket`'s root
 package stopped being imported; it was 65 before).
 
@@ -151,7 +151,7 @@ which is why it is the one published:
 The one thing a binary genuinely cannot supply is licence text, since it
 carries no `LICENSE` files. Syft is therefore pointed at the local
 module cache, reading each module's licence from the source it was built
-from, which takes the SBOM of `cmd/unlocker` from 1 component in 29
+from, which takes the SBOM of `cmd/synctang-unlocker` from 1 component in 29
 carrying a licence to 27 `[V]` (2026-10-22). Of the two without, one is
 this repo's own module and the other is the scanned file itself.
 

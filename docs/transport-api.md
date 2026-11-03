@@ -53,8 +53,8 @@ applied.
 
 | Name | Kind | Used outside the package | Proposal |
 |---|---|---|---|
-| `Transport` | interface (`Listen`, `Dial`) | `cmd/unlocker`, `cmd/keyholder`, `mobile` | **keep** |
-| `Conn` | interface (`PeerID() string` plus `io.ReadWriteCloser`) | `cmd/unlocker`, `mobile` | **keep** |
+| `Transport` | interface (`Listen`, `Dial`) | `cmd/synctang-unlocker`, `cmd/synctang-keyholder`, `mobile` | **keep** |
+| `Conn` | interface (`PeerID() string` plus `io.ReadWriteCloser`) | `cmd/synctang-unlocker`, `mobile` | **keep** |
 | `ListenOptions{AuthorizedPeers, DirectAddr}` | struct | `cmd/`, `mobile` | **keep** |
 | `DialOptions{PeerID, DirectAddr}` | struct | `cmd/`, `mobile` | **keep** |
 
@@ -77,13 +77,13 @@ assignments `[V]`):
 
 | Field | Outside use (non-test) | Proposal |
 |---|---|---|
-| `SyncthingRelay.Cert`, `.Logger` | yes (`cmd/unlocker/main.go`) | **keep** |
+| `SyncthingRelay.Cert`, `.Logger` | yes (`cmd/synctang-unlocker/main.go`) | **keep** |
 | `LocalDiscovery.Cert`, `.Logger` | yes | **keep** |
 | `Multi.Transports` | yes | **keep** |
 | `SyncthingRelay.RelayPoolURL`, `.DiscoveryURL`, `.AnnounceURLs` | none | keep as options only if self-hosted infrastructure is a goal; otherwise **unexport?** |
 | `SyncthingRelay.AnnounceInterval`, `.AnnounceRefresh`, `.RelayLossGrace` | none (in-package tests only) | **unexport?** (test seams) |
 | `LocalDiscovery.GroupAddr`, `.Port` | none | **unexport?** (test seams) |
-| `LocalDiscovery.AnnounceInterval` | tests of `cmd/unlocker`, `mobile` (`cmd/unlocker/agent_test.go`, `mobile/local_discovery_test.go`) | **unexport?** if those tests move behind a test-only constructor |
+| `LocalDiscovery.AnnounceInterval` | tests of `cmd/synctang-unlocker`, `mobile` (`cmd/synctang-unlocker/agent_test.go`, `mobile/local_discovery_test.go`) | **unexport?** if those tests move behind a test-only constructor |
 | `Multi.RetryInterval` | none | **unexport?** |
 
 ## What to stabilise
@@ -136,7 +136,7 @@ assignments `[V]`):
    Before that, a direct dial with no ID skipped the comparison and
    pinned nobody. `Listen` still treats an empty `AuthorizedPeers` as
    "accept any peer that completes the handshake", which pairing relies
-   on and `cmd/unlocker`'s agent now refuses to start with (`[V]`,
+   on and `cmd/synctang-unlocker`'s agent now refuses to start with (`[V]`,
    `TestAuthorizedPeersRefusesATokenWithNoTransportIdentity`); an explicit
    option for "any peer" would make that fail-open default a visible
    choice, and was not added `[I]`.
@@ -150,7 +150,7 @@ assignments `[V]`):
    dial does not); this is documented in `doc.go` but not in the
    `Transport` interface comment.
 5. **Logging** uses `log/slog` with a custom trace level
-   (`slog.Level(-8)`) that `cmd/unlocker` redefines independently. A
+   (`slog.Level(-8)`) that `cmd/synctang-unlocker` redefines independently. A
    stand-alone package should export or document the level.
 
 ## Dependencies

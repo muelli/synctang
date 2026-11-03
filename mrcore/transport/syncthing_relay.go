@@ -79,7 +79,7 @@ const defaultAnnounceRefresh = discovery.DefaultAnnounceInterval
 // default (connection lifecycle events: relay joined, invitation
 // received, discovery lookup results) but that is genuinely useful
 // when actually diagnosing why a connection attempt is not working.
-// cmd/unlocker defines the identical constant independently rather
+// cmd/synctang-unlocker defines the identical constant independently rather
 // than importing it from here: this package depends only on
 // log/slog, and a numeric level has no reason to need a shared
 // symbol across packages.
@@ -150,7 +150,7 @@ type SyncthingRelay struct {
 	// library, zero cost for a caller that does not want the detail,
 	// and portable to contexts such as Android's gomobile bind that
 	// have no systemd journal to write structured entries to at all);
-	// a caller that wants those, such as cmd/unlocker, constructs its
+	// a caller that wants those, such as cmd/synctang-unlocker, constructs its
 	// own journal-backed *slog.Logger and sets it here rather than
 	// this package taking on that dependency itself.
 	Logger *slog.Logger

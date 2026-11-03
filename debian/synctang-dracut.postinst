@@ -4,7 +4,7 @@ set -e
 
 case "$1" in
 	configure)
-		# A freshly installed or upgraded 90unlocker module does nothing
+		# A freshly installed or upgraded 90synctang module does nothing
 		# until it is baked into an initrd. Regenerating every installed
 		# kernel's initrd here, rather than leaving it to the next kernel
 		# upgrade, is what makes "apt install synctang-dracut" alone
@@ -18,7 +18,7 @@ case "$1" in
 			# The images now carry the machine identity. dracut builds them
 			# owner-only; this checks, and says so loudly if a filesystem
 			# will not hold that. "|| true" for the same reason as above.
-			/usr/lib/dracut/modules.d/90unlocker/secure-initrd.sh || true
+			/usr/lib/dracut/modules.d/90synctang/secure-initrd.sh || true
 		fi
 		;;
 

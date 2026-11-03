@@ -412,7 +412,7 @@ func (s *Session) Connect() (err error) {
 	// Hello should be. A fresh attempt is a fresh, independent race on
 	// both sides, so retrying converges where repeating does not.
 	//
-	// cmd/keyholder has done this since the same failure was found
+	// cmd/synctang-keyholder has done this since the same failure was found
 	// against a real deployment; the app did not, so against the real
 	// relay pool the phone usually failed where the laptop, dialling
 	// the same machine at the same moment, did not. Confirmed on real
@@ -467,13 +467,13 @@ func (s *Session) withReplyTimeoutLocked(exchange func() error) error {
 }
 
 // connectRetryInterval is how long Connect waits between attempts.
-// Matches cmd/keyholder's unlockRetryInterval: fast enough not to
+// Matches cmd/synctang-keyholder's unlockRetryInterval: fast enough not to
 // waste the caller's timeout budget, slow enough not to hammer the
 // relay pool.
 const connectRetryInterval = 2 * time.Second
 
 // newDialTransport builds the Transport one attempt dials through,
-// mirroring cmd/keyholder's function of the same name so the phone and
+// mirroring cmd/synctang-keyholder's function of the same name so the phone and
 // the laptop reach a machine the same way.
 //
 // LocalDiscovery is raced against the relay because the two answer

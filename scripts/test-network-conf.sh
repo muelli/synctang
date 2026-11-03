@@ -1,7 +1,7 @@
 #!/bin/bash
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# Tests which of the owner's network settings dracut/90unlocker/module-setup.sh
+# Tests which of the owner's network settings dracut/90synctang/module-setup.sh
 # would put in the initrd. The agent there reads /etc/synctang/network.conf, the
 # file naming a private relay pool and discovery server, and has no other place to
 # get it from; a module that left it out would boot a machine that announces
@@ -18,7 +18,7 @@ fail=0
 # The module's own functions, without running dracut: module-setup.sh only
 # defines functions when sourced.
 # shellcheck disable=SC1091
-. "$here/../dracut/90unlocker/module-setup.sh"
+. "$here/../dracut/90synctang/module-setup.sh"
 
 check() {
 	local description=$1

@@ -13,7 +13,7 @@ import (
 )
 
 // mrTokenType is the LUKS2 token type this project writes and looks
-// for. Kept alongside cmd/unlocker's cryptsetup plumbing rather than
+// for. Kept alongside cmd/synctang-unlocker's cryptsetup plumbing rather than
 // in mrcore, since mrcore has no notion of LUKS2 token IDs at all.
 const mrTokenType = "mr-1"
 

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Install this project into the disposable VM built by make-test-vm.sh: the
-# unlocker binary, the dracut module, a machine transport identity, and one or
+# synctang-unlocker binary, the dracut module, a machine transport identity, and one or
 # more enrolled key holders. Then rebuild the initrd so the agent is actually in
 # it.
 #
@@ -37,7 +37,7 @@ if [ "$(id -u)" -ne 0 ]; then
 	exit 1
 fi
 if [ -z "$UNLOCKER" ] || [ ! -x "$UNLOCKER" ]; then
-	echo "set UNLOCKER to the unlocker binary to install" >&2
+	echo "set UNLOCKER to the synctang-unlocker binary to install" >&2
 	exit 1
 fi
 
@@ -59,14 +59,14 @@ printf '%s' "$VM_PASSPHRASE" | cryptsetup open "${LOOP}p3" synctang_test_crypt -
 mount /dev/mapper/synctang_test_crypt "$MNT"
 mount "${LOOP}p2" "$MNT/boot"
 
-log "installing the unlocker and the dracut module"
+log "installing synctang-unlocker and the dracut module"
 # /usr/sbin, not /usr/local/bin: that is the PATH dpkg maintainer scripts run
 # with, which is what a kernel upgrade's initrd rebuild needs in order to find
 # the binary at all. The Debian packaging installs it here for the same reason.
-install -m 755 "$UNLOCKER" "$MNT/usr/sbin/unlocker"
-mkdir -p "$MNT/usr/lib/dracut/modules.d/90unlocker"
-install -m 755 "$(dirname "$0")/../dracut/90unlocker"/*.sh \
-	"$MNT/usr/lib/dracut/modules.d/90unlocker/"
+install -m 755 "$UNLOCKER" "$MNT/usr/sbin/synctang-unlocker"
+mkdir -p "$MNT/usr/lib/dracut/modules.d/90synctang"
+install -m 755 "$(dirname "$0")/../dracut/90synctang"/*.sh \
+	"$MNT/usr/lib/dracut/modules.d/90synctang/"
 
 log "enrolling ${#RECIPIENTS[@]} recipient(s)"
 mkdir -p "$MNT/etc/unlocker"
@@ -97,8 +97,8 @@ chroot "$MNT" env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
 	dracut --force --quiet "/boot/initrd.img-$KVER" "$KVER"
 
 log "checking the initrd actually contains the agent"
-chroot "$MNT" lsinitrd "/boot/initrd.img-$KVER" | grep -E 'unlocker' || {
-	echo "the rebuilt initrd contains no unlocker files" >&2
+chroot "$MNT" lsinitrd "/boot/initrd.img-$KVER" | grep -E 'synctang' || {
+	echo "the rebuilt initrd contains no synctang files" >&2
 	exit 1
 }
 

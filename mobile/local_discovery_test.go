@@ -134,7 +134,7 @@ func TestSessionConnectsOverLocalDiscoveryWithoutTheRelay(t *testing.T) {
 // A direct address is an explicit instruction about where to dial, so
 // it must not be diluted by racing a multicast search against it: the
 // offline tests and the manual same-network pairing that use it are
-// relying on exactly one destination being tried. cmd/keyholder's
+// relying on exactly one destination being tried. cmd/synctang-keyholder's
 // newDialTransport draws the same line.
 func TestDialTransportUsesLocalDiscoveryOnlyWithoutADirectAddress(t *testing.T) {
 	cert, err := identity.GenerateDeterministicCert("test seed for transport shape")

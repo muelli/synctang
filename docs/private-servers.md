@@ -231,7 +231,7 @@ All in this branch, on one host. The integration tests use the real
 `strelaysrv` and `stdiscosrv` v1.30.0 (the version the module pins), built
 outside the module as the comment at the top of
 `integration/private_servers_test.go` says; the unit tests are in
-`mrcore/transport`, `mobile`, `cmd/keyholder`, `cmd/unlocker` and the Android
+`mrcore/transport`, `mobile`, `cmd/synctang-keyholder`, `cmd/synctang-unlocker` and the Android
 app's JVM tests.
 
 - `[V]` A machine given a single relay and a pinned discovery server, and a

@@ -1,7 +1,7 @@
 #!/bin/bash
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# Tests which CA bundles dracut/90unlocker/module-setup.sh would put in the
+# Tests which CA bundles dracut/90synctang/module-setup.sh would put in the
 # initrd. Discovery and the relay pool are reached over HTTPS, and Go looks the
 # trust store up at a few fixed paths that differ between distributions: Debian
 # and Ubuntu use /etc/ssl/certs/ca-certificates.crt, Fedora and RHEL use
@@ -20,7 +20,7 @@ fail=0
 # The module's own functions, without running dracut: module-setup.sh only
 # defines functions when sourced.
 # shellcheck disable=SC1091
-. "$here/../dracut/90unlocker/module-setup.sh"
+. "$here/../dracut/90synctang/module-setup.sh"
 
 check() {
 	local description=$1
@@ -30,8 +30,8 @@ check() {
 
 root() { rm -rf "${work:?}/root"; mkdir -p "$work/root"; }
 put() { mkdir -p "$work/root/$(dirname "$1")"; : > "$work/root/$1"; }
-found() { unlocker_ca_bundles "$work/root" | grep -qx "$1"; }
-nothing_found() { [ -z "$(unlocker_ca_bundles "$work/root")" ]; }
+found() { synctang_ca_bundles "$work/root" | grep -qx "$1"; }
+nothing_found() { [ -z "$(synctang_ca_bundles "$work/root")" ]; }
 
 root
 put etc/ssl/certs/ca-certificates.crt
@@ -52,7 +52,7 @@ check "Alpine and others: /etc/ssl/cert.pem" found /etc/ssl/cert.pem
 root
 put etc/ssl/certs/ca-certificates.crt
 put etc/pki/tls/certs/ca-bundle.crt
-check "both present: both are carried" bash -c "$(declare -f unlocker_ca_bundles found); work='$work' found /etc/ssl/certs/ca-certificates.crt && work='$work' found /etc/pki/tls/certs/ca-bundle.crt"
+check "both present: both are carried" bash -c "$(declare -f synctang_ca_bundles found); work='$work' found /etc/ssl/certs/ca-certificates.crt && work='$work' found /etc/pki/tls/certs/ca-bundle.crt"
 
 root
 check "none present: nothing is claimed" nothing_found

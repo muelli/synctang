@@ -22,7 +22,7 @@ jobs:
         with:
           go-version: "1.25"
       - run: go build ./...
-      # -timeout 20m, not Go's default 10: cmd/unlocker's tests each
+      # -timeout 20m, not Go's default 10: cmd/synctang-unlocker's tests each
       # format a real LUKS2 image and add a real keyslot, so every one
       # pays argon2id twice over, and the adversarial suite added a
       # dozen more of them. Weakening the key derivation to go faster
@@ -250,10 +250,10 @@ jobs:
         run: |
           mkdir -p verify/amd64 verify/arm64
           dpkg-deb -x dist/synctang-unlocker_*_arm64.deb verify/arm64
-          file verify/arm64/usr/sbin/unlocker | grep -q 'ARM aarch64'
+          file verify/arm64/usr/sbin/synctang-unlocker | grep -q 'ARM aarch64'
           dpkg-deb -x dist/synctang-unlocker_*_amd64.deb verify/amd64
-          file verify/amd64/usr/sbin/unlocker | grep -q 'x86-64'
-          dpkg-deb -c dist/synctang-dracut_*_all.deb | grep -q 'usr/lib/dracut/modules\.d/90unlocker/.*\.sh'
+          file verify/amd64/usr/sbin/synctang-unlocker | grep -q 'x86-64'
+          dpkg-deb -c dist/synctang-dracut_*_all.deb | grep -q 'usr/lib/dracut/modules\.d/90synctang/.*\.sh'
       - name: Check package build reproducibility
         # Builds the packages twice more (native host arch only), deliberately
         # varying umask/TZ/LC_ALL between the two builds, and fails if the
@@ -300,10 +300,10 @@ jobs:
         # to agree exactly, per architecture, since the import graph can
         # differ between them.
         run: |
-          for cmd in unlocker keyholder; do
+          for cmd in synctang-unlocker synctang-keyholder; do
             for arch in amd64 arm64; do
               ./scripts/verify-sbom-against-source.py \
-                "sbom/${cmd}-${arch}.cdx.json" "./cmd/${cmd}" linux "$arch"
+                "sbom/${cmd#synctang-}-${arch}.cdx.json" "./cmd/${cmd}" linux "$arch"
             done
           done
       - uses: actions/attest-build-provenance@v2
