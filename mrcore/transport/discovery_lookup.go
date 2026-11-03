@@ -166,3 +166,15 @@ func lookupRecord(ctx context.Context, deviceID, discoveryURL string) (*discover
 	}
 	return record, nil
 }
+
+// LookupRecord is lookupRecord for callers outside the package that want to know what
+// discovery holds for a device without connecting to it, such as a phone showing whether
+// a machine is waiting. An empty discoveryURL means the public discovery server. The URL
+// may carry ?id= or ?insecure as in a dial. It returns nil and no error when the server
+// has no record.
+func LookupRecord(ctx context.Context, deviceID, discoveryURL string) (*discovery.Record, error) {
+	if discoveryURL == "" {
+		discoveryURL = discovery.DefaultURL
+	}
+	return lookupRecord(ctx, deviceID, discoveryURL)
+}
