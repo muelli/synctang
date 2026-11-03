@@ -1,0 +1,183 @@
+.\" SPDX-License-Identifier: AGPL-3.0-or-later
+.TH SYNCTANG\-NETWORK.CONF 5 "" "synctang" "File Formats"
+.SH NAME
+synctang\-network.conf \- choose the relay and discovery servers for synctang
+.SH DESCRIPTION
+By default synctang uses the public Syncthing relay pool and discovery
+servers.
+This file, and the options that override it, name your own instead.
+Everything in it is optional, and an absent file means the public servers.
+.PP
+The machine listens: it joins one relay and announces that relay's address,
+under its Device ID, to a discovery server.
+A key holder dials: it looks the machine up on a discovery server, is handed the
+relay address, and joins the same relay.
+So both sides must agree on the discovery server, and only the machine needs a
+relay setting.
+.PP
+A wrong value is an error that stops the command and names the setting.
+It never falls back to the public servers: that would announce, on the servers
+the owner chose not to use, a machine the owner chose not to announce there.
+Error messages name the setting and never repeat the URL, which may carry
+something private.
+.SH FORMAT
+One
+.IB key = value
+per line.
+Blank lines and lines starting with
+.B #
+are ignored, and space around the key and the value is removed.
+There is no quoting.
+An empty value means the setting is not set.
+An unknown key, a line without
+.BR = ,
+or a key given twice is an error that names the line.
+.SH KEYS
+.TP
+\fBrelay\-pool\fR
+Where the machine learns relays from.
+Either the URL of a relay pool,
+.B http://
+or
+.BR https:// ,
+or
+.BI relay:// host : port /?id= relay-device-id
+for one relay run by the owner, which is then the only relay used.
+The relay's Device ID is printed by
+.B strelaysrv
+at start-up in its
+.B URI:
+line.
+Only the machine has this setting; a key holder's file refuses it.
+.TP
+\fBdiscovery\fR
+The discovery server, used to look a machine up and, unless
+.B discovery\-announce
+is set, to announce to.
+See
+.BR "DISCOVERY URLS" .
+.TP
+\fBdiscovery\-announce\fR
+Where announcements are posted, if that differs from
+.BR discovery .
+Always
+.BR https .
+.SH DISCOVERY URLS
+A discovery server usually has a self-signed certificate.
+The URL says how to trust it, in the same syntax Syncthing uses:
+.TP
+\fB?id=\fR\fIDevice ID\fR
+The server's certificate must be exactly this Device ID, however it is signed.
+No certificate authority is involved.
+It is checked in the TLS handshake on every connection, before any request is
+sent; a different certificate is refused with an error naming both Device IDs.
+.TP
+\fB?insecure\fR
+Do not verify the server's certificate at all.
+.B ?insecure=false
+means verify.
+.PP
+With neither, the system's certificate authorities decide, and a self-signed
+server is refused.
+Both options are taken out of the URL before anything is sent to the server;
+any other query is kept.
+An
+.B id
+must be a well-formed Device ID.
+.PP
+Plain
+.B http://
+is for looking up only, never for announcing.
+An announcement says where the machine is, and is never sent over plain http.
+So the
+.B discovery
+setting of a machine, which it announces to, must be
+.BR https ,
+unless
+.B discovery\-announce
+names an
+.B https
+endpoint of its own.
+A key holder's
+.B discovery
+may be
+.B http://
+only with
+.BR ?insecure ,
+and
+.B ?id=
+is not accepted with
+.BR http:// ,
+since there is no certificate to pin.
+.B discovery\-announce
+is always
+.BR https .
+A machine's
+.B ?id=
+also pins the announcement: it is posted only to the server with that Device ID.
+.PP
+When the machine's discovery server is set,
+.B synctang\-unlocker pair
+puts it in the pairing link, so that the phone looks the machine up there.
+The relay and the announce endpoint are not put in the link.
+.PP
+Example:
+.PP
+.nf
+discovery=https://192.0.2.20:8443/v2/?id=<server Device ID>
+.fi
+.PP
+One thing to know when testing:
+.BR stdiscosrv ,
+the Syncthing project's discovery server, drops loopback addresses, so a relay
+reachable only as
+.B 127.0.0.1
+is never found: use its LAN address.
+.SH PRECEDENCE
+From weakest to strongest: the file, then the kernel arguments, then flags.
+.PP
+On the machine, the file is read by
+.BR "synctang\-unlocker agent" ,
+.B pair
+and
+.BR open ,
+and the kernel arguments
+.B rd.synctang.relay=
+and
+.B rd.synctang.discovery=
+override it.
+A discovery server given on the kernel command line replaces the file's
+.B discovery
+and its
+.B discovery\-announce
+together, since the announce endpoint belonged to the server it replaces.
+.PP
+On a key holder, the file is read by
+.BR "synctang\-keyholder unlock" ,
+and
+.B \-\-discovery
+and
+.B \-\-discovery\-announce
+override it, in the same way.
+.SH FILES
+.TP
+.B /etc/synctang/network.conf
+The machine's file.
+Named by
+.B \-\-network\-conf
+of
+.BR synctang\-unlocker .
+The dracut module copies it into the initrd when it exists, so rebuild the
+initrd (for example with
+.BR "dracut \-\-force" )
+after changing it.
+.TP
+.I <user\ config\ dir>/synctang\-keyholder/config
+A key holder's file, with the keys
+.B discovery
+and
+.B discovery\-announce
+only.
+.SH SEE ALSO
+.BR synctang\-unlocker (8),
+.BR synctang\-keyholder (1)

@@ -1,0 +1,502 @@
+.\" SPDX-License-Identifier: AGPL-3.0-or-later
+.TH SYNCTANG\-UNLOCKER 8 "" "synctang" "System Administration"
+.SH NAME
+synctang\-unlocker \- unlock a LUKS volume with the approval of a key holder
+.SH SYNOPSIS
+.B synctang\-unlocker
+.I command
+.RI [ flags ]
+.PP
+.B synctang\-unlocker enrol
+.B \-\-device
+.I device
+.B \-\-pubkey
+.I hex
+.B \-\-existing\-passphrase\-file
+.I file
+.RI [ flags ]
+.br
+.B synctang\-unlocker pair
+.B \-\-device
+.I device
+.B \-\-existing\-passphrase\-file
+.I file
+.RI [ flags ]
+.br
+.B synctang\-unlocker status
+.RI [ flags ]
+.br
+.B synctang\-unlocker agent
+.RI [ flags ]
+.br
+.B synctang\-unlocker open
+.RI [ flags ]
+.I device
+.RI [ name ]
+.SH DESCRIPTION
+.B synctang\-unlocker
+is the machine side of synctang, an on-demand unlocker for LUKS2 volumes.
+Instead of typing a passphrase at the console, a person approves the unlock
+from a key holder, which is the laptop program
+.BR synctang\-keyholder (1)
+or the synctang phone app.
+.PP
+Each enrolled key holder has its own keyslot on the volume and an entry in a
+LUKS2 token of type
+.BR mr\-1 ,
+written into the volume's header.
+The secret that opens the keyslot is not kept on the machine in the clear: the
+token holds it only in encrypted form, and it is recovered from the key holder's
+answer, checked against the volume, and handed on.
+Machine and key holder find each other through Syncthing's relay and discovery
+servers, or on the local network, and each side checks the other's Device ID.
+By default the public Syncthing servers are used; see
+.BR synctang\-network.conf (5)
+to use your own.
+.PP
+At boot the
+.B agent
+command runs inside the dracut initrd, beside the ordinary console prompt
+for the passphrase; whichever is answered first wins.
+The other commands are run by a person on the machine.
+.SH COMMANDS
+Every command accepts
+.B \-h
+and prints its flags and exits with status 2.
+Flags may be written with one or two dashes.
+.SS enrol
+Adds a key holder's public key to the volume: a new keyslot, holding a fresh
+random secret, and a new recipient in the volume's
+.B mr\-1
+token.
+It needs the privileges
+.BR cryptsetup (8)
+needs on the device, normally root, and an existing passphrase of the volume.
+It then prints this machine's transport identity, which the key holder needs
+to find the machine.
+.PP
+With
+.B \-\-remove
+it revokes a key holder, destroying its keyslot and removing its entry from the
+token, instead of adding one.
+With
+.B \-\-replace
+it swaps a key holder's key for a new one, enrolling the new key before the
+old one is revoked, so the volume can be opened throughout.
+.TP
+\fB\-\-device\fR \fIpath\fR
+The LUKS2 device or image to enrol on.
+Required.
+.TP
+\fB\-\-pubkey\fR \fIhex\fR
+The key holder's public key, hex-encoded, as printed by
+.B synctang\-keyholder export\-pubkey .
+Required, except with
+.BR \-\-remove .
+.TP
+\fB\-\-existing\-passphrase\-file\fR \fIfile\fR
+A file holding an existing valid passphrase of the volume, or
+.B \-
+for standard input.
+One trailing newline is ignored.
+Required.
+Do not keep the passphrase in a file on disk; see
+.BR EXAMPLES .
+.TP
+\fB\-\-name\fR \fIname\fR
+This machine's name, shown to the key holder before it approves.
+It is a label chosen by the machine and is not authenticated.
+.TP
+\fB\-\-transport\-id\fR \fIid\fR
+This machine's transport identity, recorded in the token and shown to the key
+holder.
+.TP
+\fB\-\-recipient\-transport\-id\fR \fIid\fR
+The key holder's own transport identity, as printed by
+.BR "synctang\-keyholder export\-pubkey" ,
+recorded with its entry so that the agent answers only that key holder.
+With
+.B \-\-replace
+it defaults to the identity being replaced.
+.TP
+\fB\-\-machine\-key\-file\fR \fIfile\fR
+This machine's persistent transport identity.
+Default
+.BR /etc/synctang/machine.pem .
+It is created if it does not exist.
+When enrolling a disk image that belongs to another machine, name the identity
+inside that image here, or the key holder is told a Device ID that no machine
+announces.
+.TP
+\fB\-\-remove\fR \fIid\fR
+Revoke the enrolled key holder with this transport identity.
+Needs
+.B \-\-device
+and
+.BR \-\-existing\-passphrase\-file .
+.TP
+\fB\-\-replace\fR \fIid\fR
+Rotate the enrolled key holder with this transport identity to the key given
+with
+.BR \-\-pubkey .
+.SS pair
+Shows a QR code and a one-time pairing code on the console, and enrols the key
+holder that answers it.
+The phone app scans the code; its text form is a
+.B synctang://pair
+link, printed under the code, for a camera that cannot scan.
+Before anything is written to the volume, the person at the machine is shown
+the Device ID and public key of the key holder that answered, and is asked to
+confirm.
+The pairing code is good once, for the length of the window.
+A wrong code or a refusal is reported and the command carries on waiting.
+.PP
+The passphrase is checked against the volume first, so a typo is found before
+anyone has scanned anything.
+The command needs the privileges
+.BR cryptsetup (8)
+needs on the device, normally root.
+.TP
+\fB\-\-device\fR \fIpath\fR
+The LUKS2 device or image to enrol the key holder on.
+Required.
+.TP
+\fB\-\-existing\-passphrase\-file\fR \fIfile\fR
+A file holding an existing valid passphrase of the volume, or
+.B \-
+for standard input.
+Required.
+If standard input is used, the confirmation question cannot be answered from
+it; use
+.BR \-\-yes .
+.TP
+\fB\-\-name\fR \fIname\fR
+This machine's name, shown to the key holder.
+.TP
+\fB\-\-machine\-key\-file\fR \fIfile\fR
+This machine's persistent transport identity.
+Default
+.BR /etc/synctang/machine.pem .
+.TP
+\fB\-\-timeout\fR \fIduration\fR
+How long to accept a pairing for.
+Default 5 minutes.
+.TP
+\fB\-\-yes\fR
+Enrol whoever answers the code, without asking for confirmation.
+.TP
+\fB\-\-direct\-addr\fR \fIhost:port\fR
+Listen on this address directly, bypassing relay and discovery.
+For testing only.
+.TP
+\fB\-\-network\-conf\fR \fIfile\fR
+The file naming the relay pool and discovery servers to use instead of the
+public ones.
+Default
+.BR /etc/synctang/network.conf .
+The kernel arguments
+.B rd.synctang.relay=
+and
+.B rd.synctang.discovery=
+override it.
+If the discovery server is set, it is put in the pairing link, so that the phone
+looks the machine up there.
+.TP
+\fB\-\-qr\fR \fImode\fR
+How to draw the QR code:
+.BR auto ,
+.BR blocks ,
+.BR plain ,
+.BR kitty ,
+or
+.BR iterm2 .
+.B auto
+uses a real image on a terminal known to show one, the plain ASCII code when
+.B NO_COLOR
+is set, and half blocks everywhere else.
+A terminal multiplexer swallows image sequences, so choose
+.B kitty
+or
+.B iterm2
+explicitly there.
+.SS status
+Prints, without changing anything, the device, this machine's transport
+identity (or that it has not been created yet), the machine name, the number of
+the
+.B mr\-1
+token, and for each enrolled key holder its transport identity, keyslot and a
+short key identifier.
+Run it before a revocation: naming the wrong transport identity revokes the
+wrong key holder.
+.TP
+\fB\-\-device\fR \fIpath\fR
+The LUKS2 device or image to inspect.
+Default: found from
+.B /proc/partitions
+and the systemd ask-password directory.
+.TP
+\fB\-\-machine\-key\-file\fR \fIfile\fR
+This machine's persistent transport identity.
+Default
+.BR /etc/synctang/machine.pem .
+.SS agent
+Runs the systemd password agent: it waits for a key holder to connect and to
+answer one recovery attempt at a time, checks that the recovered secret really
+opens the volume, and only then answers systemd's password request.
+The console prompt stays live, so the passphrase can still be typed.
+It runs until it receives SIGTERM, which the dracut module sends before the
+switch to the real root.
+It is normally started by the dracut module, not by hand.
+.PP
+It chooses the volume by looking for a block device with an
+.B mr\-1
+token when
+.B \-\-device
+is not given, and checks again on every attempt, because the volume may not
+have appeared yet when the agent starts.
+It also makes sure a resolver is configured before each attempt, since the hook
+runs before the network is necessarily up.
+A failed attempt is reported and retried.
+.TP
+\fB\-\-device\fR \fIpath\fR
+The LUKS2 device to unlock.
+Default: discovered from
+.B /proc/partitions
+and the ask-password directory.
+.TP
+\fB\-\-name\fR \fIname\fR
+This machine's name, shown to the key holder.
+.TP
+\fB\-\-machine\-key\-file\fR \fIfile\fR
+This machine's persistent transport identity.
+Default
+.BR /etc/synctang/machine.pem .
+.TP
+\fB\-\-ask\-password\-dir\fR \fIdir\fR
+The systemd ask-password directory.
+Default
+.BR /run/systemd/ask\-password .
+.TP
+\fB\-\-direct\-addr\fR \fIhost:port\fR
+Listen on this address directly, bypassing relay and discovery.
+For testing only.
+.TP
+\fB\-\-log\-level\fR \fIlevel\fR
+One of
+.BR trace ,
+.BR debug ,
+.BR info ,
+.BR warn ,
+or
+.BR error .
+Default
+.BR info .
+.TP
+\fB\-\-network\-conf\fR \fIfile\fR
+The file naming the relay pool and discovery servers to use instead of the
+public ones.
+Default
+.BR /etc/synctang/network.conf .
+The kernel arguments
+.B rd.synctang.relay=
+and
+.B rd.synctang.discovery=
+override it.
+.SS open
+Waits for a key holder to approve, then opens the LUKS volume on
+.I device
+as
+.BI /dev/mapper/ name
+and exits.
+It is for a volume that is not asking for a password at boot, such as an
+external drive plugged in later, because the agent only runs in the initrd.
+Nothing keeps running afterwards.
+Mounting is a separate step, and
+.B cryptsetup close
+.I name
+closes the volume.
+.PP
+It needs root, and the volume must already have a key holder enrolled (see
+.BR enrol
+and
+.BR pair ).
+Without
+.I name
+the volume is called
+.BI synctang\- first-eight-characters-of-its-UUID .
+A name is letters, digits,
+.BR _ ,
+.B .
+and
+.BR \- ,
+starts with a letter or digit, and is at most 63 characters.
+A failed attempt is reported and followed by another until one works or the
+time is up.
+Flags may be written before or after the positional arguments.
+.TP
+\fB\-\-name\fR \fIname\fR
+This machine's name, shown to the key holder.
+Default: the name given at enrolment.
+.TP
+\fB\-\-machine\-key\-file\fR \fIfile\fR
+This machine's persistent transport identity.
+Default
+.BR /etc/synctang/machine.pem .
+.TP
+\fB\-\-timeout\fR \fIduration\fR
+Give up waiting for a key holder after this long.
+Default 5 minutes.
+.TP
+\fB\-\-direct\-addr\fR \fIhost:port\fR
+Listen on this address directly, bypassing relay and discovery.
+For testing only.
+.TP
+\fB\-\-network\-conf\fR \fIfile\fR
+The file naming the relay pool and discovery servers to use instead of the
+public ones.
+Default
+.BR /etc/synctang/network.conf .
+.SH EXIT STATUS
+.TP
+.B 0
+The command did what it was asked: enrolled, revoked or rotated a key holder,
+paired, opened the volume, or printed the status.
+.B agent
+exits 0 when it is stopped by SIGTERM.
+.TP
+.B 1
+The command failed.
+The reason is printed on standard error with the prefix
+.BR synctang\-unlocker: .
+This includes a wrong passphrase, nobody pairing or approving within the time
+allowed, and a setting in
+.B network.conf
+or on the kernel command line that is wrong.
+.TP
+.B 2
+The command line was wrong: an unknown command or flag, a missing required
+flag, or flags that exclude each other.
+.SH FILES
+.TP
+.B /etc/synctang/machine.pem
+This machine's persistent transport identity, a certificate and key.
+Its Device ID is what key holders look for, so it must be the same file when
+the volume is enrolled and in the initrd; the dracut module copies it there.
+Created when first needed, with mode 0600.
+.TP
+.B /etc/synctang/network.conf
+The relay pool and discovery servers to use instead of the public ones.
+Optional.
+See
+.BR synctang\-network.conf (5).
+The dracut module copies it into the initrd when it exists, so rebuild the
+initrd after changing it.
+.TP
+.B /run/systemd/ask\-password
+The directory where systemd leaves its password requests, which
+.B agent
+answers.
+.TP
+.B mr\-1
+The LUKS2 token type written into the volume's header, one token per volume,
+holding the machine's name and transport identity and one entry per enrolled key
+holder, which contains the secret only in encrypted form.
+.SH KERNEL ARGUMENTS
+These are read by the agent from
+.BR /proc/cmdline ,
+so they can be changed at the boot prompt.
+.TP
+.B rd.synctang=0
+Do not start the agent.
+The escape hatch for when the network path is what is broken, and the console
+prompt is wanted alone.
+.TP
+.B rd.synctang.relay=\fIURL\fR
+Use this relay pool, or one relay as
+.BI relay:// host : port /?id= relay-device-id ,
+instead of the public pool.
+.TP
+.B rd.synctang.discovery=\fIURL\fR
+Use this discovery server instead of the public one.
+It replaces the discovery server and the announce endpoint of
+.BR network.conf .
+.PP
+A kernel argument wins over the file.
+The URL syntax, including how a self-signed discovery server is trusted, is in
+.BR synctang\-network.conf (5).
+.SH ENVIRONMENT
+.B pair
+chooses how to draw the QR code from the terminal it finds itself in, when
+.B \-\-qr
+is
+.BR auto :
+.TP
+.B NO_COLOR
+If set, the plain ASCII code is drawn.
+.TP
+.BR TERM ", " TMUX ", " STY ", " KITTY_WINDOW_ID ", " TERM_PROGRAM ", " LC_TERMINAL
+Used to recognise a Kitty, Ghostty, iTerm2 or WezTerm terminal, which gets a
+real image, and a terminal multiplexer, which does not.
+.SH EXAMPLES
+Enrol a laptop key holder, taking the passphrase from the shell without writing
+it to a file:
+.PP
+.nf
+read \-rsp 'LUKS passphrase: ' PASS
+synctang\-unlocker enrol \-\-device /dev/sdXN \-\-name my\-laptop \e
+  \-\-pubkey <public key> \-\-recipient\-transport\-id <transport id> \e
+  \-\-existing\-passphrase\-file <(printf %s "$PASS")
+.fi
+.PP
+Pair a phone, then rebuild the initrd so that it carries the machine identity:
+.PP
+.nf
+synctang\-unlocker pair \-\-device /dev/sdXN \-\-name my\-machine \e
+  \-\-existing\-passphrase\-file <(printf %s "$PASS")
+dracut \-\-force
+.fi
+.PP
+Show who can unlock the volume:
+.PP
+.nf
+synctang\-unlocker status \-\-device /dev/sdXN
+.fi
+.PP
+Revoke a key holder, and rotate another one's key:
+.PP
+.nf
+synctang\-unlocker enrol \-\-device /dev/sdXN \-\-remove <transport id> \e
+  \-\-existing\-passphrase\-file <(printf %s "$PASS")
+synctang\-unlocker enrol \-\-device /dev/sdXN \-\-replace <transport id> \e
+  \-\-pubkey <new public key> \-\-existing\-passphrase\-file <(printf %s "$PASS")
+.fi
+.PP
+Open an external drive after boot, and close it again:
+.PP
+.nf
+sudo synctang\-unlocker open /dev/sdb1 backup
+sudo cryptsetup close backup
+.fi
+.SH SECURITY
+One approval from a key holder is enough to hand the volume secret to whatever
+presents the machine's Device ID, because a key holder can only tell the machine
+by that identity.
+A copy of the disk that also has the machine's identity can therefore recover
+the secret from a single approval, and revoking the key holder later does not
+stop the copy's keyslot from opening with it.
+Approve only when you are rebooting that machine and can see its console.
+See
+.I docs/threat-model.md
+in the source distribution for what synctang does and does not protect against.
+.PP
+The passphrase is handed to
+.BR cryptsetup (8)
+over a pipe and is not written to disk by this program; do not put it in a
+file.
+The relay and discovery servers see two Device IDs and the volume of traffic
+between them, not what it carries.
+.SH SEE ALSO
+.BR synctang\-keyholder (1),
+.BR synctang\-network.conf (5),
+.BR cryptsetup (8),
+.BR dracut (8)

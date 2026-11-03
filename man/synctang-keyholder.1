@@ -1,0 +1,248 @@
+.\" SPDX-License-Identifier: AGPL-3.0-or-later
+.TH SYNCTANG\-KEYHOLDER 1 "" "synctang" "User Commands"
+.SH NAME
+synctang\-keyholder \- the laptop key holder for synctang
+.SH SYNOPSIS
+.B synctang\-keyholder init
+.RI [ flags ]
+.br
+.B synctang\-keyholder export\-pubkey
+.RI [ flags ]
+.br
+.B synctang\-keyholder unlock
+.RI [ flags ]
+.I machine\-transport\-id
+.SH DESCRIPTION
+.B synctang\-keyholder
+holds a long-term private key and answers a machine's recovery attempts on
+demand.
+The machine runs
+.BR synctang\-unlocker (8)
+and waits at its LUKS prompt; the key holder always dials, never listens.
+It looks the machine up by its transport identity, shows the machine's name and
+identity, waits for a person to approve, answers once, and reports how it went.
+.PP
+The private key stays on this computer.
+The machine recovers the volume secret from the answer, checks that it opens
+the volume, and only then uses it.
+By default the public Syncthing relay and discovery servers are used, and on the
+same local network the machine is found by multicast; see
+.BR synctang\-network.conf (5)
+to use your own discovery server.
+.SH COMMANDS
+Every command accepts
+.B \-h
+and prints its flags and exits with status 2.
+Flags may be written with one or two dashes.
+.SS init
+Generates a new long-term key and this key holder's transport identity, and
+writes them under
+.IR <user\ config\ dir> /synctang\-keyholder/
+(see
+.BR FILES ).
+It refuses to overwrite an existing key, because the volumes enrolled against it
+could no longer be opened.
+The transport identity is always kept if it already exists, even with
+.BR \-\-force :
+a new one would change this key holder's Device ID and break every machine that
+authorises it.
+.TP
+\fB\-\-key\-file\fR \fIfile\fR
+Where to write the long-term private key.
+Default: the file
+.I key
+in the key holder's directory (see
+.BR FILES ).
+.TP
+\fB\-\-transport\-key\-file\fR \fIfile\fR
+This key holder's persistent transport identity.
+Default: the file
+.I transport.pem
+in the key holder's directory (see
+.BR FILES ).
+.TP
+\fB\-\-force\fR
+Overwrite an existing key.
+.SS export\-pubkey
+Prints the public key and the transport identity, to give to
+.BR "synctang\-unlocker enrol" :
+.PP
+.nf
+S: <hex public key>
+transport\-id: <transport identity>
+.fi
+.PP
+The transport identity is created if it does not exist yet.
+.TP
+\fB\-\-key\-file\fR \fIfile\fR
+The long-term private key.
+Default: the file
+.I key
+in the key holder's directory (see
+.BR FILES ).
+.TP
+\fB\-\-transport\-key\-file\fR \fIfile\fR
+This key holder's persistent transport identity.
+Default: the file
+.I transport.pem
+in the key holder's directory (see
+.BR FILES ).
+.SS unlock
+Answers one machine's recovery attempt.
+The argument is the machine's transport identity, as printed by
+.B synctang\-unlocker enrol
+or
+.BR "synctang\-unlocker status" .
+.PP
+It prints the machine's name and identity and waits for Enter before
+answering; Ctrl-C aborts.
+The name is chosen by the machine and proves nothing, so compare the identity.
+With
+.B \-\-yes
+the prompt is skipped.
+It then answers once, waits to be told whether the machine could use the answer,
+and prints
+.B unlocked
+only when it was.
+If an attempt fails, another is made every two seconds until the timeout.
+.TP
+\fB\-\-key\-file\fR \fIfile\fR
+The long-term private key.
+Default: the file
+.I key
+in the key holder's directory (see
+.BR FILES ).
+.TP
+\fB\-\-transport\-key\-file\fR \fIfile\fR
+This key holder's persistent transport identity.
+Default: the file
+.I transport.pem
+in the key holder's directory (see
+.BR FILES ).
+.TP
+\fB\-\-yes\fR
+Skip the approval prompt.
+.TP
+\fB\-\-timeout\fR \fIduration\fR
+Give up dialling the machine after this long.
+Default 2 minutes.
+.TP
+\fB\-\-discovery\fR \fIURL\fR
+The discovery server to look the machine up on, instead of the public one.
+The machine must announce to the same one.
+The URL may say how to trust the server, with
+.B ?id=
+or
+.BR ?insecure ;
+see
+.BR synctang\-network.conf (5).
+.TP
+\fB\-\-discovery\-announce\fR \fIURL\fR
+The discovery announce URL, if it differs from
+.BR \-\-discovery .
+Accepted so that the same two keys work here as on a machine; a key holder only
+looks up and never announces, so it does not change how the machine is found.
+.TP
+\fB\-\-config\fR \fIfile\fR
+A file with the
+.B discovery
+and
+.B discovery\-announce
+settings, in the format of
+.BR synctang\-network.conf (5).
+Default: the file
+.I config
+in the key holder's directory (see
+.BR FILES ),
+which need not exist.
+A file named here must exist.
+A
+.B relay\-pool
+line is refused: only the machine joins a relay, and a key holder learns it from
+discovery.
+Flags win over the file.
+.TP
+\fB\-\-direct\-addr\fR \fIhost:port\fR
+Dial this address directly, bypassing relay and discovery.
+For testing only.
+.SH EXIT STATUS
+.TP
+.B 0
+The command succeeded; for
+.BR unlock ,
+the machine reported that it used the answer.
+.TP
+.B 1
+The command failed.
+The reason is printed on standard error with the prefix
+.BR synctang\-keyholder: .
+For
+.B unlock
+this includes running out of time without a successful answer.
+.TP
+.B 2
+The command line was wrong: an unknown command or flag, a missing argument, or a
+setting that is not valid.
+.SH FILES
+All under
+.IR <user\ config\ dir> /synctang\-keyholder/ ,
+which is
+.B $XDG_CONFIG_HOME/synctang\-keyholder/
+if
+.B XDG_CONFIG_HOME
+is set and
+.B ~/.config/synctang\-keyholder/
+otherwise.
+.TP
+.I <user\ config\ dir>/synctang\-keyholder/key
+The long-term private key, hex-encoded.
+Mode 0600, in a directory created with mode 0700.
+Whoever can read it can answer for this key holder, so keep it private and back
+it up: without it, the volumes enrolled against it cannot be opened.
+.TP
+.I <user\ config\ dir>/synctang\-keyholder/transport.pem
+This key holder's transport identity, a certificate and key, whose Device ID the
+machines authorise.
+Mode 0600.
+.TP
+.I <user\ config\ dir>/synctang\-keyholder/config
+Optional settings; see
+.BR \-\-config .
+.SH ENVIRONMENT
+.TP
+.B XDG_CONFIG_HOME
+Where the user config directory is.
+Default
+.BR ~/.config .
+.SH EXAMPLES
+Create the key and read off what the machine needs:
+.PP
+.nf
+synctang\-keyholder init
+synctang\-keyholder export\-pubkey
+.fi
+.PP
+Unlock a machine:
+.PP
+.nf
+synctang\-keyholder unlock <machine transport id>
+.fi
+.PP
+Unlock through a private discovery server that has a self-signed certificate,
+named by its Device ID:
+.PP
+.nf
+synctang\-keyholder unlock \e
+  \-\-discovery 'https://192.0.2.20:8443/v2/?id=<server Device ID>' \e
+  <machine transport id>
+.fi
+.PP
+Rotate the key and keep the transport identity, then enrol the new key:
+.PP
+.nf
+synctang\-keyholder init \-\-force
+synctang\-keyholder export\-pubkey
+.fi
+.SH SEE ALSO
+.BR synctang\-unlocker (8),
+.BR synctang\-network.conf (5)
