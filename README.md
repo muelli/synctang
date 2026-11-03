@@ -128,6 +128,11 @@ than pick a key. Repair it by naming the stale keyslot:
     synctang-unlocker enrol --device /dev/sdXN --remove <transport id> --keyslot <n> \
       --existing-passphrase-file <(printf %s "$PASS")
 
+The phone waits up to five minutes (the machine's default `--timeout`) for you to
+answer that question, separately from the time it allows to reach the machine; if
+it runs out it says the machine did not confirm, and pairing again says the phone
+is already enrolled if you confirmed just after.
+
 `--qr` chooses how the code is drawn: `auto` (the default), `blocks`,
 `plain`, `kitty` or `iterm2`. Automatic means a real image on a terminal
 known to show one (Kitty and Ghostty through the Kitty graphics protocol;
@@ -175,6 +180,9 @@ the app, or on the laptop:
 The key holder shows the machine's name, waits for Enter (or `--yes`),
 and answers once. The machine checks the recovered secret actually opens the volume
 before handing it to systemd, and tells the key holder how it went.
+The app gives you 75 seconds to approve, counted from when it connected to the machine,
+and shows how long is left on the approve screen (a connection with nothing on it can be
+closed by a relay or a network after a minute or two; `docs/relay-idle.md`).
 While the app connects, pairs or sends its answer, it says what it is doing (looking
 for the machine, connected through a relay or on the local network and waiting for the
 machine to ask, waiting for you to confirm on the machine), how long it has been, and

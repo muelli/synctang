@@ -82,6 +82,8 @@
     <string name="stage_sending_proof">Sending the pairing code</string>
     <string name="stage_waiting_for_operator">Waiting for you to confirm on the machine</string>
     <string name="stage_enrolled">Paired</string>
+    <string name="approve_time_left">%1$d s left to answer</string>
+    <string name="approve_running_out">Time is running out: answer soon, or the machine will give up.</string>
     <string name="busy_elapsed">%1$d s</string>
     <string name="busy_attempt">Attempt %1$d</string>
     <string name="busy_cancel">Cancel</string>

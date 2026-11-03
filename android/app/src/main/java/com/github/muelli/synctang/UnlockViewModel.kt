@@ -148,6 +148,8 @@ private class GoSession(
         Route.fromGo(session.route()),
     )
 
+    override fun connectedForMillis(): Long = session.connectedForMillis()
+
     override fun cancel() = session.cancel()
     override fun close() = session.close()
     override fun decline(reason: String) = session.decline(reason)

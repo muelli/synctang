@@ -924,6 +924,46 @@ class UnlockFlowTest {
         assertEquals(1, preparedCiphers.size)
     }
 
+    // The machine's session has been running since the phone connected, so the window to
+    // answer is counted from then and not from when the Approve screen appeared: a dial
+    // that took a long time leaves correspondingly less. (The window in these tests is
+    // 1500 ms; see approveWindowMillis in the flow.)
+
+    @Test
+    fun theApproveWindowIsCountedFromTheConnectionNotFromTheScreen() {
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        // The connection was made 800 ms before Connect returned, because the machine was
+        // slow to send its request.
+        nextSession = { FakeSession(connectReturnsAtOnce = true, connectedForMillis = 800) }
+        onMain { flow.connect() }
+        val approve = await<UnlockUiState.Approve>()
+        val appeared = System.currentTimeMillis()
+
+        // 1500 ms from the connection, which is 700 ms from now: not 1500 ms from now.
+        val left = approve.expiresAtMillis - appeared
+        assertTrue("$left ms left when the screen appeared", left in 400L..900L)
+        val failed = await<UnlockUiState.Failed>()
+        val gaveUp = System.currentTimeMillis()
+        assertEquals("res:${R.string.error_approval_expired}", failed.message)
+        assertTrue("gave up ${gaveUp - appeared} ms after the screen appeared; the window is 1500 ms from the connection", gaveUp - appeared < 1_100)
+    }
+
+    @Test
+    fun aDialThatTookLongerThanTheWindowLeavesNoTimeAtAll() {
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        nextSession = { FakeSession(connectReturnsAtOnce = true, connectedForMillis = 1_800) }
+        onMain { flow.connect() }
+        val failed = await<UnlockUiState.Failed>()
+        assertEquals("res:${R.string.error_approval_expired}", failed.message)
+        val session = sessions.single()
+        assertEquals(listOf(APPROVAL_TIMED_OUT), session.declines.toList())
+        assertTrue("the session was never closed", awaitClosed(session))
+    }
+
     // An Approve screen cannot stay up for ever. The machine ended one session
     // about 100 seconds after asking (its own cap is three minutes), while the
     // screen sat there for seventeen minutes offering an Approve that could only
@@ -1185,7 +1225,10 @@ private class FakeSession(
     private val cancelEndsConnectWithSuccess: Boolean = false,
     private val failWith: Exception? = null,
     private val answerFailsWith: Exception? = null,
+    private val connectedForMillis: Long = 0,
+    private val connectTakesMillis: Long = 0,
 ) : MachineSession {
+    override fun connectedForMillis(): Long = connectedForMillis
     val started = CountDownLatch(1)
     private val release = CountDownLatch(1)
     @Volatile var cancelled = false
@@ -1196,6 +1239,7 @@ private class FakeSession(
     override fun connect() {
         started.countDown()
         failWith?.let { throw it }
+        if (connectTakesMillis > 0) Thread.sleep(connectTakesMillis)
         if (connectReturnsAtOnce) return
         if (!release.await(10, TimeUnit.SECONDS)) throw Exception("fake dial timed out")
         if (!cancelEndsConnectWithSuccess) throw Exception("mobile: cancelled")

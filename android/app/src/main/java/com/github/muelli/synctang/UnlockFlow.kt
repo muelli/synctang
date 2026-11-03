@@ -70,8 +70,17 @@ sealed interface UnlockUiState {
     /** Enrolling this phone on [machine] over the network. */
     data class Pairing(val machine: Machine, val progress: Progress = Progress()) : UnlockUiState
 
-    /** A recovery request has arrived and is waiting for approval. */
-    data class Approve(val machine: Machine, val peerId: String, val kidHex: String) : UnlockUiState
+    /**
+     * A recovery request has arrived and is waiting for approval. [expiresAtMillis] is
+     * when the app gives up on it, counted from when the connection was made (see
+     * [APPROVE_WINDOW_MILLIS]), on the flow's clock.
+     */
+    data class Approve(
+        val machine: Machine,
+        val peerId: String,
+        val kidHex: String,
+        val expiresAtMillis: Long = 0,
+    ) : UnlockUiState
 
     /** Authenticating, computing the answer, or sending it. */
     data class Working(val machine: Machine, val progress: Progress = Progress()) : UnlockUiState
@@ -125,12 +134,22 @@ internal const val KEY_HOLDER_NOT_AUTHENTICATED = "key holder did not authentica
 internal const val APPROVAL_TIMED_OUT = "key holder did not answer in time"
 
 /**
- * How long the Approve screen stays up. The machine ended one session about 100
- * seconds after asking, though its own limit is three minutes, and the phone
- * cannot look at the connection without consuming protocol bytes, so the screen
- * has a life of its own, a little shorter than what was seen.
+ * How long the app waits for the person to approve, counted from when the connection
+ * to the machine was made (the machine's session and any relay's idle clock started
+ * then), not from when the Approve screen appeared.
+ *
+ * Nothing is sent while the person decides, and the phone cannot send anything
+ * without changing the protocol, so the connection is idle. Measured with the real
+ * strelaysrv v1.30.0 on a private relay (integration/relay_idle_test.go), an idle
+ * session closes with EOF on both sides 2 min 0 s after the last traffic with the
+ * relay's defaults, which is the relay's network timeout and not its ping interval.
+ * That is longer than what the real phone saw: three sessions ended with EOF about 90
+ * to 100 seconds after connecting, through whatever path and relay that was, which the
+ * experiment did not reproduce. The window is the shortest of those, 90 s, less a 15 s
+ * margin, so that the app gives up and tells the machine, rather than offering an
+ * Approve that can only fail. See docs/relay-idle.md.
  */
-internal const val APPROVE_WINDOW_MILLIS = 90_000L
+internal const val APPROVE_WINDOW_MILLIS = 75_000L
 
 /** How often a busy screen asks how far the Go side has got: often enough to feel live, rare enough to cost nothing. */
 internal const val POLL_INTERVAL_MILLIS = 500L
@@ -152,6 +171,13 @@ interface MachineStore {
 interface MachineSession {
     /** Blocks until the machine has said what it wants, or throws. */
     fun connect()
+
+    /**
+     * How long ago the connection to the machine was made, in milliseconds, once [connect]
+     * has returned. The machine's session, and a relay's idle clock, started then, which
+     * is earlier than now if the machine was slow to send its request.
+     */
+    fun connectedForMillis(): Long = 0
 
     /** How far this session has got, read while [connect] or [answer] runs; never blocks. */
     fun progress(): Progress = Progress()
@@ -585,6 +611,7 @@ class UnlockFlow(
 
         scope.launch {
             var fresh: MachineSession? = null
+            var connectedAt = clock()
             try {
                 withContext(io) {
                     closeSession()
@@ -593,6 +620,11 @@ class UnlockFlow(
                     fresh = dialled
                     attempt.bind { dialled.cancel() }
                     dialled.connect()
+                    // The machine's session has been running since the connection was
+                    // made, which is before the request arrived if it was slow to send it,
+                    // and it is the machine's side, or the relay between, that runs out of
+                    // patience. The dial before that does not count: no session existed.
+                    connectedAt = clock() - dialled.connectedForMillis()
                 }
                 session = fresh
                 if (attempt.cancelled) {
@@ -600,8 +632,9 @@ class UnlockFlow(
                     // is now waiting, so tell it, as Decline would.
                     declineAndGoHome(DECLINED_BY_KEY_HOLDER)
                 } else {
-                    _state.value = describe(machine)
-                    (_state.value as? UnlockUiState.Approve)?.let { armApproveExpiry(machine) }
+                    val expiresAt = connectedAt + approveWindowMillis
+                    _state.value = describe(machine).let { if (it is UnlockUiState.Approve) it.copy(expiresAtMillis = expiresAt) else it }
+                    (_state.value as? UnlockUiState.Approve)?.let { armApproveExpiry(machine, expiresAt) }
                 }
             } catch (e: Exception) {
                 withContext(io) { fresh?.closeQuietly() }
@@ -785,12 +818,12 @@ class UnlockFlow(
      * closes the session and says what happened. Left alone it offered an
      * Approve that could only fail, for as long as the app stayed open.
      */
-    private fun armApproveExpiry(machine: Machine) {
+    private fun armApproveExpiry(machine: Machine, expiresAtMillis: Long) {
         approveExpiry?.cancel()
         approveExpiry = scope.launch {
-            delay(approveWindowMillis)
+            delay((expiresAtMillis - clock()).coerceAtLeast(0))
             if (_state.value !is UnlockUiState.Approve) return@launch
-            log("the approval window ran out", IllegalStateException("no answer in ${approveWindowMillis} ms"))
+            log("the approval window ran out", IllegalStateException("no answer in ${approveWindowMillis} ms from the connection"))
             withContext(io) {
                 try {
                     session?.decline(APPROVAL_TIMED_OUT)
