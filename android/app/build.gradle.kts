@@ -161,6 +161,12 @@ tasks.configureEach {
     }
 }
 
+// CommandNamesInStringsTest reads the shipped strings, so a change to them has to
+// rerun the unit tests rather than be skipped as up to date.
+tasks.withType<Test>().configureEach {
+    inputs.file(layout.projectDirectory.file("src/main/res/values/strings.xml"))
+}
+
 dependencies {
     implementation(fileTree("libs") { include("*.jar", "*.aar") })
 
