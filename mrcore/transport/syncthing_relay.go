@@ -546,8 +546,12 @@ func (t *SyncthingRelay) listenRelay(ctx context.Context) (raw net.Conn, cleanup
 		return nil, nil, fmt.Errorf("transport: invalid relay pool URL: %w", err)
 	}
 
-	rc, err := client.NewClient(u, []tls.Certificate{t.Cert}, defaultRelayTimeout)
-	if err != nil {
+	var rc client.RelayClient
+	if strings.HasPrefix(u.Scheme, "dynamic+") {
+		// Not Syncthing's own pool client, which measures the pool's relays one
+		// after another before joining any: see relaypool.go.
+		rc = newPoolClient(u, []tls.Certificate{t.Cert}, defaultRelayTimeout)
+	} else if rc, err = client.NewClient(u, []tls.Certificate{t.Cert}, defaultRelayTimeout); err != nil {
 		return nil, nil, fmt.Errorf("transport: creating relay client: %w", err)
 	}
 	t.logger().Log(ctx, levelTrace, "relay client created", "pool", t.relayPoolURL())

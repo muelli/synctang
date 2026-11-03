@@ -39,3 +39,26 @@ the TLS handshake and Device ID pinning that follow are identical: an
 announcement (local or global) is only ever a hint about where to
 dial, never trusted on its own, exactly as the plan's threat model
 requires (see [threat-model.md](threat-model.md)).
+
+## Joining the relay pool
+
+A machine that listens through the public pool has to join one relay before a
+key holder can reach it. Syncthing's own client for a pool measures the latency
+to every relay on the list one after another and only then joins one. The pool
+lists about a hundred relays, so on a Fedora 44 VM (2026-11-03) the time from
+"relay client created" to "joined relay" was 19.9 seconds `[V]` (trace log of
+one run: a second for the list, the rest measuring), and a phone that tapped
+Unlock in that time saw "Reaching the machine" until the machine was ready. The
+same dial with the machine already waiting took 1.7 seconds `[V]`.
+
+`poolClient` (`mrcore/transport/relaypool.go`) takes the place of that client
+for a `dynamic+http(s)://` pool URL. It fetches the same list and walks it the
+same way, nearest first in buckets of 50 ms and shuffled within a bucket, moving
+on when a relay gives up and failing once every relay has been tried, but it
+measures all the relays at once, each for at most two seconds. The same VM then
+joined in 1.4, 2.0 and 1.9 seconds `[V]` (three runs against the real public
+pool). Unit tests (`relaypool_test.go`) pin that sixty slow probes finish in
+about the time of one, the ordering and the fall-through to the next relay; the
+private-relay integration tests go through it with the real `strelaysrv`
+(`TestMeetingThroughAPrivateRelayAndDiscoveryServer`, pool form). A single
+`relay://` URL still uses Syncthing's static client as before.
