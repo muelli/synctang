@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/muelli/synctang/mrcore/transport"
 	"github.com/syncthing/syncthing/lib/protocol"
 )
 
@@ -198,5 +199,18 @@ func TestOtherStatusesCarryNoRetryAfter(t *testing.T) {
 	got, _ := CheckMachineStatus(statusMachine, srv.pinned())
 	if got.RetryAfterSeconds != 0 {
 		t.Errorf("RetryAfterSeconds %d on a %s answer, want 0", got.RetryAfterSeconds, got.State)
+	}
+}
+
+// The strings are one contract in two places: what the app is told and what the command line
+// decides on.
+func TestStatusNamesAreTheTransportsNames(t *testing.T) {
+	for got, want := range map[string]string{
+		StatusWaiting: transport.StatusWaiting, StatusStale: transport.StatusStale, StatusAbsent: transport.StatusAbsent,
+		StatusNoNetwork: transport.StatusNoNetwork, StatusRateLimited: transport.StatusRateLimited,
+	} {
+		if got != want {
+			t.Errorf("mobile says %q, transport says %q", got, want)
+		}
 	}
 }

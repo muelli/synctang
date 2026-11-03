@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/muelli/synctang/mrcore/transport"
-	"github.com/muelli/syncthing-socket/discovery"
 	"github.com/syncthing/syncthing/lib/protocol"
 )
 
@@ -85,21 +84,23 @@ func checkMachineStatusAt(now func() time.Time, deviceID, discoveryURL string) (
 
 	ctx, cancel := context.WithTimeout(context.Background(), statusTimeout)
 	defer cancel()
-	record, err := transport.LookupRecord(ctx, id.String(), cfg.Discovery)
-	var limited *transport.RateLimitedError
-	if errors.As(err, &limited) {
-		wait := honouredRetryAfter(limited.RetryAfter)
+	st := transport.CheckMachine(ctx, id.String(), cfg.Discovery, now)
+	switch st.State {
+	case StatusRateLimited:
+		wait := honouredRetryAfter(st.RetryAfter)
 		logEvent(levelTrace, "machine status", "machine", deviceID, "state", StatusRateLimited,
-			"retry_after_s", int(limited.RetryAfter.Seconds()), "honouring_s", wait)
+			"retry_after_s", int(st.RetryAfter.Seconds()), "honouring_s", wait)
 		return &MachineStatus{State: StatusRateLimited, AgeSeconds: -1, RetryAfterSeconds: wait}, nil
-	}
-	if err != nil {
-		logEvent(levelTrace, "machine status", "machine", deviceID, "state", StatusNoNetwork, "error", err)
+	case StatusNoNetwork:
+		logEvent(levelTrace, "machine status", "machine", deviceID, "state", StatusNoNetwork)
 		return &MachineStatus{State: StatusNoNetwork, AgeSeconds: -1}, nil
 	}
-	status := statusOf(record != nil, record, now())
-	logEvent(levelTrace, "machine status", "machine", deviceID, "state", status.State, "age_s", status.AgeSeconds)
-	return status, nil
+	age := -1
+	if st.Age >= 0 {
+		age = int(st.Age.Seconds())
+	}
+	logEvent(levelTrace, "machine status", "machine", deviceID, "state", st.State, "age_s", age)
+	return &MachineStatus{State: st.State, AgeSeconds: age}, nil
 }
 
 // honouredRetryAfter is a Retry-After as the number of whole seconds to wait: rounded up,
@@ -107,23 +108,4 @@ func checkMachineStatusAt(now func() time.Time, deviceID, discoveryURL string) (
 func honouredRetryAfter(d time.Duration) int {
 	d = min(max(d, retryAfterFloor), retryAfterCap)
 	return int((d + time.Second - 1) / time.Second)
-}
-
-// statusOf is the decision, apart from the network: found says whether there was a record.
-func statusOf(found bool, record *discovery.Record, now time.Time) *MachineStatus {
-	if !found {
-		return &MachineStatus{State: StatusAbsent, AgeSeconds: -1}
-	}
-	if record.Seen.IsZero() {
-		return &MachineStatus{State: StatusStale, AgeSeconds: -1}
-	}
-	age := now.Sub(record.Seen)
-	if age < 0 {
-		age = 0 // a clock that is ahead of this phone's, or a bad timestamp: as good as now
-	}
-	state := StatusStale
-	if age <= transport.WaitingRecordMaxAge {
-		state = StatusWaiting
-	}
-	return &MachineStatus{State: state, AgeSeconds: int(age.Seconds())}
 }
