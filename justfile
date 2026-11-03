@@ -14,6 +14,10 @@ test-go-privileged:
 lint:
 	find dracut scripts -name '*.sh' -print0 | xargs -0 -r shellcheck
 
+# Lint the man pages in man/ (mandoc if installed, else groff).
+man-lint:
+	./scripts/test-manpages.sh
+
 em-dash-check:
 	./scripts/check-em-dash.sh
 

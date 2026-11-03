@@ -72,6 +72,11 @@ Two things to know:
 
 ## Using it
 
+Every command, flag, file and kernel argument is in the manual pages:
+`man synctang-unlocker` (the machine), `man synctang-keyholder` (the laptop) and
+`man synctang-network.conf` (choosing the relay and discovery servers). The Debian
+packages install them; from a checkout, `man -l man/synctang-unlocker.8`.
+
 The commands below need root on the machine. `--existing-passphrase-file`
 takes an existing LUKS passphrase; the examples use process substitution
 so it never touches a disk. (`-` reads it from stdin, but `pair` also
