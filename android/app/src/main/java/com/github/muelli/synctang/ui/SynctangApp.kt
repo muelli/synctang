@@ -143,10 +143,17 @@ private fun SynctangScreens(gate: BiometricGate, model: UnlockViewModel) {
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun AppBar(aboutOpen: Boolean, onOpenAbout: (() -> Unit)?, onCloseAbout: () -> Unit) {
+internal fun AppBar(
+    aboutOpen: Boolean,
+    onOpenAbout: (() -> Unit)?,
+    onCloseAbout: () -> Unit,
+    // A parameter so that the listing screenshots, which are made from the debug build, can
+    // say what the release says.
+    appName: String = stringResource(R.string.app_name),
+) {
     TopAppBar(
         title = {
-            Text(stringResource(if (aboutOpen) R.string.about_title else R.string.app_name))
+            Text(if (aboutOpen) stringResource(R.string.about_title) else appName)
         },
         navigationIcon = {
             if (aboutOpen) {
