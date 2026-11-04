@@ -1,42 +1,39 @@
 #!/bin/bash
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# Capture the F-Droid listing screenshots from a headless emulator, into
+# Make the F-Droid listing screenshots, into
 # android/fastlane/metadata/android/en-US/images/phoneScreenshots/.
 #
 #   scripts/screenshots.sh
 #
-# Needs: ANDROID_HOME with emulator, platform-tools and a system image;
-# a JDK; Go and gomobile on PATH (the app links a gomobile .aar).
+# android/app/src/androidTest/.../ScreenshotsTest.kt renders each screen from sample data
+# and draws it to a PNG from inside the test, so the pictures do not depend on the
+# emulator's display: no sleeping screen, no keyguard, no status bar, and nothing is typed
+# or tapped. This script starts an emulator, installs the debug app and its test APK, runs
+# that test with "am instrument", and pulls the files.
 #
-# Run this after a UI change rather than editing the PNGs by hand, and
-# look at what comes out: screenshots catch things tests do not, such as
-# clipped text and stale wording.
-#
-# Known to need a machine that can actually run an emulator. Software
-# rendering (swiftshader) on a small cloud container ANRs system_server
-# and the launcher continuously, and every capture ends up with an
-# "isn't responding" dialog over it. KVM plus a real GPU, or simply more
-# cores, is the difference between this working and not.
+# Needs: ANDROID_HOME with emulator, platform-tools and a system image; a JDK; Go and
+# gomobile on PATH (the app links a gomobile .aar); a few GB of disk (the emulator refuses
+# to start without). Run it after a UI change, and look at what comes out: screenshots
+# catch things tests do not, such as clipped text and stale wording.
 set -euo pipefail
 
 : "${ANDROID_HOME:?set ANDROID_HOME}"
 ADB="$ANDROID_HOME/platform-tools/adb"
-# Every adb command below, installs, setting changes and screenshots, goes to this
-# emulator and to nothing else. Without a serial adb uses the only device that is
-# attached, and when the emulator failed to start (no disk space) that was a real phone
-# on the same network: it got the debug app, demo mode and a picture of its home screen.
-EMU_PORT="${EMU_PORT:-5584}"
-export ANDROID_SERIAL="emulator-$EMU_PORT"
 AVD="${AVD:-shots}"
 APPID=com.github.muelli.synctang.debug
 OUT="android/fastlane/metadata/android/en-US/images/phoneScreenshots"
 SYSTEM_IMAGE="${SYSTEM_IMAGE:-system-images;android-34;google_apis;x86_64}"
 
-mkdir -p "$OUT"
+# Every adb command below, installs and all, goes to this emulator and to nothing else.
+# Without a serial adb uses the one device that is attached, and when an emulator failed
+# to start that was a real phone: it got the debug app, demo mode and a picture of its
+# home screen.
+EMU_PORT="${EMU_PORT:-5584}"
+export ANDROID_SERIAL="emulator-$EMU_PORT"
 
-# Resolved once rather than globbed at each call site: the cmdline-tools
-# directory carries a version in its name, so the path is not fixed.
+# Resolved once rather than globbed at each call site: the cmdline-tools directory carries
+# a version in its name, so the path is not fixed.
 AVDMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -name avdmanager -type f | head -1)
 [ -n "$AVDMANAGER" ] || { echo "avdmanager not found under $ANDROID_HOME/cmdline-tools" >&2; exit 1; }
 
@@ -45,13 +42,29 @@ if ! "$AVDMANAGER" list avd | grep -q "Name: $AVD\$"; then
 	echo no | "$AVDMANAGER" create avd -n "$AVD" -k "$SYSTEM_IMAGE" -d pixel_6 --force
 fi
 
-# -memory/-cores well above the defaults: the stock allocation cannot
-# keep up with software rendering and the whole system starts throwing
-# "isn't responding" dialogs, which land in the screenshots.
-"$ANDROID_HOME/emulator/emulator" -avd "$AVD" -port "$EMU_PORT" -no-window -gpu "${EMU_GPU:-swiftshader_indirect}" \
-	-no-snapshot -no-audio -no-boot-anim -memory 4096 -cores 4 &
+# Built before the emulator starts, so the build and the emulator do not compete for CPUs.
+( cd android && ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest \
+	-Psynctang.goMobileTarget=android/amd64 )
+APK=android/app/build/outputs/apk/debug/app-debug.apk
+TEST_APK=android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+[ -f "$APK" ] && [ -f "$TEST_APK" ] || { echo "the APKs were not built: $APK $TEST_APK" >&2; exit 1; }
+
+# Where the emulator draws. With -no-window its display pipeline can be unusable on a small
+# machine (PixelCopy fails, screenshots are black), so by default it gets a window on a
+# virtual X display, Xvfb; EMU_XVFB=0 goes back to -no-window.
+WINDOW_ARGS=(-no-window)
+XVFB_PID=""
+if [ "${EMU_XVFB:-1}" = 1 ] && command -v Xvfb > /dev/null; then
+	Xvfb :77 -screen 0 1280x1024x24 > /dev/null 2>&1 &
+	XVFB_PID=$!
+	export DISPLAY=:77
+	WINDOW_ARGS=()
+	sleep 2
+fi
+"$ANDROID_HOME/emulator/emulator" -avd "$AVD" -port "$EMU_PORT" "${WINDOW_ARGS[@]}" -gpu "${EMU_GPU:-swiftshader_indirect}" \
+	-no-snapshot -no-audio -no-boot-anim -memory 3072 -cores 2 &
 EMULATOR_PID=$!
-trap 'kill "$EMULATOR_PID" 2>/dev/null || true' EXIT
+trap 'kill "$EMULATOR_PID" 2>/dev/null || true; [ -z "$XVFB_PID" ] || kill "$XVFB_PID" 2>/dev/null || true' EXIT
 
 echo "waiting for boot"
 BOOTED=""
@@ -65,117 +78,38 @@ for _ in $(seq 1 60); do
 done
 [ -n "$BOOTED" ] || { echo "the emulator did not finish booting in ten minutes" >&2; exit 1; }
 
-# The emulator has no biometric enrolled, and the key holder's key is
-# gated behind one, so the real build cannot get past its first screen
-# here. The debug-only ungated variant renders these screens identically
-# (the biometric prompt only appears when answering an unlock), so it is
-# what gets photographed; it uses a separate Keystore alias and cannot
-# exist in a release build. See TestMode.
-( cd android && ./gradlew :app:assembleDebug \
-	-Psynctang.goMobileTarget=android/amd64 -Psynctang.noBiometric=true )
-
-# The emulator's package verifier waits for a Play Protect answer that does not come
-# on a fresh, offline image, and the install fails with "Integrity verification timed
-# out". This emulator only, by the serial pinned above.
+# The emulator's package verifier waits for a Play Protect answer that does not come on a
+# fresh, offline image, and the install fails with "Integrity verification timed out".
+# This emulator only, by the serial pinned above.
 "$ADB" shell settings put global verifier_verify_adb_installs 0
 "$ADB" shell settings put global package_verifier_enable 0
 
-# No -g: granting the camera makes the pairing screen show the emulator's
-# built-in test scene (coloured blocks) full screen, which is not what the
-# app looks like on a phone. Without it the screen shows the camera-permission
-# button, which is what a first-time user sees.
-"$ADB" install -r android/app/build/outputs/apk/debug/app-debug.apk
+"$ADB" install -r "$APK"
+"$ADB" install -r "$TEST_APK"
 
-# A screen that went to sleep photographs as solid black and shows uiautomator nothing.
-"$ADB" shell svc power stayon true
-"$ADB" shell input keyevent KEYCODE_WAKEUP
-"$ADB" shell wm dismiss-keyguard
-
-# Animations off: they slow the emulator and make captures of a moving
-# indicator look broken.
-for k in window_animation_scale transition_animation_scale animator_duration_scale; do
-	"$ADB" shell settings put global "$k" 0
+# Not "gradle connectedAndroidTest": that uninstalls the app afterwards, and the pictures
+# live in the app's own directory.
+#
+# sys.boot_completed comes a little before the system is calm, and a test started at once can
+# fail with "failed to attach"; so a short wait, and a few tries.
+sleep 30
+PASSED=""
+for attempt in 1 2 3; do
+	"$ADB" shell am instrument -w -e class com.github.muelli.synctang.ScreenshotsTest \
+		"$APPID.test/androidx.test.runner.AndroidJUnitRunner" | tee /tmp/screenshots-instrument.log
+	if grep -q '^OK ' /tmp/screenshots-instrument.log; then
+		PASSED=1
+		break
+	fi
+	echo "attempt $attempt did not pass; trying again" >&2
+	sleep 20
 done
+[ -n "$PASSED" ] || { echo "the screenshot test did not pass" >&2; exit 1; }
 
-# A clean status bar, per SystemUI's demo mode: a real clock and a
-# half-full battery date the screenshots and distract from the app.
-"$ADB" shell settings put global sysui_demo_allowed 1
-demo() { "$ADB" shell am broadcast -a com.android.systemui.demo -e command "$@" >/dev/null; }
-demo enter
-demo clock -e hhmm 0900
-demo network -e wifi show -e level 4 -e mobile hide
-demo battery -e level 100 -e plugged false
-demo notifications -e visible false
-
-# tap_id <tag>: taps the centre of the element the app exposes under
-# that Compose test tag (see testTagsAsResourceId in SynctangApp), so
-# that a layout change cannot make the tap land on something else.
-tap_id() {
-	local bounds=""
-	for _ in $(seq 1 10); do
-		"$ADB" shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || true
-		bounds=$("$ADB" exec-out cat /sdcard/ui.xml |
-			grep -o "resource-id=\"$1\"[^>]*bounds=\"[^\"]*\"" |
-			grep -o 'bounds="[^"]*"' | head -1) || true
-		[ -n "$bounds" ] && break
-		sleep 3
-	done
-	[ -n "$bounds" ] || { echo "nothing on screen with resource-id $1" >&2; exit 1; }
-	# bounds="[x1,y1][x2,y2]"
-	local x1 y1 x2 y2
-	read -r x1 y1 x2 y2 <<<"$(echo "$bounds" | tr -c '0-9' ' ')"
-	"$ADB" shell input tap $(((x1 + x2) / 2)) $(((y1 + y2) / 2))
-}
-
-# tap_text <text>: like tap_id, for an element that is found by its visible
-# text. Used for the Pair button, which has no tag of its own.
-tap_text() {
-	local bounds=""
-	for _ in $(seq 1 10); do
-		"$ADB" shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || true
-		bounds=$("$ADB" exec-out cat /sdcard/ui.xml |
-			grep -o "text=\"$1\"[^>]*bounds=\"[^\"]*\"" |
-			grep -o 'bounds="[^"]*"' | head -1) || true
-		[ -n "$bounds" ] && break
-		sleep 3
-	done
-	[ -n "$bounds" ] || { echo "nothing on screen with the text $1" >&2; exit 1; }
-	local x1 y1 x2 y2
-	read -r x1 y1 x2 y2 <<<"$(echo "$bounds" | tr -c '0-9' ' ')"
-	"$ADB" shell input tap $(((x1 + x2) / 2)) $(((y1 + y2) / 2))
-}
-
-shoot() { # shoot <n> <description>
-	sleep 4
-	"$ADB" exec-out screencap -p > "$OUT/$1.png"
-	echo "captured $OUT/$1.png ($2)"
-}
-
-# Generating the long-term key takes a while under software rendering,
-# and the first screen shows a spinner until it finishes.
-"$ADB" shell am force-stop "$APPID"
-"$ADB" shell am start -n "$APPID/com.github.muelli.synctang.MainActivity" >/dev/null
-sleep 40
-# The manual field takes focus on launch, which is right for a hardware
-# keyboard and brings the soft keyboard up over half the screen on a phone.
-# Back dismisses it without leaving the app.
-"$ADB" shell input keyevent KEYCODE_BACK
-shoot 1 "pairing screen: scan a machine's QR code"
-
-# adb's `input text` types %s as a space, and the device shell would take a
-# bare & for a background operator, hence \& between the two fields; typing a
-# space there instead (as this once did) is not a pairing payload at all and
-# produced "That is not a machine device ID" instead of the paired screen.
-# The manual field takes the same payload the QR code carries. Without a
-# psk= it only records which machine to dial, which needs no network and
-# no machine, and is enough to reach the unlock screen.
-tap_id pair_manual_field
-"$ADB" shell input text 'synctang://pair?machine=YIEAQU3-4EQIMH3-INVK5OV-QEPJZSW-GPKQF5R-UUGZZR2-KBIPPXD-BLGZ2AG\&name=study%sworkstation'
-# Enter does not submit: the field is multi-line, so it adds a newline. Dismiss
-# the keyboard, which hides the Pair button, and tap the button itself.
-"$ADB" shell input keyevent KEYCODE_BACK
-tap_text Pair
-shoot 2 "unlock screen: paired, waiting for the machine"
+mkdir -p "$OUT"
+for n in 1 2 3 4 5; do
+	"$ADB" pull "/sdcard/Android/data/$APPID/files/screenshots/$n.png" "$OUT/$n.png"
+done
 
 echo
 echo "Review these before committing them. Screenshots are the part of the"
