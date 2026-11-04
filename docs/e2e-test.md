@@ -55,8 +55,8 @@ nothing; it appears in the test's command lines, so do not point this at a real 
 
 ## In CI
 
-`.github/workflows/e2e.yml` runs it on a runner with KVM, for pushes and pull
-requests that touch what it tests, and uploads the logs. On a `v<versionCode>` tag,
+`.github/workflows/e2e.yml` runs it on a runner with KVM, for every pull request and
+for pushes to `main` that touch what it tests, and uploads the logs. On a `v<versionCode>` tag,
 `ci.yml` calls it on the packages that `build-deb` made, and the release job waits for it,
 so a release is only made of packages that unlocked a machine. `[U]` Neither workflow
 has run on GitHub yet: the KVM step is the one `emulator.yml` uses, and the rest

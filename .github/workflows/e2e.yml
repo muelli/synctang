@@ -13,9 +13,9 @@ name: e2e
 # a file.
 #
 # Needs KVM, which the runner exposes once /dev/kvm is made accessible (the same step as
-# emulator.yml). Run on its own for pushes and pull requests that touch what it tests,
-# and called by ci.yml on a release tag, where it tests the very packages the release
-# is made of.
+# emulator.yml). Run on its own for every pull request, whatever it touches, and for
+# pushes to main that touch what it tests; and called by ci.yml on a release tag, where it
+# tests the very packages the release is made of.
 on:
   push:
     branches: [main]
@@ -34,20 +34,6 @@ on:
       - "go.sum"
       - ".github/workflows/e2e.yml"
   pull_request:
-    paths:
-      - "cmd/**"
-      - "mrcore/**"
-      - "dracut/**"
-      - "debian/**"
-      - "integration/**"
-      - "scripts/e2e-*"
-      - "scripts/make-test-vm.sh"
-      - "scripts/run-test-vm.sh"
-      - "scripts/test-vm-net.sh"
-      - "scripts/build-syncthing-servers.sh"
-      - "go.mod"
-      - "go.sum"
-      - ".github/workflows/e2e.yml"
   workflow_dispatch:
   workflow_call:
     inputs:
