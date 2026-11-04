@@ -1,0 +1,150 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+name: e2e
+
+# The packages in a real machine, unlocked by a key holder that is not on it:
+# scripts/e2e-vm.sh builds a VM with a LUKS2 root, installs the .deb files, enrols a
+# laptop key holder and a headless phone, reboots it to its passphrase prompt and
+# unlocks it from each, through a relay and a discovery server of its own on a private
+# bridge. It also checks that a key holder that was never enrolled gets nowhere.
+#
+# Not covered, because nothing here can: the Android app on a phone (the Keystore, the
+# fingerprint, the screens). The headless phone is the app's Go library with its key in
+# a file.
+#
+# Needs KVM, which the runner exposes once /dev/kvm is made accessible (the same step as
+# emulator.yml). Run on its own for pushes and pull requests that touch what it tests,
+# and called by ci.yml on a release tag, where it tests the very packages the release
+# is made of.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "cmd/**"
+      - "mrcore/**"
+      - "dracut/**"
+      - "debian/**"
+      - "integration/**"
+      - "scripts/e2e-*"
+      - "scripts/make-test-vm.sh"
+      - "scripts/run-test-vm.sh"
+      - "scripts/test-vm-net.sh"
+      - "scripts/build-syncthing-servers.sh"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/e2e.yml"
+  pull_request:
+    paths:
+      - "cmd/**"
+      - "mrcore/**"
+      - "dracut/**"
+      - "debian/**"
+      - "integration/**"
+      - "scripts/e2e-*"
+      - "scripts/make-test-vm.sh"
+      - "scripts/run-test-vm.sh"
+      - "scripts/test-vm-net.sh"
+      - "scripts/build-syncthing-servers.sh"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/e2e.yml"
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      use-built-packages:
+        description: "Test the synctang-debs artifact of this run instead of building the packages again"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  vm:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    # Job-wide, as in ci.yml's build-deb: the packages are built with the pinned toolchain.
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The package version is 0.0.<commit count>.
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.0"
+          cache: true
+
+      - name: Make /dev/kvm usable
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          if [ ! -e /dev/kvm ]; then
+            echo "/dev/kvm is not present on this runner, so the VM cannot be hardware accelerated" >&2
+            exit 1
+          fi
+          ls -l /dev/kvm
+          nproc
+          free -m
+          df -h / | tail -1
+
+      - name: Install what the VM and the packages need
+        # See build-deb in ci.yml for why everything but Ubuntu's own sources goes.
+        # dnsmasq-base is the program without the service, which would claim port 53.
+        run: |
+          sudo find /etc/apt/sources.list.d -type f ! -name 'ubuntu.sources' -delete
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            qemu-system-x86 dnsmasq-base cryptsetup gdisk e2fsprogs xz-utils \
+            openssh-client debhelper dpkg-dev fakeroot just
+
+      - name: The packages built by this run
+        if: inputs.use-built-packages
+        uses: actions/download-artifact@v4
+        with:
+          name: synctang-debs
+          path: dist
+
+      - name: Build the packages
+        if: ${{ !inputs.use-built-packages }}
+        run: |
+          {
+            echo "synctang (0.0.$(git rev-list --count HEAD)-1) unstable; urgency=medium"
+            echo
+            echo "  * CI build from commit ${GITHUB_SHA}."
+            echo
+            echo " -- synctang CI <noreply@github.com>  $(git log -1 --format=%cD)"
+          } > debian/changelog
+          dpkg-buildpackage -us -uc -b -d
+          mkdir -p dist
+          mv ../*.deb dist/
+
+      - name: Build the relay and discovery servers
+        run: ./scripts/build-syncthing-servers.sh "$RUNNER_TEMP/stbin"
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/e2e/cache
+          # The root filesystem the VM is made from: about 260 MB from cloud-images.ubuntu.com.
+          key: e2e-rootfs-ubuntu-26.04-v1
+
+      - name: End to end
+        run: |
+          sudo env "PATH=$PATH" \
+            STRELAYSRV="$RUNNER_TEMP/stbin/strelaysrv" \
+            STDISCOSRV="$RUNNER_TEMP/stbin/stdiscosrv" \
+            DEBS="$PWD/dist" \
+            WORK="$RUNNER_TEMP/e2e" \
+            ./scripts/e2e-vm.sh
+
+      - name: The logs
+        # The console and the journal are what a failure is found in.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs
+          path: ${{ runner.temp }}/e2e/run/logs
+          retention-days: 7

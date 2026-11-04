@@ -25,12 +25,20 @@ jobs:
         with:
           go-version: "1.25"
       - run: go build ./...
+      - name: Build the relay and discovery servers the integration tests run through
+        # Without these the tests in integration/ skip, and the machine and the key holder
+        # are never run through a real relay and discovery server. The Syncthing project's
+        # own, built from source at a pinned version.
+        run: ./scripts/build-syncthing-servers.sh "$RUNNER_TEMP/stbin"
       # -timeout 20m, not Go's default 10: cmd/synctang-unlocker's tests each
       # format a real LUKS2 image and add a real keyslot, so every one
       # pays argon2id twice over, and the adversarial suite added a
       # dozen more of them. Weakening the key derivation to go faster
       # would stop those tests exercising what actually runs.
       - run: go test -timeout 20m ./...
+        env:
+          STRELAYSRV: ${{ runner.temp }}/stbin/strelaysrv
+          STDISCOSRV: ${{ runner.temp }}/stbin/stdiscosrv
       - name: Fuzz the parsers briefly
         # Everything fuzzed here parses bytes somebody else chose: the
         # wire messages arrive on a connection that is authenticated
@@ -356,6 +364,15 @@ jobs:
           path: sbom/*.cdx.json
           retention-days: 7
 
+  e2e:
+    # On a release tag only: the packages the release is made of, in a real machine, unlocked
+    # from a laptop and a headless phone. Pushes and pull requests run e2e.yml on its own.
+    if: github.ref_type == 'tag'
+    needs: build-deb
+    uses: ./.github/workflows/e2e.yml
+    with:
+      use-built-packages: true
+
   release-debs:
     # Attaches the packages that build-deb made, and nothing rebuilt, to a
     # GitHub release, so that someone installing synctang does not need a Go
@@ -363,7 +380,7 @@ jobs:
     # that publish the app; a push to main keeps them as the build-deb
     # artifact, which is deleted after a week.
     if: github.ref_type == 'tag'
-    needs: build-deb
+    needs: [build-deb, e2e]
     runs-on: ubuntu-26.04
     permissions:
       contents: write

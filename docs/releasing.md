@@ -83,7 +83,9 @@ check a file with cosign alone, no GitHub account or CLI:
       --certificate-oidc-issuer https://token.actions.githubusercontent.com <file>
 
 The identity is the workflow that ran on a release tag, so a file signed by
-anything else, or from a branch, does not verify. A push to `main`
+anything else, or from a branch, does not verify. The job waits for the end-to-end test (`docs/e2e-test.md`), which unlocks a VM from
+a laptop and a headless phone using these very packages, so a release is not made of
+packages that failed to. A push to `main`
 keeps its packages only as the `synctang-debs` workflow artifact, for seven
 days. `[U]` The job has not run yet, nor has the cosign signing or the
 verification command above: they are written against the documentation and have
