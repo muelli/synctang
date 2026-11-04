@@ -22,6 +22,12 @@ set -euo pipefail
 
 : "${ANDROID_HOME:?set ANDROID_HOME}"
 ADB="$ANDROID_HOME/platform-tools/adb"
+# Every adb command below, installs, setting changes and screenshots, goes to this
+# emulator and to nothing else. Without a serial adb uses the only device that is
+# attached, and when the emulator failed to start (no disk space) that was a real phone
+# on the same network: it got the debug app, demo mode and a picture of its home screen.
+EMU_PORT="${EMU_PORT:-5584}"
+export ANDROID_SERIAL="emulator-$EMU_PORT"
 AVD="${AVD:-shots}"
 APPID=com.github.muelli.synctang.debug
 OUT="android/fastlane/metadata/android/en-US/images/phoneScreenshots"
@@ -42,16 +48,22 @@ fi
 # -memory/-cores well above the defaults: the stock allocation cannot
 # keep up with software rendering and the whole system starts throwing
 # "isn't responding" dialogs, which land in the screenshots.
-"$ANDROID_HOME/emulator/emulator" -avd "$AVD" -no-window -gpu swiftshader_indirect \
+"$ANDROID_HOME/emulator/emulator" -avd "$AVD" -port "$EMU_PORT" -no-window -gpu "${EMU_GPU:-swiftshader_indirect}" \
 	-no-snapshot -no-audio -no-boot-anim -memory 4096 -cores 4 &
 EMULATOR_PID=$!
 trap 'kill "$EMULATOR_PID" 2>/dev/null || true' EXIT
 
 echo "waiting for boot"
+BOOTED=""
 for _ in $(seq 1 60); do
-	[ "$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ] && break
+	kill -0 "$EMULATOR_PID" 2>/dev/null || { echo "the emulator exited; see its output above" >&2; exit 1; }
+	if [ "$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
+		BOOTED=1
+		break
+	fi
 	sleep 10
 done
+[ -n "$BOOTED" ] || { echo "the emulator did not finish booting in ten minutes" >&2; exit 1; }
 
 # The emulator has no biometric enrolled, and the key holder's key is
 # gated behind one, so the real build cannot get past its first screen
@@ -62,11 +74,22 @@ done
 ( cd android && ./gradlew :app:assembleDebug \
 	-Psynctang.goMobileTarget=android/amd64 -Psynctang.noBiometric=true )
 
+# The emulator's package verifier waits for a Play Protect answer that does not come
+# on a fresh, offline image, and the install fails with "Integrity verification timed
+# out". This emulator only, by the serial pinned above.
+"$ADB" shell settings put global verifier_verify_adb_installs 0
+"$ADB" shell settings put global package_verifier_enable 0
+
 # No -g: granting the camera makes the pairing screen show the emulator's
 # built-in test scene (coloured blocks) full screen, which is not what the
 # app looks like on a phone. Without it the screen shows the camera-permission
 # button, which is what a first-time user sees.
 "$ADB" install -r android/app/build/outputs/apk/debug/app-debug.apk
+
+# A screen that went to sleep photographs as solid black and shows uiautomator nothing.
+"$ADB" shell svc power stayon true
+"$ADB" shell input keyevent KEYCODE_WAKEUP
+"$ADB" shell wm dismiss-keyguard
 
 # Animations off: they slow the emulator and make captures of a moving
 # indicator look broken.
@@ -93,7 +116,7 @@ tap_id() {
 		"$ADB" shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || true
 		bounds=$("$ADB" exec-out cat /sdcard/ui.xml |
 			grep -o "resource-id=\"$1\"[^>]*bounds=\"[^\"]*\"" |
-			grep -o 'bounds="[^"]*"' | head -1)
+			grep -o 'bounds="[^"]*"' | head -1) || true
 		[ -n "$bounds" ] && break
 		sleep 3
 	done
@@ -112,7 +135,7 @@ tap_text() {
 		"$ADB" shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || true
 		bounds=$("$ADB" exec-out cat /sdcard/ui.xml |
 			grep -o "text=\"$1\"[^>]*bounds=\"[^\"]*\"" |
-			grep -o 'bounds="[^"]*"' | head -1)
+			grep -o 'bounds="[^"]*"' | head -1) || true
 		[ -n "$bounds" ] && break
 		sleep 3
 	done
