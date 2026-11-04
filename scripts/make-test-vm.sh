@@ -199,6 +199,10 @@ systemctl enable serial-getty@ttyS0.service
 echo "root:$VM_PASSPHRASE" | chpasswd
 useradd -m -s /bin/bash -G sudo ubuntu || true
 echo "ubuntu:$VM_PASSPHRASE" | chpasswd
+# No password for sudo, so that a test can run commands in the VM over ssh without
+# typing one; this VM holds nothing and is rebuilt from scratch.
+echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/90-synctang-test
+chmod 440 /etc/sudoers.d/90-synctang-test
 mkdir -p /home/ubuntu/.ssh
 CHROOT
 
