@@ -30,11 +30,6 @@ on:
       - "mrcore/**"
       - ".github/workflows/emulator.yml"
   pull_request:
-    paths:
-      - "android/**"
-      - "mobile/**"
-      - "mrcore/**"
-      - ".github/workflows/emulator.yml"
   workflow_dispatch:
 
 jobs:
