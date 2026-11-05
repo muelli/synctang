@@ -127,6 +127,7 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 	remove := fs.String("remove", "", "revoke the enrolled recipient with this transport id instead of adding one")
 	replace := fs.String("replace", "", "rotate the enrolled recipient with this transport id to --pubkey, revoking the old key")
 	keyslot := fs.String("keyslot", "", "with --remove or --replace: the keyslot of the entry to act on, when several enrolled entries share the transport id")
+	rebuild := fs.Bool("rebuild-initrd", false, "after enrolling, run dracut --force if the initrd does not carry this machine's identity and network.conf")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -260,7 +261,8 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 				"synctang-unlocker: ever announces.\n",
 			*machineKeyFile)
 	}
-	return 0
+	// A machine that has just made its identity has an initrd that cannot carry it yet.
+	return afterEnrolmentFor(stdout, stderr, *machineKeyFile, defaultNetworkConfFile, *rebuild)
 }
 
 // shouldWarnAboutNewIdentity reports whether enrol has just invented a

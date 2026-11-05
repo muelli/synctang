@@ -61,6 +61,12 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "this machine's transport id: %s\n", protocol.NewDeviceID(cert.Certificate[0]))
 	}
 
+	// Whether the initrd that boots this machine carries that identity: a key holder can only
+	// find the machine if it does. Only for the default identity, the only one an initrd has.
+	if *machineKeyFile == defaultMachineKeyFile {
+		printInitrdStatus(stdout, *machineKeyFile, defaultNetworkConfFile)
+	}
+
 	dump, err := runCommand(nil, "cryptsetup", "luksDump", activeDevice)
 	if err != nil {
 		fmt.Fprintf(stderr, "synctang-unlocker: reading the LUKS2 header: %v\n", err)

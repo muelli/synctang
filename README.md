@@ -127,8 +127,21 @@ left out.
     /dev/vda3  91ae9308-22e5-4eba-af83-cc26c3c87818  5.0 GiB  synctang_test_crypt  2 key holders
 
 The first `pair` or `enrol` creates the machine's network identity in
-`/etc/synctang/machine.pem`. Run `dracut --force` after it, so the initrd
-carries that identity; the token itself is read from the disk at boot.
+`/etc/synctang/machine.pem`. The initrd has to carry that identity, or at boot the agent
+makes a new one that no key holder knows and the machine is not found; the enrolled key
+holders themselves are read from the disk at boot, so only a change of identity or of
+`network.conf` needs a rebuild. An initrd built before the identity existed, which is the
+case right after installing the packages, does not have it. `pair` and `enrol` check
+this when they finish and say so, in words, with the fix; add `--rebuild-initrd` and they
+run `dracut --force` themselves when it is needed. `synctang-unlocker status` shows the
+same check at any time (it needs root, and `lsinitrd`, which dracut brings):
+
+    initrd: carries this machine's identity
+    initrd: does not contain this machine's identity (/etc/synctang/machine.pem), so at boot ...
+
+It looks at the initrd of the running kernel, which is the one `dracut --force` rebuilds.
+A rebuild rewrites your `/boot` images: keep a copy of the current one if the machine is
+not within reach.
 
 ### Pair a phone
 

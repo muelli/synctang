@@ -227,13 +227,20 @@ LAPTOP_ID="$(sed -n 's/^transport-id: //p' <<< "$LAPTOP_INFO")"
 vm "printf %s '$VM_PASSPHRASE' | sudo synctang-unlocker enrol --device /dev/vda3 --name e2e-vm \
 	--pubkey '$LAPTOP_PUB' --recipient-transport-id '$LAPTOP_ID' --existing-passphrase-file -" \
 	> "$LOGS/enrol.log" 2>&1 || { cat "$LOGS/enrol.log" >&2; fail "enrol failed"; }
-MACHINE_ID="$(vm 'sudo synctang-unlocker status --device /dev/vda3' | sed -n "s/^this machine's transport id: //p" | head -1)"
+STATUS_BEFORE="$(vm 'sudo synctang-unlocker status --device /dev/vda3')"
+MACHINE_ID="$(sed -n "s/^this machine's transport id: //p" <<< "$STATUS_BEFORE" | head -1)"
 [ -n "$MACHINE_ID" ] || fail "no machine transport id"
 echo "machine $MACHINE_ID"
 
+# The initrd was built when the packages went in, before this machine had an identity, so it
+# cannot carry it: enrol and status must both say so.
+check "enrol warns that the initrd lacks the new identity" grep -q "does not contain this machine's identity" "$LOGS/enrol.log"
+check "enrol names the fix" grep -q "dracut --force" "$LOGS/enrol.log"
+check "status says the initrd lacks the identity" grep -q "initrd: does not contain this machine's identity" <<< "$STATUS_BEFORE"
+
 # The phone pairs from the link the machine shows, as the app does after a scan.
 "$E2EPHONE" init "$PHONE" > "$LOGS/phone-init.log"
-vm "sudo bash -c \"nohup synctang-unlocker pair --device /dev/vda3 --name e2e-vm --yes --timeout 5m \
+vm "sudo bash -c \"nohup synctang-unlocker pair --device /dev/vda3 --name e2e-vm --yes --timeout 5m --rebuild-initrd \
 	--existing-passphrase-file <(printf %s '$VM_PASSPHRASE') > /tmp/pair.out 2>&1 &\""
 LINK=""
 for _ in $(seq 1 60); do
@@ -248,12 +255,20 @@ for _ in $(seq 1 30); do
 	sleep 1
 done
 
+# pair rebuilds the initrd after the pairing, because it was asked to and it was wrong; wait
+# for it to finish.
+for _ in $(seq 1 180); do
+	vm 'pgrep -f "[s]ynctang-unlocker pair" > /dev/null' || break
+	sleep 2
+done
+
 STATUS="$(vm 'sudo synctang-unlocker status --device /dev/vda3')"
 check "both key holders are enrolled" test "$(grep -c 'keyslot' <<< "$STATUS")" -eq 2
 
 # ---------------------------------------------------------------------------------
 log "the initrd carries the identity and the network settings"
-vm 'sudo dracut --force' > "$LOGS/dracut.log" 2>&1 || { tail -10 "$LOGS/dracut.log" >&2; fail "dracut failed"; }
+check "pair said it rebuilt the initrd" vm 'grep -aq "rebuilding the initrd" /tmp/pair.out'
+check "status now says the initrd carries the identity" grep -q "initrd: carries this machine's identity" <<< "$STATUS"
 INITRD="$(vm 'sudo lsinitrd')"
 check "the machine identity is in the initrd" grep -q 'etc/synctang/machine.pem' <<< "$INITRD"
 check "network.conf is in the initrd" grep -q 'etc/synctang/network.conf' <<< "$INITRD"

@@ -228,6 +228,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, "path to this machine's persistent transport identity")
 	window := fs.Duration("timeout", defaultPairWindow, "how long to accept a pairing for")
 	yes := fs.Bool("yes", false, "enrol whoever answers the code without asking for confirmation")
+	rebuild := fs.Bool("rebuild-initrd", false, "after enrolling, run dracut --force if the initrd does not carry this machine's identity and network.conf")
 	directAddr := fs.String("direct-addr", "", "listen on this address directly, bypassing relay and discovery (testing only)")
 	networkConf := fs.String("network-conf", defaultNetworkConfFile, "file naming the relay pool and discovery servers to use instead of the public ones (the kernel arguments rd.synctang.relay= and rd.synctang.discovery= override it)")
 	qrMode := fs.String("qr", "auto", "how to draw the QR code: "+strings.Join(qrModes, ", ")+"; auto uses an image where the terminal is known to show one")
@@ -331,7 +332,9 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		err := runPairOnce(ctx, opts)
 		if err == nil {
 			fmt.Fprintln(stdout, "paired. The key holder can now unlock this volume.")
-			return 0
+			// The first pairing on a machine makes its identity, which the initrd built
+			// before then does not carry.
+			return afterEnrolmentFor(stdout, stderr, *machineKeyFile, *networkConf, *rebuild)
 		}
 		if ctx.Err() != nil {
 			fmt.Fprintf(stderr, "synctang-unlocker: nobody paired within %s\n", *window)

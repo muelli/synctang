@@ -76,10 +76,12 @@ paired again, and nothing migrates an old file layout.
   `-Psynctang.noBiometric=true` builds a debug-only variant whose key is not gated
   behind a biometric prompt; release builds cannot have it and the ungated key uses its
   own Keystore alias.
-- **WP6** (dracut module `90synctang`): done. `enrol` does not rebuild the initrd, so
-  `dracut --force` is a manual step after the first `pair` or `enrol` (it makes the
-  machine identity); installing `synctang-dracut` rebuilds every installed kernel's initrd
-  itself. The module carries the machine identity, `network.conf` and the CA bundle.
+- **WP6** (dracut module `90synctang`): done. The module carries the machine identity,
+  `network.conf` and the CA bundle. Installing `synctang-dracut` rebuilds every installed
+  kernel's initrd, which is before the identity exists; `pair`, `enrol` and `status`
+  compare the initrd of the running kernel with the identity and `network.conf` by hash
+  and say so when it is wrong, and `--rebuild-initrd` on `pair` and `enrol` runs
+  `dracut --force` when it is. Only the running kernel's initrd is checked.
 - **WP7** (VM acceptance): all eleven acceptance items pass (`TESTREPORT.md`). A4 was
   the last, verified 2026-09-21 on a real StrongBox phone against a machine that had
   been waiting at its LUKS prompt for over eleven hours.

@@ -178,6 +178,23 @@ that
 warns about.
 Without it, several matches are refused and listed, rather than the first being
 chosen.
+.TP
+\fB\-\-rebuild\-initrd\fR
+After enrolling, compare the initrd of the running kernel with this machine, by hash and with
+.BR lsinitrd ,
+and if it does not carry this machine's identity
+.RB ( /etc/synctang/machine.pem )
+or the current
+.BR /etc/synctang/network.conf ,
+rebuild it with
+.BR "dracut \-\-force" .
+Without this flag a difference is only reported, with the command that fixes it.
+The first pairing on a machine makes its identity, and an initrd built before then does not
+have it: at boot the agent then makes a new identity that no key holder knows, and the machine
+is not found.
+Needs root and dracut.
+A rebuild that fails, or that leaves the initrd still different, makes the command exit with
+status 1 although the key holder is enrolled.
 .SS pair
 Shows a QR code and a one-time pairing code on the console, and enrols the key
 holder that answers it.
@@ -238,6 +255,23 @@ Default 5 minutes.
 \fB\-\-yes\fR
 Enrol whoever answers the code, without asking for confirmation.
 .TP
+\fB\-\-rebuild\-initrd\fR
+After enrolling, compare the initrd of the running kernel with this machine, by hash and with
+.BR lsinitrd ,
+and if it does not carry this machine's identity
+.RB ( /etc/synctang/machine.pem )
+or the current
+.BR /etc/synctang/network.conf ,
+rebuild it with
+.BR "dracut \-\-force" .
+Without this flag a difference is only reported, with the command that fixes it.
+The first pairing on a machine makes its identity, and an initrd built before then does not
+have it: at boot the agent then makes a new identity that no key holder knows, and the machine
+is not found.
+Needs root and dracut.
+A rebuild that fails, or that leaves the initrd still different, makes the command exit with
+status 1 although the key holder is enrolled.
+.TP
 \fB\-\-direct\-addr\fR \fIhost:port\fR
 Listen on this address directly, bypassing relay and discovery.
 For testing only.
@@ -279,6 +313,10 @@ the
 .B mr\-1
 token, and for each enrolled key holder its transport identity, keyslot and a
 short key identifier.
+It also says whether the initrd of the running kernel carries this machine's identity and the
+current
+.BR network.conf ,
+which a key holder needs for the machine to be found at boot, and what to run if it does not.
 Run it before a revocation: naming the wrong transport identity revokes the
 wrong key holder.
 If one transport identity is enrolled more than once, it prints a line starting
