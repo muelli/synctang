@@ -50,7 +50,13 @@ android {
             "Cannot determine versionCode: no git history and no VERSION file at the " +
                 "repository root. Write the build's version number to VERSION."
         )
-        versionName = versionCode.toString()
+        // A build that is not of a release tag says so in its version name ("302-rc"), so that
+        // the F-Droid client shows a release candidate as one and never mistakes it for the
+        // release it suggests. The publish workflow passes -Psynctang.releaseCandidate=true for
+        // every build that is not of a v<versionCode> tag; any other build is plain.
+        val releaseCandidate = providers.gradleProperty("synctang.releaseCandidate")
+            .map { it == "true" }.getOrElse(false)
+        versionName = versionCode.toString() + if (releaseCandidate) "-rc" else ""
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }

@@ -36,7 +36,8 @@ Make the first release a pre-release and check each step below on it.
 6. Check what was published: the release's files and `SHA256SUMS`; one file with
    `cosign verify-blob` and one with `gh attestation verify` (see below and
    `Publishing the Debian packages`); the F-Droid index lists version `$N` without the
-   `-rc` in its file name; and install it on a phone.
+   `-rc` in its file name or version name, and suggests it (`suggestedVersionCode` in `index-v2.json`);
+and install it on a phone.
 7. Say what changed, and that there is no compatibility promise: a phone may need to be paired
    again after an upgrade.
 
@@ -45,6 +46,14 @@ Make the first release a pre-release and check each step below on it.
 Publishing is automatic: a push to `main` publishes a release-candidate
 build, and a `v<versionCode>` tag publishes a release. Both need the two
 signing secrets described below.
+
+A push to `main` publishes a release candidate, `synctang-N-rc.apk`, whose version name is
+`N-rc`. A tag publishes the release, `synctang-N.apk` with the version name `N`, and replaces the
+candidate that was published for the same commit. F-Droid is told to suggest the last tagged
+release (`CurrentVersionCode`, from `git describe --tags`), so a client only updates to releases;
+the candidates after it are listed under its versions and not suggested. Until the first tag there
+is nothing to suggest, so everything is offered. The workflow runs one at a time, because each run
+rebuilds the whole site from the live one and two at once would deploy over each other.
 
 The repository is generated in CI and deployed to GitHub Pages as an
 artifact (`configure-pages`, `upload-pages-artifact`, `deploy-pages`),

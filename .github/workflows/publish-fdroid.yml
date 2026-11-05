@@ -10,6 +10,13 @@ on:
 
 # Deploy the generated repo straight to Pages as an artifact, so no
 # APK is ever committed to this repository.
+# One publication at a time. Each run rebuilds the whole site from the live one plus its own
+# APK, so two overlapping runs (a push to main and the tag that follows it) would deploy over
+# each other and one of the two APKs could be lost. The second waits for the first.
+concurrency:
+  group: publish-fdroid
+  cancel-in-progress: false
+
 permissions:
   contents: write
   pages: write
@@ -117,7 +124,11 @@ jobs:
           set -euo pipefail
           pip install --quiet cryptography
           export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
-          ( cd android && ./gradlew assembleRelease --stacktrace )
+          # Anything that is not a release tag is a release candidate, and says so in its
+          # version name; see versionName in android/app/build.gradle.kts.
+          RC_FLAG=""
+          if [ "${{ github.ref_type }}" != "tag" ]; then RC_FLAG="-Psynctang.releaseCandidate=true"; fi
+          ( cd android && ./gradlew assembleRelease --stacktrace $RC_FLAG )
           APP_PASS="$(SEED="$APP_SIGNING_SEED" scripts/derive-signing-key.py app "$RUNNER_TEMP/app.p12")"
           echo "::add-mask::$APP_PASS"
           export APP_PASS
@@ -137,6 +148,14 @@ jobs:
             --ks-pass env:APP_PASS \
             --ks-key-alias app \
             --out "$SIGNED" "$ALIGNED"
+          # The version name inside the signed file is what the F-Droid client shows: "N" for a
+          # release, "N-rc" for anything else. Checked here, not assumed.
+          if [ "${{ github.ref_type }}" == "tag" ]; then WANT_NAME="$CODE"; else WANT_NAME="$CODE-rc"; fi
+          GOT_NAME="$("$BUILD_TOOLS/aapt" dump badging "$SIGNED" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -1)"
+          if [ "$GOT_NAME" != "$WANT_NAME" ]; then
+            echo "::error::the APK's version name is '$GOT_NAME', want '$WANT_NAME'" >&2
+            exit 1
+          fi
           echo "SIGNED_APK=$SIGNED" >> "$GITHUB_ENV"
           # Ensure fdroid's tools (aapt/apksigner) are on PATH.
           echo "$BUILD_TOOLS" >> "$GITHUB_PATH"
@@ -237,6 +256,11 @@ jobs:
           fi
 
           cp "$SIGNED_APK" "site/fdroid/repo/$(basename "$SIGNED_APK")"
+          # The release replaces the candidate that was published for the same commit: two
+          # files with one version code would leave the client with nothing to choose by.
+          if [ "${{ github.ref_type }}" == "tag" ]; then
+            rm -f "site/fdroid/repo/synctang-$CODE-rc.apk"
+          fi
 
           # Feed the app's fastlane metadata (name, descriptions, icon) into the
           # repo so the F-Droid client shows a proper listing instead of stubs.
@@ -282,8 +306,11 @@ jobs:
                   out.append(line)
           open(dst, "w").writelines(out)
           PYMETA
+          # The version F-Droid suggests, and so the only one its clients update to, is the last
+          # tagged release; the release candidates after it are listed but not suggested.
           if [ -n "$CURRENT_CODE" ]; then
             sed -i "s/^CurrentVersionCode:.*$/CurrentVersionCode: $CURRENT_CODE/" "site/fdroid/metadata/com.github.muelli.synctang.yml"
+            sed -i "s/^CurrentVersion:.*$/CurrentVersion: '$CURRENT_CODE'/" "site/fdroid/metadata/com.github.muelli.synctang.yml"
           fi
 
           ( cd site/fdroid && fdroid update --create-metadata --verbose )
