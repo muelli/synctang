@@ -1,0 +1,44 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+// Package gnuflag makes the standard flag package speak the GNU way. The flag package
+// accepts "--name" and "-name" alike, so what a person types already works, but it writes its
+// help and its errors with a single dash. Handing a flag set Writer(w) as its output
+// makes both say "--name", which is also how the manual pages spell every option.
+package gnuflag
+
+import (
+	"io"
+	"regexp"
+)
+
+var (
+	// "  -name string" at the start of a line of PrintDefaults output: an option with a name
+	// of two or more characters. The text of the usage that follows is left alone.
+	optionLine = regexp.MustCompile(`(?m)^( {2})-([A-Za-z][A-Za-z0-9-]+)`)
+
+	unknown       = regexp.MustCompile(`flag provided but not defined: -{1,2}(\S+)`)
+	needsArgument = regexp.MustCompile(`flag needs an argument: -{1,2}(\S+)`)
+	badValue      = regexp.MustCompile(`(invalid (?:boolean )?value (?:"[^"]*"|\S+)) for (?:flag )?-{1,2}([A-Za-z][A-Za-z0-9-]*)`)
+)
+
+// rewrite spells the options in text the way GNU tools do.
+func rewrite(text string) string {
+	text = unknown.ReplaceAllString(text, "unrecognised option '--$1'")
+	text = needsArgument.ReplaceAllString(text, "option '--$1' requires an argument")
+	text = badValue.ReplaceAllString(text, "$1 for option '--$2'")
+	return optionLine.ReplaceAllString(text, "$1--$2")
+}
+
+type writer struct{ w io.Writer }
+
+// Writer returns a writer that passes everything to w with the options of a flag set's help
+// and errors respelled with two dashes. The flag package writes each help entry and each
+// error in a single call, so rewriting call by call sees them whole.
+func Writer(w io.Writer) io.Writer { return writer{w} }
+
+func (g writer) Write(p []byte) (int, error) {
+	if _, err := g.w.Write([]byte(rewrite(string(p)))); err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}
