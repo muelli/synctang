@@ -33,11 +33,12 @@ Make the first release a pre-release and check each step below on it.
    `SHA256SUMS` file and a cosign bundle for each. It also runs `publish-fdroid`, which
    publishes the release APK. `release-debs` needs `e2e`, so a release is only ever made of
    packages that unlocked a VM.
-6. Check what was published: the release's files and `SHA256SUMS`; one file with
+6. Check what was published: the release has the `.deb` files, their SBOMs, `SHA256SUMS` and a
+   `.sigstore.json` for each, and nothing else (the release job refuses anything else); one file with
    `cosign verify-blob` and one with `gh attestation verify` (see below and
    `Publishing the Debian packages`); the F-Droid index lists version `$N` without the
    `-rc` in its file name or version name, and suggests it (`suggestedVersionCode` in `index-v2.json`);
-and install it on a phone.
+   and install it on a phone.
 7. Say what changed, and that there is no compatibility promise: a phone may need to be paired
    again after an upgrade.
 
@@ -93,6 +94,12 @@ that is tagged.
    version fields in `fdroid/com.github.muelli.synctang.yml` before
    submitting to f-droid.org; that file is for the f-droid.org catalogue
    and is not read by the self-hosted repository.
+
+5. In the repository's settings, under Environments, `github-pages`, allow deployments from
+   tags as well as from `main`: "Deployment branches and tags", add the tag rule `v*`. Without it
+   the publish run of a tag fails with `Tag "v..." is not allowed to deploy to github-pages due to
+   environment protection rules`, and the release is never published to F-Droid; the first release
+   hit exactly this, while its GitHub release and packages were made.
 
 Until the secrets exist the publish workflow skips itself with a warning
 rather than failing, so it is harmless to merge before step 1.

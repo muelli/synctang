@@ -401,11 +401,28 @@ jobs:
             echo "::error::tag $GITHUB_REF_NAME is on a commit whose version is $expected" >&2
             exit 1
           fi
+      # Exactly the two artifacts build-deb made, by name. A pattern such as synctang-* also
+      # takes the debug APK and the app's SBOMs that build-apk uploads, and the first release
+      # went out with them attached.
       - uses: actions/download-artifact@v4
         with:
-          pattern: synctang-*
-          merge-multiple: true
+          name: synctang-debs
           path: release
+      - uses: actions/download-artifact@v4
+        with:
+          name: synctang-deb-sboms
+          path: release
+      - name: Only what belongs in the release
+        # A guard against the same mistake in another form: the release holds packages and their
+        # SBOMs, and nothing else.
+        run: |
+          cd release
+          ls -l
+          stray="$(ls | grep -v -E '\.deb$|^(synctang-unlocker|synctang-keyholder)-(amd64|arm64)\.cdx\.json$' || true)"
+          if [ -n "$stray" ]; then
+            echo "::error::unexpected files in the release: $stray" >&2
+            exit 1
+          fi
       - name: Checksums
         run: |
           cd release
