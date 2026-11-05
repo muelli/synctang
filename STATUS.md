@@ -7,115 +7,96 @@ lives in `git log`. Conventions and hard-won gotchas live in `AGENTS.md`,
 not here. The acceptance table (A1-A11) and the dated test runs were in
 `TESTREPORT.md`, which is kept out of the repository now (decided 2026-11-02);
 its last version is `git show 6a5c646:TESTREPORT.md`. Mentions of it below and in
-`docs/` refer to that document.
+`docs/` refer to that document. `[V]` marks what was run, `[I]` what was inferred;
+what was not tried or is not known is said in words.
+
+## What works
+
+A machine at its LUKS prompt can be unlocked from a laptop or from a phone, by a
+person, without the passphrase leaving the key holder's side of the exchange.
+`[V]` on 2026-11-03 and 2026-11-04:
+
+- A Fedora 44 VM (SELinux enforcing, dracut 108) and an Ubuntu 26.04 VM built from
+  the `.deb` packages, each unlocked from the laptop key holder and from a Pixel 3a XL,
+  with nobody typing a passphrase. The Ubuntu VM was unlocked with the F-Droid build of
+  the app (versions 290 and 299, the latter with the one-tap flow).
+- Through a relay and a discovery server of the owner's own on a private bridge with no
+  route out, with nothing sent to the public servers.
+- `scripts/e2e-vm.sh` does the VM half of that automatically, with a headless phone in
+  place of the real one: it passes locally and in CI (`docs/e2e-test.md`).
+
+There is no compatibility promise between releases yet. A new release may need a phone
+paired again, and nothing migrates an old file layout.
 
 ## Work packages
 
-- **WP0** (curve/feasibility spike): **done, including on real
-  hardware**. A StrongBox-held, biometric-gated key performed ECDH
-  against a hand-built peer point and returned the correct value, as
-  proved by the machine opening its volume with it (A4). The emulator
-  run could only show that a software Keystore accepted such a point.
-  That was one phone: on a Pixel 3a XL (Android 12, Keymaster 4.x) a
-  key-agreement key is created in software, not in StrongBox or the TEE
-  (`docs/threat-model.md`), so hardware key agreement is not something every
-  phone can deliver. Since 2026-11-01 the app does not use a Keystore
-  agreement key at all: it keeps its own scalar wrapped by a hardware key that
-  needs a fingerprint per use (`docs/threat-model.md`).
+- **WP0** (curve/feasibility spike): done, including on real hardware. A StrongBox-held,
+  biometric-gated key performed ECDH against a hand-built peer point and returned the
+  correct value, as proved by the machine opening its volume with it (A4). That was one
+  phone: on a Pixel 3a XL (Android 12, Keymaster 4.x) a key-agreement key is created in
+  software, not in StrongBox or the TEE (`docs/threat-model.md`), so hardware key
+  agreement is not something every phone can deliver. Since 2026-11-01 the app does not
+  use a Keystore agreement key at all: it keeps its own scalar wrapped by a hardware key
+  that needs a fingerprint per use (`docs/threat-model.md`).
 - **WP1** (`mrcore` math): done.
-- **WP2** (transport): done. `SyncthingRelay` (public relay + global
-  discovery), `LocalDiscovery` (LAN multicast, no Internet needed),
-  and `Multi` (races the two). Battle-tested against a real
-  deployment; see `AGENTS.md` for what that surfaced.
-- **WP3** (`synctang-unlocker`): `enrol` (add, `--remove`, or `--replace` a
-  recipient), `agent`, `status` and `pair` all done. `pair` shows a QR
-  code carrying this machine's Device ID and a one-time code, then
-  enrols the key holder that answers it, so a phone no longer needs its
-  public key copied across by hand.
-- **WP4** (`synctang-keyholder`): `init`/`unlock`/`export-pubkey` (file backend)
-  done. The TPM2 backend is not started, and neither is `synctang-keyholder
-  pair`: the laptop can still only be enrolled the manual way
-  (`export-pubkey` into `synctang-unlocker enrol`), since the QR-code path was
-  built for the phone, where copying a public key across is worst. The
-  machine side is transport-agnostic, so a laptop `pair` is a client
-  for the protocol that already exists rather than new protocol work.
-- **WP5** (Android app): built (`gomobile bind` + Kotlin UI), passes
-  its own instrumented tests on an emulator, CI builds and tests it,
-  and is keyboard-navigable for Android's desktop mode. Run on real
-  hardware for the first time on 2026-09-20, which immediately found
-  three bugs no test had: it misread the order of the machine's
-  messages (it guessed their types by field presence rather than
-  reading them positionally), it gave up after a single
-  attempt where the laptop client retries, and it reported success on
-  sending its answer rather than on the volume actually opening. All
-  three are fixed: the last by `mrcore.RecoverResult`, the machine's
-  own verdict, which the app now waits for before claiming anything.
-  Since 2026-09-21 the app races `LocalDiscovery` against the relay
-  like the laptop client does, holding a Wi-Fi `MulticastLock` for the
-  duration of a dial, so a phone can unlock a machine on the same
-  network with no Internet. Covered by a Go test that connects a
-  `Session` to a machine reachable only by multicast, and by Kotlin
-  tests for the lock's lifetime; not yet exercised on real hardware.
-  A pairing with a one-time code saves the machine only once the
-  machine has enrolled the phone, so a failed one offers "Scan again"
-  and leaves any existing pairing alone; Ready can pair again without
-  forgetting anything first, and a pairing that replaces a different
-  machine is offered back by an Undo snackbar. Connecting and pairing can be cancelled
-  (`Session.Cancel`, `Pairer.Cancel` interrupt the Go call), and back
-  on a screen where the machine is waiting declines as Decline does.
-  Once connected, each wait for the machine is bounded (60 s), so a
-  machine that goes silent mid-exchange cannot hold the phone for ever.
-  Failures are explained in the app's own words rather than as Go error
-  text: the Go bridge names each one (`Session.LastFailure`,
-  `Pairer.LastFailure`) and the app maps the kind to a message, showing
-  the machine's own reason where it gave one and the raw text behind a
-  Details toggle; every failure is also logged. The manual enrolment
-  command, the phone's full Device ID and public key, how its key is
-  held, and the app version live on an About this phone screen reached
-  from the app bar, offered only where nothing is under way. Every
-  screen shares one layout (title, explanation, one main action; a
-  glyph and headline on Done and Failed), and long identifiers show in
-  a short form with the full value one tap away. Each screen state has
-  a Compose `@Preview` in `ui/Previews.kt`; none of the layouts has been
-  looked at on a screen or in a rendered preview yet `[U]`. A key
-  invalidated by a newly enrolled fingerprint now gets a fresh key and
-  transport identity and says which old Device ID to revoke `[V]` in
-  JVM tests; the Keystore exceptions it relies on have not been
-  provoked on a real device `[U]`.
-  The flow's decisions live in `UnlockFlow`, tested on the JVM through
-  fakes `[V]`; none of this has been run on a device or emulator yet
-  `[U]`.
-  `-Psynctang.noBiometric=true` builds a debug-only variant whose key
-  is not gated behind a biometric prompt, so the unlock flow can be
-  driven end to end without a human; release builds cannot have it and
-  the ungated key uses its own Keystore alias.
-- **WP6** (dracut module `90synctang`): done. `enrol` auto-rebuilding
-  the initrd is not wired in; currently a manual `dracut --force` step.
-- **WP7** (VM acceptance): **all eleven acceptance items pass**; see
-  `TESTREPORT.md`. A4 was the last, verified 2026-09-21 on a real
-  StrongBox phone against a machine that had been waiting at its LUKS
-  prompt for over eleven hours.
+- **WP2** (transport): done. `SyncthingRelay` (public relay pool or a relay and
+  discovery server of the owner's own, `docs/private-servers.md`), `LocalDiscovery`
+  (LAN multicast, no Internet needed), and `Multi` (races the two). The machine
+  re-announces every minute and rejoins a relay that drops it; a key holder's lookups
+  back off and obey a 429's Retry-After. The relay pool's relays are measured at once,
+  which takes a join from about 20 s to about 2 s (`docs/transport.md`).
+- **WP3** (`synctang-unlocker`): `enrol` (add, `--remove`, or `--replace` a recipient),
+  `agent`, `status`, `pair` and `open`. One enrolled recipient per transport ID. The agent
+  logs to the journal as `synctang-unlocker`, at the level `rd.synctang.log=` sets.
+  Settings for private servers come from `/etc/synctang/network.conf` and `rd.synctang.*`
+  kernel arguments. Manual pages for every command, flag, file and kernel argument are
+  checked against the code by tests.
+- **WP4** (`synctang-keyholder`): `init`, `export-pubkey` and `unlock` with the file
+  backend. The key is a plain file under the user's config directory, mode 0600; the
+  TPM2 backend is not started, and a keyring or `systemd-creds` backend is planned but
+  waits on decisions (see Open items). `synctang-keyholder pair` does not exist: a
+  laptop is enrolled by hand with `export-pubkey` and `synctang-unlocker enrol`.
+- **WP5** (Android app): `gomobile bind` plus a Kotlin and Compose UI.
+  Unlock is one tap: it connects, and the fingerprint prompt comes up when the
+  machine's request arrives, naming the machine; cancelling the prompt returns to an
+  Approve screen with the window still running. A readiness chip (green, orange, red, with
+  words) shows whether the paired machine has announced itself, from one lookup a minute
+  with jitter, honouring a 429; a long press or "Check again" looks now. Busy screens say
+  what the app is doing (looking up, connecting, waiting for the machine). The approve
+  window is 75 s from the connection and runs through the fingerprint prompt
+  (`docs/relay-idle.md`). The key is a P-256 scalar wrapped by an RSA Keystore key that
+  needs a fingerprint for each use; a phone whose key is not whole says so and offers a
+  new one. The app is keyboard-navigable, has headings, live regions and a shortcut
+  table, and debug builds log at trace level (`docs/debugging.md`).
+  Tests: JVM tests of the flow through fakes, and instrumented Compose tests on an
+  emulator in CI; the chip's tests were also run on the Pixel `[V]`. The listing's five
+  screenshots are drawn by `ScreenshotsTest` (`scripts/screenshots.sh`). Not tried: a
+  screen reader (TalkBack), a second phone model, and the Keystore exceptions
+  for a key invalidated by a new fingerprint on a real device (JVM tests only).
+  `-Psynctang.noBiometric=true` builds a debug-only variant whose key is not gated
+  behind a biometric prompt; release builds cannot have it and the ungated key uses its
+  own Keystore alias.
+- **WP6** (dracut module `90synctang`): done. `enrol` does not rebuild the initrd, so
+  `dracut --force` is a manual step after the first `pair` or `enrol` (it makes the
+  machine identity); installing `synctang-dracut` rebuilds every installed kernel's initrd
+  itself. The module carries the machine identity, `network.conf` and the CA bundle.
+- **WP7** (VM acceptance): all eleven acceptance items pass (`TESTREPORT.md`). A4 was
+  the last, verified 2026-09-21 on a real StrongBox phone against a machine that had
+  been waiting at its LUKS prompt for over eleven hours.
 
-## Test VMs
+## Test machines
 
-Two, for different jobs.
-
-- A shared VM on someone else's hypervisor (`synctang-test-2604`),
-  which is where the boot-time acceptance runs against a real
-  deployment happened. This side does not hold its passphrase, so
-  anything that might leave it unbootable cannot be run there.
-- A disposable local one, built by `scripts/make-test-vm.sh` and run
-  by `scripts/run-test-vm.sh` under QEMU with nested KVM: a real
-  LUKS2 root, dracut initrd, serial console on a TCP socket, and a
-  passphrase this side chose. `scripts/provision-test-vm.sh` installs
-  the unlocker, the dracut module and enrolled recipients into the
-  image over a loop device, without booting it.
-  `scripts/test-vm-net.sh` puts it on a private bridge so it shares a
-  real layer 2 segment with the host, which local discovery needs and
-  QEMU's user-mode networking cannot provide; that bridge has no
-  route off it, so it is also A11's condition by default. Rebuild
-  costs about four minutes, so it is genuinely throwaway: A8 destroys
-  a keyslot on it, which is exactly why it exists.
+- A shared VM on someone else's hypervisor (`synctang-test-2604`), where the boot-time
+  acceptance runs against a real deployment happened. This side does not hold its
+  passphrase, so anything that might leave it unbootable cannot be run there.
+- A disposable local VM, built by `scripts/make-test-vm.sh` and run by
+  `scripts/run-test-vm.sh` under QEMU with KVM: a real LUKS2 root, dracut initrd, serial
+  console on a TCP socket, and a passphrase this side chose. `scripts/test-vm-net.sh`
+  puts it on a private bridge that shares a real layer 2 segment with the host and has no
+  route off it. Rebuild costs about five minutes, so it is genuinely throwaway: A8
+  destroys a keyslot on it, which is exactly why it exists. `scripts/e2e-vm.sh` builds one,
+  installs the packages and unlocks it twice (`docs/e2e-test.md`).
+- A Fedora 44 VM (kept outside the repository) for SELinux-enforcing and dracut 108 runs.
 
 ## Adversarial testing
 
@@ -144,33 +125,62 @@ building rather than to mount a campaign.
 
 ## CI
 
-Green: `go-test`, `go-test-privileged`, `lint`, `em-dash-check`,
-`android` (the last one for the first time as of `59614d8`; see
-`AGENTS.md` for the four issues chasing that down turned up), and
-`build-deb`.
+Workflows, each run on every pull request unless noted:
 
-## Packaging
+- `ci`: `go-test` (with the relay and discovery servers built from source, so the
+  integration tests run), `go-test-privileged` (real LUKS images), `lint` (shellcheck and
+  the shell tests of the dracut module and man pages), `em-dash-check`, `reuse`,
+  `android` (JVM tests and a debug build), `build-deb` (below) and `build-apk`. On a
+  `v<versionCode>` tag it also runs `e2e` and then `release-debs`.
+- `emulator`: the instrumented tests on an Android emulator with KVM, which include
+  `ScreenshotsTest`. Pushes to `main` run it only when `android/`, `mobile/` or `mrcore/`
+  changed.
+- `e2e`: `scripts/e2e-vm.sh` on a KVM runner. Pushes to `main` run it only when what it
+  tests changed.
+- `publish-fdroid`: on a push to `main` it publishes a release-candidate build to the
+  self-hosted F-Droid repository; on a tag, a release.
+
+## Packaging and releases
 
 `build-deb` produces three Debian packages for amd64 and arm64:
 `synctang-unlocker` (`/usr/sbin/synctang-unlocker`), `synctang-keyholder`
 (`/usr/bin/synctang-keyholder`), and `synctang-dracut` (the 90synctang module,
-arch: all). It verifies the cross-built package really holds an aarch64
-binary, attests build provenance with
-`actions/attest-build-provenance` (pushes to `main` only, since a fork
-pull request cannot get an id-token), and uploads the packages.
+arch: all). It verifies the cross-built package really holds an aarch64 binary,
+checks the build is reproducible, makes SBOMs, attests build provenance (pushes to
+`main` and tags only, since a fork pull request cannot get an id-token), and uploads
+the packages.
 
-`just deb` builds them locally; `just deb-repro` builds twice under
-different umask, `TZ` and `LC_ALL` and checks the results are
-byte-identical, which CI also runs. Reproducibility rests on
-`SOURCE_DATE_EPOCH` coming from the commit date rather than wall clock,
-and on `go build -buildvcs=false -trimpath` with `CGO_ENABLED=0`. Scope
-is deliberately limited to "same commit, matching toolchain and
-packaging tool versions"; cross-machine and cross-architecture
-reproducibility are untested and not claimed.
+`just deb` builds them locally; `just deb-repro` builds twice under different umask,
+`TZ` and `LC_ALL` and checks the results are byte-identical, which CI also runs.
+Reproducibility rests on `SOURCE_DATE_EPOCH` coming from the commit date rather than
+wall clock, and on `go build -buildvcs=false -trimpath` with `CGO_ENABLED=0`. Scope is
+deliberately limited to "same commit, matching toolchain and packaging tool versions";
+cross-machine and cross-architecture reproducibility are untested and not claimed.
+
+On a tag, `release-debs` attaches the packages, the SBOMs and a `SHA256SUMS` file to a
+GitHub release, each with a cosign bundle, once `e2e` has passed on those same packages
+(`docs/releasing.md`). That job, the cosign signing and the tag run of the F-Droid
+publish have never run: every release so far has been a release candidate from `main`.
 
 ## Open items
 
-- `[U]` Findings of the external security review of `a57ae27` (2026-10-23)
+- Debian and Ubuntu machines that boot with initramfs-tools. `synctang-dracut`
+  depends on dracut and regenerates every installed kernel's initrd with it, which would
+  replace initramfs-tools images. Every machine tested here used dracut from the start.
+- A real machine (a physical NIC, the owner's own network) and a second phone.
+- The laptop key is a plain file. A keyring or `systemd-creds` backend is planned
+  and waits on three decisions: the order of Secret Service and `systemd-creds`, whether a
+  new dependency may be added, and whether `init` defaults to the best backend or asks.
+- Reliability: one of the five relay integration tests failed once in thirteen runs with
+  "already connected" (a join race, not fixed); one dial gave up after 90 s with every
+  relay in the record "not found" and was not reproduced; and the machine took about 17 to
+  19 s to check the recovered secret on a 2-vCPU VM with a real key derivation, with
+  nothing shown to the person meanwhile.
+- A third security review is not written. Scope: the dracut module and the agent's shell,
+  the laptop key holder, the QR scanner, the packaging, the journal writer, the
+  discovery trust code and the readiness polling. The relay and discovery servers are out
+  of scope (they are Syncthing's).
+- Findings of the external security review of `a57ae27` (2026-10-23)
   that are still open. Fixed since: silent peers holding a listener or the
   pairing window, the phone validating the challenge point only after the
   Keystore, empty `PeerID` dials and empty recipient lists failing open,
@@ -193,7 +203,7 @@ reproducibility are untested and not claimed.
     operations on one key only the authenticated one worked, and only once. Which
     layer refuses is not observable.
     The old key is not migrated: a phone is paired again.
-  - `[U]` A threshold (two key holders must both answer) is the second
+  - A threshold (two key holders must both answer) is the second
     factor that would remove "one approval is enough". Parked for a
     later round; see `docs/threat-model.md`.
   - Done 2026-10-28: `PairProof` now covers the public key being enrolled,
@@ -206,7 +216,7 @@ reproducibility are untested and not claimed.
   - Done 2026-10-28: `synctang-dracut` now makes initrd images that carry
     `machine.pem` root-only after rebuilding them, and warns loudly where a
     filesystem ignores `chmod`. dracut already builds them under `umask 077`,
-    so this is a safety net. Not observed on a running system `[U]`.
+    so this is a safety net. Not observed on a running system.
   - Done 2026-10-28: device auto-discovery no longer takes the first block
     device with an `mr-1` token. With one candidate nothing changes; with
     several it picks the one a pending password request names (matching the
@@ -215,17 +225,21 @@ reproducibility are untested and not claimed.
     the request that belongs to the device it unlocked. That the Id has the
     form `cryptsetup:<device path>` is `[I]`, from systemd's source and not
     observed on a running system here; the logic is tested with fake ids.
-  - Scanning any QR code replaces the paired machine before pairing
-    succeeds (Android).
-- `[U]` Whether `go-tpm`'s ECDH support is reachable for the
+  - Done: scanning a QR code no longer replaces the paired machine before pairing
+    succeeds; a pairing with a code is saved only once the machine has enrolled the
+    phone, a failed one keeps the working machine, and a replacement can be undone `[V]`
+    (JVM tests `aPairingWithACodeIsNotSavedUntilTheMachineHasEnrolledThePhone`,
+    `aFailedPairingWithAnotherMachineKeepsTheOneThatWorks`,
+    `aSuccessfulPairingThatReplacesAMachineCanBeUndoneToo`).
+- Whether `go-tpm`'s ECDH support is reachable for the
   `synctang-keyholder` TPM2 backend; may remain a stub with tests skipped.
-- `[U]` Two fixes for `syncthing-socket` (`ensureResolver` accepting a
+- Two fixes for `syncthing-socket` (`ensureResolver` accepting a
   loopback-only stub, `RunClient` not retrying a stale discovery
   record) were reported to the user as a written summary; whether they
   have become patches since was not checked. The third, the bare
   `go.mod` module path, is done: release v164 declares the real path and
   this repository imports its `identity` and `discovery` packages `[V]`.
-- `[U]` One item left from the `mrcore`/transport review: a `Token`
+- One item left from the `mrcore`/transport review: a `Token`
   Marshal/Unmarshal refactor. The other three are done: `Group.Negate`
   now multiplies by the group order minus one instead of doing modular
   arithmetic on the y-coordinate with `big.Int`, which removes the
@@ -233,7 +247,7 @@ reproducibility are untested and not claimed.
   nistec's constant-time code; `slices.Contains`/`slices.Equal`
   replace the hand-rolled equivalents; the announce HTTP client is
   built once rather than per call.
-- `[U]` `LocalDiscovery` is IPv4 multicast only. A LAN that is IPv6
+- `LocalDiscovery` is IPv4 multicast only. A LAN that is IPv6
   only would fall back to `SyncthingRelay`, which defeats the point
   on a LAN with no Internet. Not hit in testing (every network this
   has run on had IPv4), so not built.
