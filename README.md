@@ -8,10 +8,12 @@ unattended reboots are deliberately not supported: if you need those, use
 Tang. In exchange the key holder's secret can be kept on a phone wrapped by a key in
 its secure hardware, which opens it only for your fingerprint, once per
 unlock (the secret is briefly in the app's memory while it is used; the app says
-plainly where the hardware half lives), or on a laptop in a file or a TPM, gated behind a keypress, and the LUKS
+plainly where the hardware half lives), or on a laptop in a file (a TPM or keyring backend is planned, not built), gated behind a keypress, and the LUKS
 passphrase is never on the phone in any form.
 
-Work in progress; see `STATUS.md` for what is built and what is not.
+Work in progress; see `STATUS.md` for what is built and what is not. There is no
+compatibility promise between releases yet: after an upgrade a phone may need to be paired
+again, and nothing migrates files from an older layout.
 
 ## What is here
 
@@ -47,6 +49,14 @@ pressing approve, and unattended reboots by design. Details in
 `docs/threat-model.md`; the protocol is in `docs/mr1-protocol.md`.
 
 ## Installing
+
+**Debian and Ubuntu.** The boot part of synctang is a dracut module, and
+`synctang-dracut` depends on dracut and, when it is installed, regenerates the initrd of
+every installed kernel with it. On a machine that boots with initramfs-tools, the default
+on Debian and Ubuntu, that replaces those images with dracut-built ones. That has not been
+tried on a stock Debian or Ubuntu install: every machine this was tested on used
+dracut from the start. Try it first on a machine you can recover. The ordinary console
+passphrase prompt still works if the agent does not.
 
 **Machine and laptop.** Install the Debian packages you need
 (`synctang-dracut` pulls in `synctang-unlocker` and rebuilds your initrds). A

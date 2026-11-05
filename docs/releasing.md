@@ -5,6 +5,41 @@
 How the packages and the F-Droid repository are built, signed and published.
 None of it is needed to install or use synctang.
 
+## Cutting a release
+
+A release is a commit with a `v<versionCode>` tag on it. The version code is the number of
+commits up to and including that commit, so the release notes have to be named for a count
+that includes the commit that adds them. None of this has been run yet: every release
+so far has been a release candidate published from `main`, and the tag path of the workflows
+(`e2e`, `release-debs`, the cosign signatures, the F-Droid release build) has never run.
+Make the first release a pre-release and check each step below on it.
+
+1. Everything is on `main` and green: `ci`, `emulator`, `e2e` and `publish-fdroid`.
+2. Work out the version the release commit will have, one more than now:
+
+       N=$(( $(git rev-list --count HEAD) + 1 ))
+
+3. Write `android/fastlane/metadata/android/en-US/changelogs/$N.txt`: what a person using the
+   app will notice, in plain words, and short (the Fastlane format allows 500 characters).
+   Commit it with nothing else, so that the count is `$N` after the commit, and check it:
+   `git rev-list --count HEAD` must print `$N`.
+4. Push to `main` and wait for `publish-fdroid` and `ci`; then tag that commit and push the
+   tag:
+
+       git tag v$N && git push origin v$N
+
+5. The tag runs `ci` again, which now includes `e2e` on the very packages `build-deb` made,
+   and then `release-debs`, which makes a GitHub release with the packages, their SBOMs, a
+   `SHA256SUMS` file and a cosign bundle for each. It also runs `publish-fdroid`, which
+   publishes the release APK. `release-debs` needs `e2e`, so a release is only ever made of
+   packages that unlocked a VM.
+6. Check what was published: the release's files and `SHA256SUMS`; one file with
+   `cosign verify-blob` and one with `gh attestation verify` (see below and
+   `Publishing the Debian packages`); the F-Droid index lists version `$N` without the
+   `-rc` in its file name; and install it on a phone.
+7. Say what changed, and that there is no compatibility promise: a phone may need to be paired
+   again after an upgrade.
+
 ## Publishing the F-Droid repository
 
 Publishing is automatic: a push to `main` publishes a release-candidate
@@ -87,7 +122,7 @@ anything else, or from a branch, does not verify. The job waits for the end-to-e
 a laptop and a headless phone using these very packages, so a release is not made of
 packages that failed to. A push to `main`
 keeps its packages only as the `synctang-debs` workflow artifact, for seven
-days. `[U]` The job has not run yet, nor has the cosign signing or the
+days. The job has not run yet, nor has the cosign signing or the
 verification command above: they are written against the documentation and have
 been read, not executed.
 
