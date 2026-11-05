@@ -67,9 +67,23 @@ override_dh_auto_install:
 		dracut/90synctang/synctang-stop.sh dracut/90synctang/secure-initrd.sh \
 		dracut/90synctang/synctang-lib.sh \
 		debian/tmp/usr/lib/dracut/modules.d/90synctang/
+	# Shell completion, written by the programs themselves from their own usage and flag
+	# help (internal/completion), so it cannot drift from the commands and flags they have.
+	# A program built for another architecture may not run on this build host, and the
+	# text does not depend on the architecture, so a build for the host's own writes it.
+	install -d debian/tmp/usr/share/bash-completion/completions \
+		debian/tmp/usr/share/zsh/vendor-completions \
+		debian/tmp/usr/share/fish/vendor_completions.d
+	for p in synctang-unlocker synctang-keyholder; do \
+		GOARCH=$$(go env GOHOSTARCH) go build -buildvcs=false -o completion-writer ./cmd/$$p && \
+		./completion-writer completion bash > debian/tmp/usr/share/bash-completion/completions/$$p && \
+		./completion-writer completion zsh > debian/tmp/usr/share/zsh/vendor-completions/_$$p && \
+		./completion-writer completion fish > debian/tmp/usr/share/fish/vendor_completions.d/$$p.fish || exit 1; \
+	done
+	rm -f completion-writer
 
 override_dh_auto_clean:
-	rm -f synctang-unlocker synctang-keyholder
+	rm -f synctang-unlocker synctang-keyholder completion-writer
 	rm -rf $(CURDIR)/.gocache
 
 # CGO_ENABLED=0 above means both binaries are fully static, so none of

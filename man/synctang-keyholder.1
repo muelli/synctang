@@ -12,6 +12,9 @@ synctang\-keyholder \- the laptop key holder for synctang
 .B synctang\-keyholder unlock
 .RI [ flags ]
 .I machine\-transport\-id
+.br
+.B synctang\-keyholder completion
+.I shell
 .SH DESCRIPTION
 .B synctang\-keyholder
 holds a long-term private key and answers a machine's recovery attempts on
@@ -165,6 +168,19 @@ Flags win over the file.
 \fB\-\-direct\-addr\fR \fIhost:port\fR
 Dial this address directly, bypassing relay and discovery.
 For testing only.
+.SS completion
+Writes to standard output the completion script for the shell named: bash, zsh or fish.
+The program makes the script from its own usage text and the flag help of each command, so it
+names exactly the commands and flags of this version and cannot fall out of step with them.
+The Debian package installs the three scripts under
+.BR /usr/share/bash\-completion/completions ,
+.B /usr/share/zsh/vendor\-completions
+and
+.BR /usr/share/fish/vendor_completions.d .
+Without the package, bash can load it from
+.B ~/.bashrc
+with
+.BR "source <(synctang\-keyholder completion bash)" .
 .SH EXIT STATUS
 .TP
 .B 0

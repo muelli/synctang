@@ -14,6 +14,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/muelli/synctang/internal/completion"
+	"github.com/muelli/synctang/internal/gnuflag"
 	"github.com/muelli/synctang/internal/journal"
 	"github.com/muelli/synctang/mrcore"
 	"io"
@@ -40,6 +42,7 @@ commands:
   pair    show a QR code and enrol the key holder that scans it
   open    wait for a key holder, then open a LUKS volume (an external drive,
           say) that is not asking for a password at boot
+  completion  print a shell completion script (bash, zsh or fish)
 `
 
 // defaultMachineKeyFile is where this machine's own persistent transport
@@ -81,6 +84,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runStatus(args[1:], stdout, stderr)
 	case "devices":
 		return runDevices(args[1:], stdout, stderr)
+	case "completion":
+		return completion.Run("synctang-unlocker", usage, helpOfCommand, markPositionals, args[1:], stdout, stderr)
 	case "open":
 		return runOpen(args[1:], stdout, stderr)
 	default:
@@ -89,13 +94,33 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 }
 
+// helpOfCommand is what "synctang-unlocker <command> -h" prints, which is where the
+// completion scripts get each command's flags from.
+func helpOfCommand(command string) string {
+	if command == "completion" {
+		return ""
+	}
+	var out bytes.Buffer
+	run([]string{command, "-h"}, &out, &out)
+	return out.String()
+}
+
+// markPositionals says what only this program knows about its commands' arguments.
+func markPositionals(p *completion.Program) {
+	for i := range p.Commands {
+		if p.Commands[i].Name == "open" {
+			p.Commands[i].PositionalFiles = true // the device to open
+		}
+	}
+}
+
 func runEnrol(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("enrol", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs.SetOutput(gnuflag.Writer(stderr))
 	device := fs.String("device", "", "LUKS2 device or image to enrol (\"synctang-unlocker devices\" lists them)")
 	pubkeyHex := fs.String("pubkey", "", "recipient's public key, hex-encoded (from synctang-keyholder export-pubkey)")
 	passphraseFile := fs.String("existing-passphrase-file", "", "file containing an existing valid LUKS passphrase (- for stdin)")
-	name := fs.String("name", "", "this machine's name, shown to the key holder")
+	name := fs.String("name", "", "this machine's name, shown to the key holder (default: this machine's hostname, for a volume with no name yet)")
 	transportID := fs.String("transport-id", "", "this machine's transport identity")
 	recipientTransportID := fs.String("recipient-transport-id", "", "the recipient's own transport identity (from synctang-keyholder export-pubkey), if known")
 	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, "path to this machine's persistent transport identity")
@@ -190,6 +215,8 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 	}
 	defer mrcore.Wipe(passphrase)
 
+	// Only a volume with no token yet takes a name from here: an existing token keeps its own.
+	*name = resolveMachineName(*name, "")
 	outcome, err := enrolOnce(*device, passphrase, pubkey, *name, *transportID, *recipientTransportID)
 	if err != nil {
 		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
@@ -257,7 +284,7 @@ func shouldWarnAboutNewIdentity(isNew bool, keyFile string) bool {
 // dracut/90synctang/synctang-stop.sh sends) is cancelled.
 func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("agent", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs.SetOutput(gnuflag.Writer(stderr))
 	device := fs.String("device", "", "LUKS2 device to unlock (auto-discovered from /proc/partitions if omitted)")
 	name := fs.String("name", "", "this machine's name, shown to the key holder")
 	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, "path to this machine's persistent transport identity")

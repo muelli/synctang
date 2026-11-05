@@ -6,13 +6,17 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/muelli/synctang/internal/completion"
+	"github.com/muelli/synctang/internal/gnuflag"
 	"github.com/muelli/synctang/mrcore"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/muelli/synctang/mrcore/transport"
@@ -25,6 +29,7 @@ commands:
   init            generate a new long-term key and transport identity
   export-pubkey   print the public key and transport id, for "synctang-unlocker enrol"
   unlock          answer one machine's recovery attempt
+  completion      print a shell completion script (bash, zsh or fish)
 `
 
 func main() {
@@ -44,6 +49,15 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runExportPubkey(args[1:], stdout, stderr)
 	case "unlock":
 		return runUnlock(args[1:], stdin, stdout, stderr)
+	case "completion":
+		return completion.Run("synctang-keyholder", usage, func(command string) string {
+			if command == "completion" {
+				return ""
+			}
+			var out bytes.Buffer
+			run([]string{command, "-h"}, strings.NewReader(""), &out, &out)
+			return out.String()
+		}, nil, args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "synctang-keyholder: unknown command %q\n%s", args[0], usage)
 		return 2
@@ -71,7 +85,7 @@ func transportKeyFileFlag(fs *flag.FlagSet) *string {
 
 func runInit(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs.SetOutput(gnuflag.Writer(stderr))
 	keyFile := keyFileFlag(fs)
 	transportKeyFile := transportKeyFileFlag(fs)
 	force := fs.Bool("force", false, "overwrite an existing key")
@@ -111,7 +125,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 
 func runExportPubkey(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("export-pubkey", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs.SetOutput(gnuflag.Writer(stderr))
 	keyFile := keyFileFlag(fs)
 	transportKeyFile := transportKeyFileFlag(fs)
 	if err := fs.Parse(args); err != nil {
@@ -145,7 +159,7 @@ func runExportPubkey(args []string, stdout, stderr io.Writer) int {
 
 func runUnlock(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("unlock", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs.SetOutput(gnuflag.Writer(stderr))
 	keyFile := keyFileFlag(fs)
 	transportKeyFile := transportKeyFileFlag(fs)
 	directAddr := fs.String("direct-addr", "", "dial this address directly, bypassing relay and discovery (testing only)")

@@ -95,15 +95,27 @@ packages install them; from a checkout, `man -l man/synctang-unlocker.8`.
 
 The commands below need root on the machine. `--existing-passphrase-file`
 takes an existing LUKS passphrase; the examples use process substitution
-so it never touches a disk. (`-` reads it from stdin, but `pair` also
-uses stdin for its confirmation question.) Run the commands from a root shell
+so it never touches a disk. Run the commands from a root shell
 (`sudo -i`): `sudo synctang-unlocker ... <(printf %s "$PASS")` fails with `open
 /dev/fd/63: no such file or directory`, because sudo closes the descriptor that
-makes the process substitution work. For a single command,
-`printf %s "$PASS" | sudo synctang-unlocker enrol ... --existing-passphrase-file -`
-does work (not for `pair`).
+makes the process substitution work. For a single command, `-` reads the
+passphrase from stdin (`--existing-passphrase-file -` or `--existing-passphrase-file=-`):
+
+    printf %s "$PASS" | sudo synctang-unlocker enrol ... --existing-passphrase-file -
+
+`pair` takes it the same way. Its confirmation question then cannot be answered on
+stdin, which the passphrase has used up, so it is asked on the terminal; with no
+terminal (from a script, say) pass `--yes`, and `pair` says so at once, before it
+shows a code.
 
     read -rsp 'LUKS passphrase: ' PASS
+
+Shell completion for bash, zsh and fish comes with the Debian packages. Both programs
+write it themselves from their own commands and flags (`synctang-unlocker completion bash`,
+and likewise for `zsh` and `fish`), so it cannot name an option the program does not have;
+without the package, `source <(synctang-unlocker completion bash)` in `~/.bashrc` does it.
+Options are spelled with two dashes, as in the manual pages (`--device`), and a single dash
+also works.
 
 Not sure which device holds the volume? `synctang-unlocker devices` (as root) lists the
 LUKS devices on the machine with their UUID, size, the name each is open under, and how

@@ -3,8 +3,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
+	"errors"
+	"io"
 	"net"
 	"path/filepath"
 	"strings"
@@ -289,4 +292,75 @@ func freePortForTest(t *testing.T) string {
 	addr := ln.Addr().String()
 	ln.Close()
 	return addr
+}
+
+// With the passphrase on stdin ("--existing-passphrase-file -", so that it can come from a
+// pipe and never touch a disk), stdin is spent by the time the operator is asked whether to
+// enrol whoever answered. The question goes to the terminal instead; without one, the
+// operator has to say --yes, and is told so before anything waits.
+
+func fakeTTY(t *testing.T, content string, err error) {
+	t.Helper()
+	was := openTTY
+	t.Cleanup(func() { openTTY = was })
+	openTTY = func() (io.ReadCloser, error) {
+		if err != nil {
+			return nil, err
+		}
+		return io.NopCloser(strings.NewReader(content)), nil
+	}
+}
+
+func TestConfirmationComesFromTheTerminalWhenStdinHoldsThePassphrase(t *testing.T) {
+	fakeTTY(t, "y\n", nil)
+	in, closer, err := confirmationInput("-", false, strings.NewReader("passphrase on stdin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closer.Close()
+	got, _ := io.ReadAll(in)
+	if string(got) != "y\n" {
+		t.Errorf("answers were read from %q, want the terminal's", got)
+	}
+}
+
+func TestConfirmationComesFromStdinWhenItDoesNotHoldThePassphrase(t *testing.T) {
+	fakeTTY(t, "from the terminal", nil)
+	for _, tc := range []struct {
+		file string
+		yes  bool
+	}{{"/some/file", false}, {"-", true}} {
+		in, closer, err := confirmationInput(tc.file, tc.yes, strings.NewReader("from stdin"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		closer.Close()
+		got, _ := io.ReadAll(in)
+		if string(got) != "from stdin" {
+			t.Errorf("%+v: answers were read from %q", tc, got)
+		}
+	}
+}
+
+func TestWithNoTerminalAPassphraseOnStdinNeedsYes(t *testing.T) {
+	fakeTTY(t, "", errors.New("no such device"))
+	if _, _, err := confirmationInput("-", false, strings.NewReader("")); err == nil || !strings.Contains(err.Error(), "--yes") {
+		t.Fatalf("err = %v, want one that names --yes", err)
+	}
+	if _, _, err := confirmationInput("-", true, strings.NewReader("")); err != nil {
+		t.Fatalf("with --yes nothing is asked, so no terminal is needed: %v", err)
+	}
+}
+
+func TestPairSaysSoAtOnceWhenItCannotAskAndWasNotToldYes(t *testing.T) {
+	fakeTTY(t, "", errors.New("no such device"))
+	var out, errOut bytes.Buffer
+	start := time.Now()
+	code := run([]string{"pair", "--device", "/dev/x", "--existing-passphrase-file", "-", "--timeout", "30s"}, &out, &errOut)
+	if code != 2 || !strings.Contains(errOut.String(), "--yes") {
+		t.Fatalf("exit %d, stderr %q", code, errOut.String())
+	}
+	if time.Since(start) > 5*time.Second {
+		t.Error("it waited before saying so")
+	}
 }

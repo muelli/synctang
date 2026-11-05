@@ -28,6 +28,9 @@ synctang\-unlocker \- unlock a LUKS volume with the approval of a key holder
 .br
 .B synctang\-unlocker devices
 .br
+.B synctang\-unlocker completion
+.I shell
+.br
 .B synctang\-unlocker agent
 .RI [ flags ]
 .br
@@ -127,6 +130,8 @@ whose confirmation question also reads standard input).
 \fB\-\-name\fR \fIname\fR
 This machine's name, shown to the key holder before it approves.
 It is a label chosen by the machine and is not authenticated.
+Default: this machine's hostname, for a volume that has no name yet; a volume that
+has one keeps it.
 .TP
 \fB\-\-transport\-id\fR \fIid\fR
 This machine's transport identity, recorded in the token and shown to the key
@@ -210,11 +215,16 @@ A file holding an existing valid passphrase of the volume, or
 for standard input.
 Required.
 If standard input is used, the confirmation question cannot be answered from
-it; use
-.BR \-\-yes .
+it, so it is asked on the controlling terminal, the way
+.BR ssh (1)
+asks for a password.
+Where there is no terminal, use
+.BR \-\-yes ;
+without it the command says so at once, before it shows a pairing code.
 .TP
 \fB\-\-name\fR \fIname\fR
 This machine's name, shown to the key holder.
+Default: the name already on the volume, else this machine's hostname.
 .TP
 \fB\-\-machine\-key\-file\fR \fIfile\fR
 This machine's persistent transport identity.
@@ -436,6 +446,10 @@ A failed attempt is reported and followed by another until one works or the
 time is up.
 Flags may be written before or after the positional arguments.
 .TP
+\fB\-\-device\fR \fIpath\fR
+The LUKS device to open, as an alternative to giving it as the first argument, the way every
+other command takes its device.
+.TP
 \fB\-\-name\fR \fIname\fR
 This machine's name, shown to the key holder.
 Default: the name given at enrolment.
@@ -458,6 +472,19 @@ The file naming the relay pool and discovery servers to use instead of the
 public ones.
 Default
 .BR /etc/synctang/network.conf .
+.SS completion
+Writes to standard output the completion script for the shell named: bash, zsh or fish.
+The program makes the script from its own usage text and the flag help of each command, so it
+names exactly the commands and flags of this version and cannot fall out of step with them.
+The Debian package installs the three scripts under
+.BR /usr/share/bash\-completion/completions ,
+.B /usr/share/zsh/vendor\-completions
+and
+.BR /usr/share/fish/vendor_completions.d .
+Without the package, bash can load it from
+.B ~/.bashrc
+with
+.BR "source <(synctang\-unlocker completion bash)" .
 .SH EXIT STATUS
 .TP
 .B 0

@@ -197,6 +197,8 @@ vm "sudo DEBIAN_FRONTEND=noninteractive apt-get install -y /tmp/$(basename "$UNL
 	> "$LOGS/apt.log" 2>&1 || { tail -20 "$LOGS/apt.log" >&2; fail "could not install the packages (see $LOGS/apt.log)"; }
 check "the machine program is installed" vm 'command -v synctang-unlocker > /dev/null'
 check "its manual page is installed" vm 'man -w synctang-unlocker > /dev/null'
+check "its shell completion is installed" vm 'test -s /usr/share/bash-completion/completions/synctang-unlocker && test -s /usr/share/zsh/vendor-completions/_synctang-unlocker && test -s /usr/share/fish/vendor_completions.d/synctang-unlocker.fish'
+check "bash can load it and offers the commands" vm "bash -c 'source /usr/share/bash-completion/completions/synctang-unlocker; COMP_WORDS=(synctang-unlocker dev); COMP_CWORD=1; _synctang_unlocker; [ \"\${COMPREPLY[0]}\" = devices ]'"
 
 mkdir -p "$RUN/bin/keyholder"
 dpkg-deb -x "$KEYHOLDER_DEB" "$RUN/bin/keyholder"

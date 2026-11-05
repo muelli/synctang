@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"github.com/muelli/synctang/internal/gnuflag"
 	"io"
 	"os"
 	"strings"
@@ -30,7 +31,7 @@ import (
 // whether that has happened.
 func runStatus(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("status", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs.SetOutput(gnuflag.Writer(stderr))
 	device := fs.String("device", "", "LUKS2 device or image to inspect (auto-discovered from /proc/partitions if omitted)")
 	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, "path to this machine's persistent transport identity")
 	if err := fs.Parse(args); err != nil {

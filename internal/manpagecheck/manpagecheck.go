@@ -82,7 +82,7 @@ func Tags(text string) []string {
 	return tags
 }
 
-var helpFlag = regexp.MustCompile(`(?m)^ {2}-([A-Za-z][A-Za-z0-9-]*)`)
+var helpFlag = regexp.MustCompile(`(?m)^ {2}-{1,2}([A-Za-z][A-Za-z0-9-]*)`)
 
 // FlagsFromHelp returns the flag names, written "--name", that the output of
 // a flag set's PrintDefaults lists (what "<command> -h" prints).

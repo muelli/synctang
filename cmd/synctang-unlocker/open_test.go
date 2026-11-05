@@ -324,3 +324,29 @@ func TestTheDefaultMapperNameComesFromTheVolumesUUID(t *testing.T) {
 
 // tlsCert keeps the fixture's field list short.
 type tlsCert = tls.Certificate
+
+// Every other command names its device with --device, so open takes it that way too, as well
+// as first among the arguments.
+func TestOpenTakesTheDeviceAsAFlagToo(t *testing.T) {
+	fakeOpener(t)
+	geteuid = func() int { return 1000 }
+	for _, args := range [][]string{
+		{"open", "--device", "/dev/x"},
+		{"open", "--device", "/dev/x", "backup"},
+		{"open", "backup", "--device", "/dev/x"},
+	} {
+		var out, errOut bytes.Buffer
+		code := run(args, &out, &errOut)
+		if code != 1 || !strings.Contains(errOut.String(), "root") {
+			t.Errorf("%v: exit %d, stderr %q; want the arguments accepted and the root check reached", args, code, errOut.String())
+		}
+	}
+}
+
+func TestOpenRefusesTooManyArgumentsWithTheDeviceAsAFlag(t *testing.T) {
+	fakeOpener(t)
+	var out, errOut bytes.Buffer
+	if code := run([]string{"open", "--device", "/dev/x", "a", "b"}, &out, &errOut); code != 2 {
+		t.Errorf("exit %d, want 2 (stderr %q)", code, errOut.String())
+	}
+}

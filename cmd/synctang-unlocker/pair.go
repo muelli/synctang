@@ -12,6 +12,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"github.com/muelli/synctang/internal/gnuflag"
 	"io"
 	"log/slog"
 	"net/url"
@@ -220,10 +221,10 @@ const defaultPairWindow = 5 * time.Minute
 // one key holder, and it shows who is asking before writing anything.
 func runPair(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("pair", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs.SetOutput(gnuflag.Writer(stderr))
 	device := fs.String("device", "", "LUKS2 device or image to enrol the key holder on (\"synctang-unlocker devices\" lists them)")
 	passphraseFile := fs.String("existing-passphrase-file", "", "file containing an existing valid LUKS passphrase (- for stdin)")
-	name := fs.String("name", "", "this machine's name, shown to the key holder")
+	name := fs.String("name", "", "this machine's name, shown to the key holder (default: the name already on the volume, else this machine's hostname)")
 	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, "path to this machine's persistent transport identity")
 	window := fs.Duration("timeout", defaultPairWindow, "how long to accept a pairing for")
 	yes := fs.Bool("yes", false, "enrol whoever answers the code without asking for confirmation")
@@ -246,6 +247,14 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "synctang-unlocker: --existing-passphrase-file is required")
 		return 2
 	}
+	// Found out now, before the passphrase is read and the window opens, not when a key
+	// holder has already answered.
+	answers, closeAnswers, err := confirmationInput(*passphraseFile, *yes, os.Stdin)
+	if err != nil {
+		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
+		return 2
+	}
+	defer closeAnswers.Close()
 
 	network, ok := resolveNetwork(*networkConf, stdout, stderr)
 	if !ok {
@@ -274,6 +283,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	machineID := protocol.NewDeviceID(cert.Certificate[0]).String()
+	*name = resolveMachineName(*name, existingMachineName(*device))
 
 	secret, encoded, err := mrcore.NewPairingSecret()
 	if err != nil {
@@ -299,7 +309,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 	defer cancel()
 
 	// One reader for both questions, so neither loses what the other buffered.
-	stdin := bufio.NewReader(os.Stdin)
+	stdin := bufio.NewReader(answers)
 
 	opts := pairOptions{
 		device:             *device,
@@ -329,6 +339,31 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stderr, "synctang-unlocker: %v (still waiting)\n", err)
 	}
+}
+
+// openTTY opens the controlling terminal; a variable so that tests can supply one.
+var openTTY = func() (io.ReadCloser, error) { return os.Open("/dev/tty") }
+
+type nopCloser struct{}
+
+func (nopCloser) Close() error { return nil }
+
+// confirmationInput is where pair reads the operator's answers from. Usually that is stdin.
+// With the passphrase on stdin ("--existing-passphrase-file -", so that it can come from a
+// pipe and never be written to a disk) stdin is spent, so the questions are asked on the
+// terminal, as ssh and sudo ask for theirs. With no terminal to ask on, the operator has to
+// say --yes, which is reported at once, before the pairing window opens. With --yes nothing
+// is asked, so nothing is needed.
+func confirmationInput(passphraseFile string, assumeYes bool, stdin io.Reader) (io.Reader, io.Closer, error) {
+	if passphraseFile != "-" || assumeYes {
+		return stdin, nopCloser{}, nil
+	}
+	tty, err := openTTY()
+	if err != nil {
+		return nil, nil, fmt.Errorf("the passphrase is read from stdin, so the confirmation question has to be asked on a terminal, "+
+			"and none could be opened (%v); use --yes to enrol whoever answers the code without asking", err)
+	}
+	return tty, tty, nil
 }
 
 // pairConfirmer builds the confirmation step. Possession of the code is

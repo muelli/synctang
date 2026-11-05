@@ -41,8 +41,9 @@ func TestManPageDocumentsEveryCommandAndFlag(t *testing.T) {
 		}
 		have := manpagecheck.Tags(sub)
 		want := manpagecheck.FlagsFromHelp(helpOf(t, command))
-		if len(want) == 0 {
-			t.Errorf("%s: no flags found in its -h output", command)
+		// A command may have no flags (completion), but its -h must still parse.
+		if len(want) == 0 && !strings.Contains(helpOf(t, command), "Usage of "+command) {
+			t.Errorf("%s: its -h output has no \"Usage of %s\" line", command, command)
 		}
 		if m := manpagecheck.Missing(want, have); len(m) > 0 {
 			t.Errorf("%s: flags the program has and the page does not describe: %v", command, m)

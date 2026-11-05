@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"github.com/muelli/synctang/internal/gnuflag"
 	"io"
 	"os"
 	"regexp"
@@ -76,6 +77,7 @@ func defaultMapperName(dump string) string {
 }
 
 const openUsage = `usage: synctang-unlocker open [flags] <device> [name]
+       synctang-unlocker open --device <device> [flags] [name]
 
 Waits for a key holder to approve, then opens the LUKS volume on <device> as
 /dev/mapper/<name> and exits. Mount it afterwards, and close it with
@@ -86,7 +88,8 @@ enrolled (see "synctang-unlocker pair").
 
 func runOpen(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("open", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs.SetOutput(gnuflag.Writer(stderr))
+	deviceFlag := fs.String("device", "", "the LUKS device to open, instead of giving it as the first argument")
 	machineName := fs.String("name", "", "this machine's name, shown to the key holder (default: the name given at enrolment)")
 	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, "path to this machine's persistent transport identity")
 	timeout := fs.Duration("timeout", defaultOpenTimeout, "give up waiting for a key holder after this long")
@@ -105,6 +108,11 @@ func runOpen(args []string, stdout, stderr io.Writer) int {
 		}
 		positional = append(positional, fs.Arg(0))
 		rest = fs.Args()[1:]
+	}
+	// --device names the volume the way every other command does; the device may also come
+	// first among the arguments.
+	if *deviceFlag != "" {
+		positional = append([]string{*deviceFlag}, positional...)
 	}
 	if len(positional) < 1 || len(positional) > 2 {
 		fmt.Fprint(stderr, openUsage)

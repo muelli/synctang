@@ -5,6 +5,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/muelli/synctang/internal/gnuflag"
 	"io"
 	"os"
 	"path/filepath"
@@ -211,7 +212,7 @@ func formatDevices(devs []luksDevice) string {
 // does not have to be guessed. It reads headers, which takes root.
 func runDevices(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("devices", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs.SetOutput(gnuflag.Writer(stderr))
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
