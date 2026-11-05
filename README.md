@@ -71,7 +71,10 @@ next to each file (see `docs/releasing.md`). Or build them:
 
 Without Debian packaging, `go build ./cmd/synctang-unlocker ./cmd/synctang-keyholder`,
 install the binary as `synctang-unlocker` on the machine, run `just install-dracut`,
-then `dracut --force`.
+then `dracut --force`. The module needs dracut's `network` module, which on Fedora and RHEL
+is in a separate package: install it first (`sudo dnf install dracut-network`), or
+`dracut` stops with "Module 'synctang' depends on module 'network', which can't be
+installed". The Debian package depends on it and brings it in itself.
 
 **Phone.** Install an F-Droid client, add the repository
 `https://muelli.github.io/synctang/fdroid/repo` (or scan the QR code on
