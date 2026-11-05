@@ -79,6 +79,10 @@ func ParseUsage(usage string) []Command {
 	return cmds
 }
 
+// goDefault is the note the flag package appends to a usage, "(default 2m0s)" or, for a path,
+// "(default "/home/someone/.config/...")". Not "(default: ...)", which a person wrote.
+var goDefault = regexp.MustCompile(`\s\(default [^)]*\)$`)
+
 var helpFlagLine = regexp.MustCompile(`^  -{1,2}([^\s-][^\s]*)(?: (\S+))?$`)
 
 // ParseHelp reads the flags from what a flag set prints for -h: a line "  -name type"
@@ -98,6 +102,13 @@ func ParseHelp(help string) []Flag {
 			}
 			f.Usage += strings.TrimSpace(line)
 		}
+	}
+	// A default is whatever it was on the machine that ran the program. A completion script is
+	// written once, when a package is built, and installed on others, so it carries none: a path
+	// from the builder's home directory would be wrong there, and would make the same commit build
+	// to different packages on different machines.
+	for i := range flags {
+		flags[i].Usage = goDefault.ReplaceAllString(flags[i].Usage, "")
 	}
 	return flags
 }

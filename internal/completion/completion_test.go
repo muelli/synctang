@@ -58,7 +58,10 @@ func TestParseHelpReadsFlagsTheirValuesAndTheirUsage(t *testing.T) {
 	if got[0] != (Flag{Name: "device", Value: "string", Usage: "LUKS2 device or image to enrol"}) {
 		t.Errorf("device = %+v", got[0])
 	}
-	if got[2].Name != "timeout" || got[2].Value != "duration" || !strings.HasSuffix(got[2].Usage, "(default 2m0s)") {
+	// Go appends "(default ...)" to a flag's usage; for a path it is the home directory of whoever
+	// ran the program, which has no place in a script that is written once and installed on
+	// other machines. The description is what the person wrote.
+	if got[2] != (Flag{Name: "timeout", Value: "duration", Usage: "give up after this long"}) {
 		t.Errorf("timeout = %+v", got[2])
 	}
 	if got[3] != (Flag{Name: "yes", Usage: "skip the approval prompt"}) {
@@ -329,5 +332,18 @@ func TestRunNeedsExactlyOneKnownShell(t *testing.T) {
 		if out.Len() != 0 || !strings.Contains(errOut.String(), "bash, zsh or fish") {
 			t.Errorf("%v: stdout %q stderr %q", args, out.String(), errOut.String())
 		}
+	}
+}
+
+func TestOnlyGoesDefaultNoteIsDroppedFromTheDescription(t *testing.T) {
+	help := "Usage of x:\n" +
+		"  --name string\n    \tthis machine's name (default: the name already on the volume)\n" +
+		"  --key-file string\n    \tpath to the key (default \"/home/someone/.config/k/key\")\n"
+	got := ParseHelp(help)
+	if got[0].Usage != "this machine's name (default: the name already on the volume)" {
+		t.Errorf("a sentence of the author's that contains the word default is kept: %q", got[0].Usage)
+	}
+	if got[1].Usage != "path to the key" {
+		t.Errorf("Go's own default note is dropped: %q", got[1].Usage)
 	}
 }
