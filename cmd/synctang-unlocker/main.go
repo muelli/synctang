@@ -36,6 +36,7 @@ commands:
           or --replace one that is already enrolled)
   agent   run the systemd password agent, answering recovery attempts
   status  show which key holders are enrolled and this machine's identity
+  devices list the LUKS devices on this machine and what is enrolled on each
   pair    show a QR code and enrol the key holder that scans it
   open    wait for a key holder, then open a LUKS volume (an external drive,
           say) that is not asking for a password at boot
@@ -78,6 +79,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runPair(args[1:], stdout, stderr)
 	case "status":
 		return runStatus(args[1:], stdout, stderr)
+	case "devices":
+		return runDevices(args[1:], stdout, stderr)
 	case "open":
 		return runOpen(args[1:], stdout, stderr)
 	default:
@@ -89,7 +92,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 func runEnrol(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("enrol", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	device := fs.String("device", "", "LUKS2 device or image to enrol")
+	device := fs.String("device", "", "LUKS2 device or image to enrol (\"synctang-unlocker devices\" lists them)")
 	pubkeyHex := fs.String("pubkey", "", "recipient's public key, hex-encoded (from synctang-keyholder export-pubkey)")
 	passphraseFile := fs.String("existing-passphrase-file", "", "file containing an existing valid LUKS passphrase (- for stdin)")
 	name := fs.String("name", "", "this machine's name, shown to the key holder")
@@ -105,6 +108,11 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 
 	if *keyslot != "" && *remove == "" && *replace == "" {
 		fmt.Fprintln(stderr, "synctang-unlocker: --keyslot goes with --remove or --replace")
+		return 2
+	}
+
+	if *device == "" {
+		fmt.Fprintf(stderr, "synctang-unlocker: --device is required: %s\n", deviceHint())
 		return 2
 	}
 

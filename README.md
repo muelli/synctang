@@ -102,6 +102,15 @@ does work (not for `pair`).
 
     read -rsp 'LUKS passphrase: ' PASS
 
+Not sure which device holds the volume? `synctang-unlocker devices` (as root) lists the
+LUKS devices on the machine with their UUID, size, the name each is open under, and how
+many key holders are enrolled; `enrol` and `pair` print the same list when `--device` is
+left out.
+
+    synctang-unlocker devices
+    DEVICE     UUID                                  SIZE     OPEN AS              SYNCTANG
+    /dev/vda3  91ae9308-22e5-4eba-af83-cc26c3c87818  5.0 GiB  synctang_test_crypt  2 key holders
+
 The first `pair` or `enrol` creates the machine's network identity in
 `/etc/synctang/machine.pem`. Run `dracut --force` after it, so the initrd
 carries that identity; the token itself is read from the disk at boot.

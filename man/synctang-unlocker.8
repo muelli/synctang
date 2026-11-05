@@ -26,6 +26,8 @@ synctang\-unlocker \- unlock a LUKS volume with the approval of a key holder
 .B synctang\-unlocker status
 .RI [ flags ]
 .br
+.B synctang\-unlocker devices
+.br
 .B synctang\-unlocker agent
 .RI [ flags ]
 .br
@@ -285,6 +287,33 @@ and the systemd ask-password directory.
 This machine's persistent transport identity.
 Default
 .BR /etc/synctang/machine.pem .
+.SS devices
+Lists the LUKS devices on this machine, so that the device to give
+.B \-\-device
+does not have to be guessed.
+It reads the headers of the block devices in
+.BR /proc/partitions ,
+which takes root, and prints one line for each LUKS volume: the device, its UUID, its
+size, the name it is open under (or
+.BR \- ),
+and what synctang has on it:
+.B no token
+for a volume nothing has been enrolled on,
+.B token, no key holders
+for a token with nobody left in it,
+.B 1 key holder
+or
+.B N key holders
+for an enrolled volume, and
+.B LUKS1, not supported
+for a volume in the older format, which synctang cannot use.
+It exits with status 1 and says so when there is no LUKS device, or when it is not root.
+.B enrol
+and
+.B pair
+name this command, and list the volumes they find, when
+.B \-\-device
+is left out.
 .SS agent
 Runs the systemd password agent: it waits for a key holder to connect and to
 answer one recovery attempt at a time, checks that the recovered secret really

@@ -18,17 +18,8 @@ import (
 // naming the device the way initramfs-tools' askpass could rely on.
 func blockDevices(procPartitions string) []string {
 	var devices []string
-	for _, line := range strings.Split(procPartitions, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) != 4 || fields[0] == "major" {
-			continue
-		}
-		name := fields[3]
-		if strings.HasPrefix(name, "ram") || strings.HasPrefix(name, "loop") ||
-			strings.HasPrefix(name, "zram") || strings.HasPrefix(name, "sr") {
-			continue
-		}
-		devices = append(devices, "/dev/"+name)
+	for _, c := range blockCandidates(procPartitions) {
+		devices = append(devices, c.Path)
 	}
 	return devices
 }

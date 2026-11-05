@@ -221,7 +221,7 @@ const defaultPairWindow = 5 * time.Minute
 func runPair(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("pair", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	device := fs.String("device", "", "LUKS2 device or image to enrol the key holder on")
+	device := fs.String("device", "", "LUKS2 device or image to enrol the key holder on (\"synctang-unlocker devices\" lists them)")
 	passphraseFile := fs.String("existing-passphrase-file", "", "file containing an existing valid LUKS passphrase (- for stdin)")
 	name := fs.String("name", "", "this machine's name, shown to the key holder")
 	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, "path to this machine's persistent transport identity")
@@ -238,8 +238,12 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	if *device == "" || *passphraseFile == "" {
-		fmt.Fprintln(stderr, "synctang-unlocker: --device and --existing-passphrase-file are required")
+	if *device == "" {
+		fmt.Fprintf(stderr, "synctang-unlocker: --device is required: %s\n", deviceHint())
+		return 2
+	}
+	if *passphraseFile == "" {
+		fmt.Fprintln(stderr, "synctang-unlocker: --existing-passphrase-file is required")
 		return 2
 	}
 
