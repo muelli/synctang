@@ -332,6 +332,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		err := runPairOnce(ctx, opts)
 		if err == nil {
 			fmt.Fprintln(stdout, "paired. The key holder can now unlock this volume.")
+			fmt.Fprintln(stdout, rehearsalHint(*device))
 			// The first pairing on a machine makes its identity, which the initrd built
 			// before then does not carry.
 			return afterEnrolmentFor(stdout, stderr, *machineKeyFile, *networkConf, *rebuild)

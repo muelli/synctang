@@ -219,6 +219,27 @@ holder, its transport ID, keyslot and a short key id. Read-only. Run it
 before a revocation: naming the wrong transport ID revokes the wrong key
 holder.
 
+### Rehearse the first reboot
+
+Before the first reboot of a machine that was just set up, run
+
+    sudo synctang-unlocker rehearse
+
+(`pair` suggests it when it is done). It checks what the boot needs: that the initrd of the
+running kernel carries this machine's identity and `network.conf`, has the `synctang` and
+`network` dracut modules, holds the same `synctang-unlocker` that is installed (an upgrade that
+did not rebuild the initrd leaves the old one in it), and that the kernel command line does not
+carry `rd.synctang=0`. Each is `ok`, `PROBLEM` with the fix, or `unchecked` with the reason. Then
+it waits for a key holder, as `open` does, through the relay and discovery servers the machine
+would use at boot; you approve on the phone or the laptop; and it checks that what the machine
+recovered opens the volume. Nothing is opened: the volume of a running machine is in use, and the
+check is the one the agent makes at boot. `--initrd-only` does the first part alone.
+
+A pass means a key holder is paired against this machine's real identity, the network settings work
+from outside, and its key opens the volume. It cannot test the network in early boot (DHCP in the
+initrd) or that the initrd starts, only a reboot does; if either fails the machine still shows its
+ordinary passphrase prompt on the console, and the passphrase still works.
+
 ### Unlock
 
 At boot the agent starts alongside the ordinary console prompt; whoever

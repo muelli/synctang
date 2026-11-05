@@ -82,6 +82,10 @@ paired again, and nothing migrates an old file layout.
   compare the initrd of the running kernel with the identity and `network.conf` by hash
   and say so when it is wrong, and `--rebuild-initrd` on `pair` and `enrol` runs
   `dracut --force` when it is. Only the running kernel's initrd is checked.
+  `rehearse` goes further without a reboot: it checks the initrd's modules, that the agent in it
+  is the installed one and that the kernel command line leaves the agent on, then runs the
+  agent's own exchange with a key holder and checks the recovered secret against a keyslot,
+  mapping nothing. It cannot test the network in early boot or the initrd starting.
 - **WP7** (VM acceptance): all eleven acceptance items pass (`TESTREPORT.md`). A4 was
   the last, verified 2026-09-21 on a real StrongBox phone against a machine that had
   been waiting at its LUKS prompt for over eleven hours.

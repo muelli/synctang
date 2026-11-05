@@ -28,6 +28,9 @@ synctang\-unlocker \- unlock a LUKS volume with the approval of a key holder
 .br
 .B synctang\-unlocker devices
 .br
+.B synctang\-unlocker rehearse
+.RI [ flags ]
+.br
 .B synctang\-unlocker completion
 .I shell
 .br
@@ -362,6 +365,90 @@ and
 name this command, and list the volumes they find, when
 .B \-\-device
 is left out.
+.SS rehearse
+Rehearses the unlock of the next boot on the running machine, so that the first reboot of a
+machine that was just set up holds fewer surprises.
+It does two things, in this order.
+.PP
+First it checks what the boot needs, without a key holder: that the initrd of the running kernel
+carries this machine's identity and the current
+.B network.conf
+(as
+.B status
+does); that it has the
+.B synctang
+and
+.B network
+dracut modules; that the agent in it is the installed one, which a package upgrade that did not
+rebuild the initrd leaves untrue; and that the kernel command line does not carry
+.BR rd.synctang=0 .
+Each is reported as
+.BR ok ,
+.B PROBLEM
+(with what is wrong and the fix) or
+.B unchecked
+(with why it could not be looked at, for example when
+.B lsinitrd
+is missing).
+Any problem ends the command with status 1 before anyone is asked to approve anything.
+.PP
+Then, unless
+.B \-\-initrd\-only
+is given, it waits for a key holder, as
+.B open
+does, over the relay and discovery servers this machine would use: the key holder approves, the
+secret it recovers is checked against a keyslot of the volume, and nothing else is done with it.
+Nothing is opened: the volume of a running machine is in use, and a second
+.B cryptsetup open
+of it is refused, where the check the agent makes at boot, which
+.BR cryptsetup (8)
+calls testing a passphrase, is not.
+A pass proves that a key holder is paired against this machine's real identity, that the relay and
+discovery settings work from outside, and that its key opens the volume.
+It does not prove the network in early boot (DHCP in the initrd) or that the initrd starts, which only
+a reboot does; the command says so.
+If either goes wrong at boot the machine still shows its ordinary passphrase prompt on the console.
+.PP
+It needs root.
+.B pair
+suggests it when a key holder has been enrolled.
+.TP
+\fB\-\-device\fR \fIpath\fR
+The enrolled LUKS device to rehearse.
+Default: the one device that carries a synctang token; with several, name one
+.RB ( devices
+lists them).
+.TP
+\fB\-\-name\fR \fIname\fR
+This machine's name, shown to the key holder.
+Default: the name given at enrolment.
+.TP
+\fB\-\-machine\-key\-file\fR \fIfile\fR
+This machine's persistent transport identity.
+Default
+.BR /etc/synctang/machine.pem ;
+the initrd carries only that one, so the check of its identity is skipped for another.
+.TP
+\fB\-\-timeout\fR \fIduration\fR
+How long to wait for a key holder.
+Default 5 minutes.
+.TP
+\fB\-\-initrd\-only\fR
+Only check the initrd and the boot settings; wait for no key holder.
+.TP
+\fB\-\-direct\-addr\fR \fIhost:port\fR
+Listen on this address directly, bypassing relay and discovery.
+For testing only.
+.TP
+\fB\-\-network\-conf\fR \fIfile\fR
+The file naming the relay pool and discovery servers to use instead of the public ones.
+The kernel arguments
+.B rd.synctang.relay=
+and
+.B rd.synctang.discovery=
+override it.
+Default
+.BR /etc/synctang/network.conf .
 .SS agent
 Runs the systemd password agent: it waits for a key holder to connect and to
 answer one recovery attempt at a time, checks that the recovered secret really

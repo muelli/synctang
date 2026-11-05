@@ -168,31 +168,40 @@ func runOpen(args []string, stdout, stderr io.Writer) int {
 }
 
 // openOnDemand waits up to timeout for a key holder whose answer opens device.
-// An attempt that fails (a key holder that declines, one that answers with the
-// wrong key, a dropped connection) is reported and followed by another, as
-// "synctang-unlocker pair" does, until one works or the time is up.
 func openOnDemand(device, name, machineName string, cert tls.Certificate, timeout time.Duration, directAddr string, network transport.NetworkConfig, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "waiting for a key holder to approve opening %s as /dev/mapper/%s\n", device, name)
 	fmt.Fprintf(stdout, "this machine's transport id: %s\n", protocol.NewDeviceID(cert.Certificate[0]))
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	tr := newAgentTransport(cert, nil, directAddr, network)
 	deliver := func(key []byte) error {
 		if err := openVolume(device, name, key); err != nil {
 			return fmt.Errorf("synctang-unlocker: opening %s: %w", device, err)
 		}
 		return nil
 	}
+	if !waitForApproval(device, machineName, cert, timeout, directAddr, network, deliver, stderr) {
+		return 1
+	}
+	fmt.Fprintf(stdout, "unlocked: /dev/mapper/%s\n", name)
+	return 0
+}
+
+// waitForApproval waits up to timeout for a key holder whose answer opens device, and hands
+// what it recovered to deliver. An attempt that fails (a key holder that declines, one that
+// answers with the wrong key, a dropped connection) is reported and followed by another, as
+// "synctang-unlocker pair" does, until one works or the time is up. "open" and "rehearse" share
+// it: they differ only in what is done with the key.
+func waitForApproval(device, machineName string, cert tls.Certificate, timeout time.Duration, directAddr string, network transport.NetworkConfig, deliver deliverFunc, stderr io.Writer) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	tr := newAgentTransport(cert, nil, directAddr, network)
 	for {
 		err := serveOneExchange(ctx, device, machineName, transport.ListenOptions{DirectAddr: directAddr}, tr, deliver)
 		if err == nil {
-			fmt.Fprintf(stdout, "unlocked: /dev/mapper/%s\n", name)
-			return 0
+			return true
 		}
 		if ctx.Err() != nil {
 			fmt.Fprintf(stderr, "synctang-unlocker: nobody approved within %s\n", timeout)
-			return 1
+			return false
 		}
 		fmt.Fprintf(stderr, "synctang-unlocker: %v (still waiting)\n", err)
 		select {

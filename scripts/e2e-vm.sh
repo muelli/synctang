@@ -275,6 +275,26 @@ check "network.conf is in the initrd" grep -q 'etc/synctang/network.conf' <<< "$
 check "the agent is in the initrd" grep -q 'usr/local/bin/synctang-unlocker' <<< "$INITRD"
 
 # ---------------------------------------------------------------------------------
+log "a rehearsal of the unlock, on the running machine"
+vm 'sudo synctang-unlocker rehearse --initrd-only' > "$LOGS/rehearse-initrd.log" 2>&1 \
+	&& echo "ok   rehearse finds nothing wrong with the initrd" \
+	|| { echo "FAIL rehearse finds a problem with the initrd"; cat "$LOGS/rehearse-initrd.log"; FAILED=1; }
+vm "sudo bash -c 'nohup synctang-unlocker rehearse --timeout 4m > /tmp/rehearse.out 2>&1 &'"
+for _ in $(seq 1 60); do
+	vm 'grep -aq "waiting for a key holder" /tmp/rehearse.out' && break
+	sleep 1
+done
+XDG_CONFIG_HOME="$LAPTOP" timeout 250 "$KEYHOLDER" unlock --yes --timeout 4m --discovery "$DISCOVERY" "$MACHINE_ID" \
+	> "$LOGS/rehearse-unlock.log" 2>&1 || { cat "$LOGS/rehearse-unlock.log" >&2; FAILED=1; }
+for _ in $(seq 1 30); do
+	vm 'pgrep -f "[s]ynctang-unlocker rehearse" > /dev/null' || break
+	sleep 1
+done
+check "the rehearsal passed" vm 'grep -aq "rehearsal passed" /tmp/rehearse.out'
+check "the rehearsal said what it could not test" vm 'grep -aq "not tested" /tmp/rehearse.out'
+check "the rehearsal opened nothing" vm '[ "$(ls /dev/mapper | grep -c synctang-)" -eq 0 ]'
+
+# ---------------------------------------------------------------------------------
 # reboot_to_prompt: restarts the VM and waits until it is asking for the passphrase.
 reboot_to_prompt() {
 	MARK=$(log_size)
