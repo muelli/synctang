@@ -198,7 +198,9 @@ sequence is wrapped for tmux's `allow-passthrough`).
 On the laptop:
 
     synctang-keyholder init
-    synctang-keyholder export-pubkey
+
+It prints the public key and the transport ID, and the command below with them filled in
+(`synctang-keyholder export-pubkey` prints the two values again later).
 
 On the machine, with the two values that printed:
 

@@ -46,6 +46,11 @@ writes them under
 .IR <user\ config\ dir> /synctang\-keyholder/
 (see
 .BR FILES ).
+It then prints the public key and the transport ID, the same two lines as
+.BR export\-pubkey ,
+and the
+.B synctang\-unlocker enrol
+command to run on the machine, with those values filled in.
 It refuses to overwrite an existing key, because the volumes enrolled against it
 could no longer be opened.
 The transport identity is always kept if it already exists, even with

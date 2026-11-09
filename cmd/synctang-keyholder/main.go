@@ -8,6 +8,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -161,16 +162,34 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	// always loaded rather than regenerated when --force is given: a fresh
 	// certificate here would change this key holder's Device ID, silently
 	// breaking every AuthorizedPeers list it was already enrolled into.
-	if _, err := transport.LoadOrCreateCert(*transportKeyFile); err != nil {
+	cert, err := transport.LoadOrCreateCert(*transportKeyFile)
+	if err != nil {
 		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
 		return 1
 	}
+	pub, err := mrcore.P256().ScalarBaseMult(s)
+	if err != nil {
+		fmt.Fprintf(stderr, "synctang-keyholder: computing public key: %v\n", err)
+		return 1
+	}
+	pubHex := hex.EncodeToString(pub)
+	transportID := protocol.NewDeviceID(cert.Certificate[0]).String()
 
 	fmt.Fprintf(stdout, "generated a new key, held by %s\n  %s\n", st.Name(), st.Describe())
 	if note != "" {
 		fmt.Fprintf(stderr, "synctang-keyholder: %s\n", note)
 	}
-	fmt.Fprintf(stdout, "transport identity at %s\n", *transportKeyFile)
+	fmt.Fprintf(stdout, "transport identity at %s\n\n", *transportKeyFile)
+
+	// What happens next is enrolling this key on a machine, so say so, with the values that
+	// command needs (export-pubkey prints the same two lines again).
+	fmt.Fprintf(stdout, "S: %s\ntransport-id: %s\n\n", pubHex, transportID)
+	fmt.Fprintf(stdout, "To let a machine be unlocked with this key, run this on the machine, as root\n"+
+		"(synctang-keyholder export-pubkey prints the two lines above again):\n\n"+
+		"  synctang-unlocker enrol --device /dev/<device> --name <a name for this laptop> \\\n"+
+		"    --pubkey %s \\\n"+
+		"    --recipient-transport-id %s \\\n"+
+		"    --existing-passphrase-file <(printf %%s \"$PASS\")\n", pubHex, transportID)
 	return 0
 }
 

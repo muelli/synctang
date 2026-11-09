@@ -166,3 +166,36 @@ func TestInitForceSaysWhenTheOldCopyCouldNotBeChecked(t *testing.T) {
 		t.Errorf("nothing said about the key left in the keyring:\n%s", errOut)
 	}
 }
+
+// What does a person do after init? Enrol the key. So init prints what enrol needs, and the
+// command to run it with, instead of sending them to find export-pubkey.
+func TestInitPrintsWhatEnrolNeedsAndHowToUseIt(t *testing.T) {
+	keyFile, transportFile := keyholderDir(t)
+	code, out, errOut := runKH("init", "--store", "file", "--key-file", keyFile, "--transport-key-file", transportFile)
+	if code != 0 {
+		t.Fatalf("exit %d: %s%s", code, out, errOut)
+	}
+	_, exported, _ := runKH("export-pubkey", "--key-file", keyFile, "--transport-key-file", transportFile)
+	var pub, id string
+	for _, line := range strings.Split(exported, "\n") {
+		if v, ok := strings.CutPrefix(line, "S: "); ok {
+			pub = v
+		}
+		if v, ok := strings.CutPrefix(line, "transport-id: "); ok {
+			id = v
+		}
+	}
+	if pub == "" || id == "" {
+		t.Fatalf("export-pubkey printed %q", exported)
+	}
+	for _, line := range []string{"S: " + pub, "transport-id: " + id} {
+		if !strings.Contains(out, line+"\n") {
+			t.Errorf("init did not print %q:\n%s", line, out)
+		}
+	}
+	for _, want := range []string{"synctang-unlocker enrol", "--pubkey " + pub, "--recipient-transport-id " + id, "export-pubkey"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the next step does not say %q:\n%s", want, out)
+		}
+	}
+}
