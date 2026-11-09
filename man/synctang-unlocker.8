@@ -98,6 +98,10 @@ With
 it revokes a key holder, destroying its keyslot and removing its entry from the
 token, instead of adding one.
 With
+.B \-\-remove\-keyslot
+it does the same for the entry in one keyslot, whatever its transport identity, which is how an
+entry that has none is removed.
+With
 .B \-\-replace
 it swaps a key holder's key for a new one, enrolling the new key before the
 old one is revoked, so the volume can be opened throughout.
@@ -170,6 +174,20 @@ and
 Rotate the enrolled key holder with this transport identity to the key given
 with
 .BR \-\-pubkey .
+.TP
+\fB\-\-remove\-keyslot\fR \fIn\fR
+Revoke the enrolled entry in keyslot
+.IR n ,
+destroying the keyslot, whatever the entry's transport identity.
+For an entry that has none, which
+.B \-\-remove
+cannot name and which can never be used;
+.B status
+warns about it and gives the command.
+Not to be combined with
+.B \-\-remove
+or
+.BR \-\-replace .
 .TP
 \fB\-\-keyslot\fR \fIn\fR
 With
@@ -318,6 +336,8 @@ the
 .B mr\-1
 token, and for each enrolled key holder its transport identity, keyslot and a
 short key identifier.
+It warns about an entry that has no transport identity (which the agent can never answer) and says
+how to remove it, and says so when no entry has one, since the agent then does not listen at all.
 It also says whether the initrd of the running kernel carries this machine's identity and the
 current
 .BR network.conf ,

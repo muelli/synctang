@@ -95,13 +95,32 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 			// Worth saying rather than skipping: a recipient with no
 			// transport id can never be connected to, and cannot be
 			// named to "enrol --remove" either.
-			id = "(none recorded: cannot be dialled or revoked by id)"
+			id = "(none recorded: cannot be dialled, and is revoked by its keyslot)"
 		}
 		keyslot := "(unknown)"
 		if i < len(tok.Keyslots) {
 			keyslot = tok.Keyslots[i]
 		}
 		fmt.Fprintf(stdout, "  %s  keyslot %s  kid %s\n", id, keyslot, shortKid(rec.Kid))
+	}
+
+	// An entry without a transport id is never answered, and if none has one the agent does not
+	// listen at all.
+	var withoutID []int
+	for i, rec := range tok.Recipients {
+		if id, ok := rec.TransportDeviceID(); !ok || id == "" {
+			withoutID = append(withoutID, i)
+		}
+	}
+	for _, i := range withoutID {
+		slot := keyslotOf(tok, i)
+		fmt.Fprintf(stdout, "WARNING: the key holder in keyslot %s has no transport id, so the agent cannot tell it from a stranger and will never answer it. "+
+			"Remove it with: synctang-unlocker enrol --device %s --remove-keyslot %s --existing-passphrase-file ... "+
+			"and enrol it again with --recipient-transport-id (\"synctang-keyholder export-pubkey\" prints it)\n", slot, activeDevice, slot)
+	}
+	if len(withoutID) == len(tok.Recipients) {
+		fmt.Fprintln(stdout, "WARNING: no enrolled key holder has a transport id, so the agent will not listen at all, at boot or for \"rehearse\"; "+
+			"enrol with --recipient-transport-id")
 	}
 
 	// A transport id enrolled more than once leaves the agent unable to tell

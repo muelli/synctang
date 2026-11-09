@@ -129,6 +129,7 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, "path to this machine's persistent transport identity")
 	remove := fs.String("remove", "", "revoke the enrolled recipient with this transport id instead of adding one")
 	replace := fs.String("replace", "", "rotate the enrolled recipient with this transport id to --pubkey, revoking the old key")
+	removeKeyslot := fs.String("remove-keyslot", "", "revoke the enrolled entry in this keyslot, whatever its transport id (for one that has none, which --remove cannot name; \"status\" says which)")
 	keyslot := fs.String("keyslot", "", "with --remove or --replace: the keyslot of the entry to act on, when several enrolled entries share the transport id")
 	rebuild := fs.Bool("rebuild-initrd", false, "after enrolling, run dracut --force if the initrd does not carry this machine's identity and network.conf")
 	if err := fs.Parse(args); err != nil {
@@ -178,6 +179,29 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		fmt.Fprintf(stdout, "rotated recipient %s on %s; its previous key no longer opens the device\n", *replace, *device)
+		return 0
+	}
+
+	if *removeKeyslot != "" {
+		if *remove != "" || *replace != "" {
+			fmt.Fprintln(stderr, "synctang-unlocker: --remove-keyslot cannot be combined with --remove or --replace")
+			return 2
+		}
+		if *device == "" || *passphraseFile == "" {
+			fmt.Fprintln(stderr, "synctang-unlocker: --device and --existing-passphrase-file are required with --remove-keyslot")
+			return 2
+		}
+		passphrase, err := readPassphrase(*passphraseFile)
+		if err != nil {
+			fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
+			return 1
+		}
+		defer mrcore.Wipe(passphrase)
+		if err := removeRecipientByKeyslot(*device, passphrase, *removeKeyslot); err != nil {
+			fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "revoked the key holder in keyslot %s on %s\n", *removeKeyslot, *device)
 		return 0
 	}
 

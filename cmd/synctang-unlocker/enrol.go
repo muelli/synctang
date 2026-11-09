@@ -263,6 +263,21 @@ func removeRecipient(device string, existingPassphrase []byte, recipientTranspor
 	return removeRecipientAt(device, existingPassphrase, tok, existingTokenID, idx)
 }
 
+// removeRecipientByKeyslot revokes the entry that sits in keyslot, whatever its transport id,
+// including none: the way to remove an entry that "enrol --remove" cannot name.
+func removeRecipientByKeyslot(device string, existingPassphrase []byte, keyslot string) error {
+	tok, tokenID, err := loadEnrolledToken(device)
+	if err != nil {
+		return err
+	}
+	for i, slot := range tok.Keyslots {
+		if slot == keyslot {
+			return removeRecipientAt(device, existingPassphrase, tok, tokenID, i)
+		}
+	}
+	return fmt.Errorf("keyslot %s holds no enrolled key holder (they are in keyslots: %s)", keyslot, strings.Join(tok.Keyslots, ", "))
+}
+
 // loadEnrolledToken reads device's mr-1 token and insists it actually
 // has recipients, so callers that are about to destroy a keyslot never
 // work from a token that was invented on the spot by loadToken. The
