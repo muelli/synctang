@@ -92,6 +92,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	keyFile := keyFileFlag(fs)
 	transportKeyFile := transportKeyFileFlag(fs)
 	force := fs.Bool("force", false, "overwrite an existing key")
+	storeSpec := fs.String("store", "auto", "where to keep the key: "+storeNames+" (auto is the desktop keyring when there is one, else a plain file)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -104,12 +105,54 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	s, err := generateAndSave(*keyFile, *force)
+	st, note, err := chooseStore(*storeSpec, *keyFile)
 	if err != nil {
 		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+		if strings.Contains(err.Error(), "unknown store") {
+			return 2
+		}
+		return 1
+	}
+
+	// A key that any store already holds for this key file is not replaced without --force, and
+	// when it is, the old copy goes: a replaced key left behind in another store is a key nobody
+	// remembers.
+	var old keyStore
+	if existing, err := openStore(*keyFile); err == nil {
+		if ok, err := existing.Exists(); err != nil && !*force {
+			fmt.Fprintf(stderr, "synctang-keyholder: cannot tell whether a key is already held by %s (%v); use --force to make a new one anyway\n", existing.Name(), err)
+			return 1
+		} else if ok {
+			if !*force {
+				fmt.Fprintf(stderr, "synctang-keyholder: a key is already held by %s, use --force to replace it\n", existing.Name())
+				return 1
+			}
+			old = existing
+		}
+	} else if !errors.Is(err, errNoKey) && !*force {
+		fmt.Fprintf(stderr, "synctang-keyholder: %v; use --force to make a new key anyway\n", err)
+		return 1
+	}
+
+	s, err := mrcore.P256().RandomScalar()
+	if err != nil {
+		fmt.Fprintf(stderr, "synctang-keyholder: generating key: %v\n", err)
 		return 1
 	}
 	defer mrcore.Wipe(s)
+	if err := st.Save(s, *force); err != nil {
+		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+		return 1
+	}
+	if err := writeStoreRecord(*keyFile, st.Name()); err != nil {
+		fmt.Fprintf(stderr, "synctang-keyholder: the key was saved, but its record could not be written: %v\n", err)
+		return 1
+	}
+	if old != nil && old.Name() != st.Name() {
+		if err := old.Delete(); err != nil {
+			fmt.Fprintf(stderr, "synctang-keyholder: the old key could not be removed from %s: %v\n", old.Name(), err)
+		}
+	}
 
 	// The transport identity is created alongside the MR-1 key: both
 	// together are "this key holder's identity". Unlike the scalar, it is
@@ -121,7 +164,10 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	fmt.Fprintf(stdout, "generated a new key at %s\n", *keyFile)
+	fmt.Fprintf(stdout, "generated a new key, held by %s\n  %s\n", st.Name(), st.Describe())
+	if note != "" {
+		fmt.Fprintf(stderr, "synctang-keyholder: %s\n", note)
+	}
 	fmt.Fprintf(stdout, "transport identity at %s\n", *transportKeyFile)
 	return 0
 }

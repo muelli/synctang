@@ -160,3 +160,31 @@ func openStore(keyFile string) (keyStore, error) {
 	}
 	return f, nil
 }
+
+// keyringAvailable is the probe init uses to choose a store; a variable so that tests can say
+// whether there is a keyring.
+var keyringAvailable = secretServiceAvailable
+
+// storeNames are what --store accepts, in the order they are offered.
+const storeNames = "auto, file, secret-service"
+
+// chooseStore is the store init puts a new key in. "auto" is the keyring when there is one and a
+// plain file when there is not, and says so: the person is told what was chosen and why, and a
+// store that was asked for by name is never replaced by another. The note is what to tell them.
+func chooseStore(spec, keyFile string) (keyStore, string, error) {
+	switch spec {
+	case "file":
+		return newFileStore(keyFile), "", nil
+	case "secret-service":
+		if err := keyringAvailable(); err != nil {
+			return nil, "", fmt.Errorf("--store secret-service was asked for, but there is no keyring to ask: %w", err)
+		}
+		return newSecretServiceStore(keyFile), "", nil
+	case "auto":
+		if err := keyringAvailable(); err != nil {
+			return newFileStore(keyFile), fmt.Sprintf("no keyring is available in this session (%v), so the key is kept in a plain file", err), nil
+		}
+		return newSecretServiceStore(keyFile), "", nil
+	}
+	return nil, "", fmt.Errorf("unknown store %q for --store: want one of %s", spec, storeNames)
+}

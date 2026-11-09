@@ -68,7 +68,32 @@ in the key holder's directory (see
 .BR FILES ).
 .TP
 \fB\-\-force\fR
-Overwrite an existing key.
+Replace an existing key, held by whichever store.
+The old copy is removed from its store if the new key is kept in another, so that no replaced key
+is left behind.
+.TP
+\fB\-\-store\fR \fIstore\fR
+Where to keep the long-term key:
+.BR file ,
+.BR secret\-service ,
+or
+.B auto
+(the default).
+.B file
+is a plain file with mode 0600: it keeps out other users of the laptop and nothing else.
+.B secret\-service
+is the desktop's keyring over D-Bus (GNOME Keyring, KWallet or KeePassXC), encrypted with a key that
+the login unlocks, so a copy of the configuration directory is useless without the login password;
+it is unlocked for the whole session, so software running as you can ask for it, and it needs a session
+bus, which plain ssh does not give.
+.B auto
+is the keyring when there is one and a plain file, with a warning that says why, when there is not.
+A store named explicitly is never replaced by another when it is not there: the command fails.
+The choice is recorded beside the key file, in
+.BR key.store ,
+which holds no secret; the other commands follow it.
+.BR status
+says what holds the key.
 .SS export\-pubkey
 Prints the public key and the transport identity, to give to
 .BR "synctang\-unlocker enrol" :
