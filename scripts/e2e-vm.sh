@@ -276,9 +276,13 @@ check "the agent is in the initrd" grep -q 'usr/local/bin/synctang-unlocker' <<<
 
 # ---------------------------------------------------------------------------------
 log "a rehearsal of the unlock, on the running machine"
-vm 'sudo synctang-unlocker rehearse --initrd-only' > "$LOGS/rehearse-initrd.log" 2>&1 \
-	&& echo "ok   rehearse finds nothing wrong with the initrd" \
-	|| { echo "FAIL rehearse finds a problem with the initrd"; cat "$LOGS/rehearse-initrd.log"; FAILED=1; }
+if vm 'sudo synctang-unlocker rehearse --initrd-only' > "$LOGS/rehearse-initrd.log" 2>&1; then
+	echo "ok   rehearse finds nothing wrong with the initrd"
+else
+	echo "FAIL rehearse finds a problem with the initrd"
+	cat "$LOGS/rehearse-initrd.log"
+	FAILED=1
+fi
 vm "sudo bash -c 'nohup synctang-unlocker rehearse --timeout 4m > /tmp/rehearse.out 2>&1 &'"
 for _ in $(seq 1 60); do
 	vm 'grep -aq "waiting for a key holder" /tmp/rehearse.out' && break
@@ -292,6 +296,7 @@ for _ in $(seq 1 30); do
 done
 check "the rehearsal passed" vm 'grep -aq "rehearsal passed" /tmp/rehearse.out'
 check "the rehearsal said what it could not test" vm 'grep -aq "not tested" /tmp/rehearse.out'
+# shellcheck disable=SC2016  # runs in the VM, where the substitution is wanted
 check "the rehearsal opened nothing" vm '[ "$(ls /dev/mapper | grep -c synctang-)" -eq 0 ]'
 
 # ---------------------------------------------------------------------------------
