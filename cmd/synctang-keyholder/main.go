@@ -109,74 +109,11 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	st, note, err := chooseStore(*storeSpec, *keyFile)
-	if err != nil {
-		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
-		if strings.Contains(err.Error(), "unknown store") {
-			return 2
-		}
-		return 1
+	made, code := makeKey(*keyFile, *transportKeyFile, *storeSpec, *force, stderr)
+	if made == nil {
+		return code
 	}
-
-	// A key that any store already holds for this key file is not replaced without --force, and
-	// when it is, the old copy goes: a replaced key left behind in another store is a key nobody
-	// remembers.
-	var old keyStore
-	if existing, err := openStore(*keyFile); err == nil {
-		if ok, err := existing.Exists(); err != nil && !*force {
-			fmt.Fprintf(stderr, "synctang-keyholder: cannot tell whether a key is already held by %s (%v); use --force to make a new one anyway\n", existing.Name(), err)
-			return 1
-		} else if err != nil {
-			fmt.Fprintf(stderr, "synctang-keyholder: could not check whether %s still holds the old key (%v): if it does, remove it yourself once it is reachable, because a replaced key left behind is one nobody remembers\n", existing.Name(), err)
-		} else if ok {
-			if !*force {
-				fmt.Fprintf(stderr, "synctang-keyholder: a key is already held by %s, use --force to replace it\n", existing.Name())
-				return 1
-			}
-			old = existing
-		}
-	} else if !errors.Is(err, errNoKey) && !*force {
-		fmt.Fprintf(stderr, "synctang-keyholder: %v; use --force to make a new key anyway\n", err)
-		return 1
-	}
-
-	s, err := mrcore.P256().RandomScalar()
-	if err != nil {
-		fmt.Fprintf(stderr, "synctang-keyholder: generating key: %v\n", err)
-		return 1
-	}
-	defer mrcore.Wipe(s)
-	if err := st.Save(s, *force); err != nil {
-		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
-		return 1
-	}
-	if err := writeStoreRecord(*keyFile, st.Name()); err != nil {
-		fmt.Fprintf(stderr, "synctang-keyholder: the key was saved, but its record could not be written: %v\n", err)
-		return 1
-	}
-	if old != nil && old.Name() != st.Name() {
-		if err := old.Delete(); err != nil {
-			fmt.Fprintf(stderr, "synctang-keyholder: the old key could not be removed from %s: %v\n", old.Name(), err)
-		}
-	}
-
-	// The transport identity is created alongside the MR-1 key: both
-	// together are "this key holder's identity". Unlike the scalar, it is
-	// always loaded rather than regenerated when --force is given: a fresh
-	// certificate here would change this key holder's Device ID, silently
-	// breaking every AuthorizedPeers list it was already enrolled into.
-	cert, err := transport.LoadOrCreateCert(*transportKeyFile)
-	if err != nil {
-		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
-		return 1
-	}
-	pub, err := mrcore.P256().ScalarBaseMult(s)
-	if err != nil {
-		fmt.Fprintf(stderr, "synctang-keyholder: computing public key: %v\n", err)
-		return 1
-	}
-	pubHex := hex.EncodeToString(pub)
-	transportID := protocol.NewDeviceID(cert.Certificate[0]).String()
+	st, note, pubHex, transportID := made.store, made.note, made.pubHex, made.transportID
 
 	fmt.Fprintf(stdout, "generated a new key, held by %s\n  %s\n", st.Name(), st.Describe())
 	if note != "" {
@@ -194,6 +131,89 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		"    --recipient-transport-id %s \\\n"+
 		"    --existing-passphrase-file <(printf %%s \"$PASS\")\n", pubHex, transportID)
 	return 0
+}
+
+// madeKey is what makeKey made: where the key is kept and the two values a machine needs to enrol it.
+type madeKey struct {
+	store       keyStore
+	note        string
+	pubHex      string
+	transportID string
+}
+
+// makeKey generates a long-term key into the store spec names, and the transport identity beside it
+// if there is none. It reports what went wrong to stderr and returns the exit code to use.
+func makeKey(keyFile, transportKeyFile, storeSpec string, force bool, stderr io.Writer) (*madeKey, int) {
+	st, note, err := chooseStore(storeSpec, keyFile)
+	if err != nil {
+		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+		if strings.Contains(err.Error(), "unknown store") {
+			return nil, 2
+		}
+		return nil, 1
+	}
+
+	// A key that any store already holds for this key file is not replaced without --force, and
+	// when it is, the old copy goes: a replaced key left behind in another store is a key nobody
+	// remembers.
+	var old keyStore
+	if existing, err := openStore(keyFile); err == nil {
+		if ok, err := existing.Exists(); err != nil && !force {
+			fmt.Fprintf(stderr, "synctang-keyholder: cannot tell whether a key is already held by %s (%v); use --force to make a new one anyway\n", existing.Name(), err)
+			return nil, 1
+		} else if err != nil {
+			fmt.Fprintf(stderr, "synctang-keyholder: could not check whether %s still holds the old key (%v): if it does, remove it yourself once it is reachable, because a replaced key left behind is one nobody remembers\n", existing.Name(), err)
+		} else if ok {
+			if !force {
+				fmt.Fprintf(stderr, "synctang-keyholder: a key is already held by %s, use --force to replace it\n", existing.Name())
+				return nil, 1
+			}
+			old = existing
+		}
+	} else if !errors.Is(err, errNoKey) && !force {
+		fmt.Fprintf(stderr, "synctang-keyholder: %v; use --force to make a new key anyway\n", err)
+		return nil, 1
+	}
+
+	s, err := mrcore.P256().RandomScalar()
+	if err != nil {
+		fmt.Fprintf(stderr, "synctang-keyholder: generating key: %v\n", err)
+		return nil, 1
+	}
+	defer mrcore.Wipe(s)
+	if err := st.Save(s, force); err != nil {
+		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+		return nil, 1
+	}
+	if err := writeStoreRecord(keyFile, st.Name()); err != nil {
+		fmt.Fprintf(stderr, "synctang-keyholder: the key was saved, but its record could not be written: %v\n", err)
+		return nil, 1
+	}
+	if old != nil && old.Name() != st.Name() {
+		if err := old.Delete(); err != nil {
+			fmt.Fprintf(stderr, "synctang-keyholder: the old key could not be removed from %s: %v\n", old.Name(), err)
+		}
+	}
+
+	// The transport identity is created alongside the MR-1 key: both
+	// together are "this key holder's identity". Unlike the scalar, it is
+	// always loaded rather than regenerated when --force is given: a fresh
+	// certificate here would change this key holder's Device ID, silently
+	// breaking every AuthorizedPeers list it was already enrolled into.
+	cert, err := transport.LoadOrCreateCert(transportKeyFile)
+	if err != nil {
+		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+		return nil, 1
+	}
+	pub, err := mrcore.P256().ScalarBaseMult(s)
+	if err != nil {
+		fmt.Fprintf(stderr, "synctang-keyholder: computing public key: %v\n", err)
+		return nil, 1
+	}
+	pubHex := hex.EncodeToString(pub)
+	transportID := protocol.NewDeviceID(cert.Certificate[0]).String()
+
+	return &madeKey{store: st, note: note, pubHex: pubHex, transportID: transportID}, 0
 }
 
 func runExportPubkey(args []string, stdout, stderr io.Writer) int {
