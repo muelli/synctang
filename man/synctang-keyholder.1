@@ -97,7 +97,9 @@ it needs systemd 256 or later, not a desktop session, so it works over ssh; but 
 software running as you can run the tool itself, and the key that unseals it is on the same disk, so an image of
 the disk of a laptop that is not encrypted gives both.
 .B systemd\-creds:tpm2
-also seals it to this machine's TPM, which makes a copy of the disk useless without it, and ties the key to that
+also seals it to this machine's TPM (it refuses where there is none, and keeps its blob in
+.IR key.tpm2.cred ;
+not run on a machine with a TPM), which makes a copy of the disk useless without it, and ties the key to that
 machine: it cannot be moved, and may be lost if the TPM or its measured state changes, so keep a backup of the
 key some other way.
 .B auto
@@ -290,7 +292,9 @@ It holds no secret.
 .I <user\ config\ dir>/synctang\-keyholder/key.cred
 The key sealed by
 .BR systemd\-creds (1),
-when that is the store.
+when that is the store;
+.I key.tpm2.cred
+for the TPM variant.
 Mode 0600.
 Useless away from the machine and account that sealed it.
 .TP

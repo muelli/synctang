@@ -139,11 +139,20 @@ func storeFromSpec(spec, keyFile string) (keyStore, error) {
 	case "secret-service":
 		return newSecretServiceStore(keyFile), nil
 	case "systemd-creds":
-		return newCredStore(keyFile+".cred", false), nil
+		return newCredStore(credBlobPath(keyFile, false), false), nil
 	case "systemd-creds:tpm2":
-		return newCredStore(keyFile+".cred", true), nil
+		return newCredStore(credBlobPath(keyFile, true), true), nil
 	}
 	return nil, fmt.Errorf("unknown store %q (named in %s)", spec, storeRecordPath(keyFile))
+}
+
+// credBlobPath is where a credential store's blob lives. The two variants have their own, so that
+// replacing one with the other cannot delete the key it has just made.
+func credBlobPath(keyFile string, tpm2 bool) string {
+	if tpm2 {
+		return keyFile + ".tpm2.cred"
+	}
+	return keyFile + ".cred"
 }
 
 // openStore is the store that holds the key for keyFile: the one its record names, or, with no
@@ -189,7 +198,7 @@ func chooseStore(spec, keyFile string) (keyStore, string, error) {
 		if err := credsAvailable(tpm); err != nil {
 			return nil, "", fmt.Errorf("--store %s was asked for, but it cannot work here: %w", spec, err)
 		}
-		return newCredStore(keyFile+".cred", tpm), "", nil
+		return newCredStore(credBlobPath(keyFile, tpm), tpm), "", nil
 	case "auto":
 		if err := keyringAvailable(); err != nil {
 			return newFileStore(keyFile), fmt.Sprintf("no keyring is available in this session (%s), so the key is kept in a plain file", keyringReason(err)), nil

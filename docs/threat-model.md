@@ -76,9 +76,9 @@ What the key holder does to help, cheapest first:
 when it is made (`synctang-keyholder init --store`) and that `synctang-keyholder status` names.
 What each protects, against four attackers:
 
-| | plain file | keyring (`secret-service`) | `systemd-creds` | `systemd-creds:tpm2` |
+| | plain file | keyring (`secret-service`) | `systemd-creds` | `systemd-creds:tpm2` (not run on a TPM, see below) |
 | --- | --- | --- | --- | --- |
-| A copy of `~/.config` (a backup, a synced folder) | no: the file is the key | yes: encrypted with a key your login unlocks | yes: sealed by systemd for your account on this machine | yes |
+| A copy of `~/.config` (a backup, a synced folder) | no: the file is the key | yes, for GNOME Keyring with a keyring password (run): encrypted with a key your login unlocks | yes: sealed by systemd for your account on this machine | yes |
 | An image of the whole disk of an unencrypted laptop | no | yes, until the login password is guessed | no: the key that unseals it is on the same disk | yes: it is sealed to the TPM |
 | Another user of the laptop | yes | yes | yes | yes |
 | Software running as you, after login | no | no: the keyring is unlocked for the session and answers any process of yours | no: it can run `systemd-creds` itself | no |
@@ -87,11 +87,17 @@ What each protects, against four attackers:
 None of them stops software running as you: that needs something software cannot supply, a touch on a
 hardware key, and nothing here uses one. The prompt that `synctang-keyholder unlock` shows is a
 good habit and not a boundary, because the same software can call the same library. The
-TPM variant ties the key to one machine: it cannot be moved, and may be lost if the TPM or its measured
+keyring row was run against GNOME Keyring only. KWallet and KeePassXC were not tried, and they unlock differently
+(KeePassXC with its database password, KWallet with its own or a blank one); a keyring with a blank password,
+which automatic login often gives, protects nothing against a copy of its files. The TPM variant was never run on
+a machine with a TPM (the test machine has none), so what it protects is what systemd documents and not
+something seen here; it asks `systemd-analyze has-tpm2` first and refuses where that fails, because
+`systemd-creds` would otherwise seal to the machine key alone and say nothing. The TPM variant ties the key to one machine: it cannot be moved, and may be lost if the TPM or its measured
 state changes, so the key needs a backup some other way. The keyring needs a desktop session and a D-Bus
 session, which plain ssh does not give; `systemd-creds` needs systemd 256 or later but no desktop.
 The key passes through a Go string inside the keyring library and cannot be wiped from memory
-there, where the file and credential stores wipe their copy. On Android, see the next section.
+there, and the file and credential stores hand the hex form of the key through Go strings too: they wipe the
+byte copies they make and cannot wipe those. On Android, see the next section.
 
 **The phone's key is wrapped, not held, and what that means.** The MR-1 key
 agreement could be a Keystore key (`PURPOSE_AGREE_KEY`), non-exportable and

@@ -216,7 +216,7 @@ which the laptop needs to dial it. (`synctang-keyholder pair` is not built yet.)
 KWallet, KeePassXC) when there is one, and in a plain file, with a warning that says why, when there
 is not. `--store` chooses: `file`, `secret-service`, `systemd-creds` (sealed by systemd for your account,
 no desktop needed, systemd 256 or later) or `systemd-creds:tpm2` (also sealed to this machine's TPM, so
-the key cannot be moved or backed up from the blob). A store you ask for by name is never replaced by
+the key cannot be moved or backed up from the blob; written for a machine with a TPM and not yet run on one). A store you ask for by name is never replaced by
 another if it is not there: the command fails. `synctang-keyholder status` says which store holds the key,
 what that does and does not protect against (`docs/threat-model.md` has the table), and whether it reads.
 

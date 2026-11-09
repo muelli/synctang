@@ -96,8 +96,54 @@ func TestTheTPMVariantAsksForTheTPM(t *testing.T) {
 		t.Errorf("name %q", st.Name())
 	}
 	_ = st.Save(scalar32(6), false)
-	if !strings.Contains(strings.Join(f.calls[0], " "), "--with-key=tpm2") {
+	// systemd refuses a bare tpm2 key in user scope; host+tpm2 is the one that is both user-scoped
+	// and bound to the TPM.
+	if !strings.Contains(strings.Join(f.calls[0], " "), "--with-key=host+tpm2") {
 		t.Errorf("encrypt call = %v", f.calls[0])
+	}
+	for _, a := range f.calls[0] {
+		if a == "--with-key=tpm2" {
+			t.Errorf("a bare tpm2 key is refused in user scope: %v", f.calls[0])
+		}
+	}
+}
+
+func TestTheTPMVariantIsNotOfferedWhereThereIsNoTPM(t *testing.T) {
+	(&fakeCreds{}).install(t)
+	was := tpmPresent
+	t.Cleanup(func() { tpmPresent = was })
+	tpmPresent = func() error { return errors.New("no TPM") }
+	err := systemdCredsAvailable(true)
+	if err == nil || !strings.Contains(err.Error(), "no TPM") {
+		t.Fatalf("systemd-creds quietly falls back to a key without the TPM, so the store must check first: %v", err)
+	}
+	if err := systemdCredsAvailable(false); err != nil {
+		t.Errorf("the plain variant needs no TPM: %v", err)
+	}
+}
+
+func TestTheTwoVariantsKeepTheirBlobsApart(t *testing.T) {
+	a, _ := storeFromSpec("systemd-creds", "/k/key")
+	b, _ := storeFromSpec("systemd-creds:tpm2", "/k/key")
+	if a.(*credStore).blob == b.(*credStore).blob {
+		t.Fatal("one blob for both variants: replacing one with the other would delete the new key")
+	}
+}
+
+func TestInitForceFromOneCredVariantToTheOtherKeepsTheNewKey(t *testing.T) {
+	(&fakeCreds{}).install(t)
+	was, wasTPM := credsAvailable, tpmPresent
+	t.Cleanup(func() { credsAvailable, tpmPresent = was, wasTPM })
+	credsAvailable = func(bool) error { return nil }
+	keyFile, transportFile := keyholderDir(t)
+	for _, args := range [][]string{{"--store", "systemd-creds"}, {"--force", "--store", "systemd-creds:tpm2"}} {
+		args = append(args, "--key-file", keyFile, "--transport-key-file", transportFile)
+		if code, out, e := runKH(append([]string{"init"}, args...)...); code != 0 {
+			t.Fatalf("exit %d: %s%s", code, out, e)
+		}
+	}
+	if code, out, e := runKH("status", "--key-file", keyFile, "--transport-key-file", transportFile); code != 0 || !strings.Contains(out, "readable: yes") {
+		t.Fatalf("the new key is not readable (exit %d):\n%s%s", code, out, e)
 	}
 }
 

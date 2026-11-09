@@ -57,7 +57,7 @@ paired again, and nothing migrates an old file layout.
   when there is no keyring, with a warning. Each store says what it protects and what it does not
   (`docs/threat-model.md`); none stops software running as the user. Tested with the library's mock and a fake
   tool, and against a real `gnome-keyring-daemon` on a private session bus and the real `systemd-creds`
-  (user scope, systemd 259) where they are installed. Not tried: the TPM variant (the test VM has no TPM), a
+  (user scope, systemd 259) where they are installed. The TPM variant as first written could never work (user scope refuses a bare `tpm2` key; it now asks for `host+tpm2`); it has not been run on a TPM, as the test VM has none. Also not tried: a
   keyring other than GNOME Keyring, and KWallet or KeePassXC. `synctang-keyholder pair` does not exist: a
   laptop is enrolled by hand with `export-pubkey` and `synctang-unlocker enrol`.
 - **WP5** (Android app): `gomobile bind` plus a Kotlin and Compose UI.

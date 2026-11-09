@@ -40,6 +40,11 @@ var credsAvailable = systemdCredsAvailable
 // user-scope credentials work for this user on this machine (system scope is refused to ordinary
 // users, and user scope needs systemd 256 or later).
 func systemdCredsAvailable(tpm2 bool) error {
+	if tpm2 {
+		if err := tpmPresent(); err != nil {
+			return fmt.Errorf("there is no usable TPM here, and systemd-creds would quietly seal to the machine key alone: %w", err)
+		}
+	}
 	probe := []byte("probe")
 	sealed, err := credsRun(probe, credsArgs("encrypt", tpm2)...)
 	if err != nil {
@@ -55,10 +60,21 @@ func systemdCredsAvailable(tpm2 bool) error {
 	return nil
 }
 
+// tpmPresent says whether a TPM is fully usable. systemd-creds does not: asked for a TPM key
+// where there is none, it falls back to the key without it and says nothing, which is why this
+// is asked first. A variable so that tests can say whether there is one.
+var tpmPresent = func() error {
+	if out, err := exec.Command("systemd-analyze", "has-tpm2", "-q").CombinedOutput(); err != nil {
+		return fmt.Errorf("systemd-analyze has-tpm2: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
 func credsArgs(verb string, tpm2 bool) []string {
 	args := []string{verb, "--user", "--name=" + credsName}
 	if tpm2 && verb == "encrypt" {
-		args = append(args, "--with-key=tpm2")
+		// Not "tpm2": in user scope systemd refuses it. host+tpm2 is the TPM-bound key it allows.
+		args = append(args, "--with-key=host+tpm2")
 	}
 	return append(args, "-", "-")
 }
