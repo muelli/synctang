@@ -262,7 +262,7 @@ func TestPairingAtTraceLevelLogsNoSecret(t *testing.T) {
 		defer cancel()
 		errCh <- runPairOnce(ctx, pairOptions{
 			device: f.device, existingPassphrase: f.passphrase, machineCert: f.machineCert, machineName: "test-machine",
-			secret: secret, confirm: func(string, []byte) bool { return true },
+			secret: secret, confirm: func(string, []byte, string) bool { return true },
 			listenOpts: transport.ListenOptions{DirectAddr: f.addr}, logger: logger,
 		})
 	}()

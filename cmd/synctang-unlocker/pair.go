@@ -46,9 +46,11 @@ type pairOptions struct {
 	secret             []byte
 
 	// confirm is asked before anything is written to the volume,
-	// with the key holder's verified Device ID and the public key it
-	// wants enrolled. Returning false abandons the pairing.
-	confirm func(peerID string, pubKey []byte) bool
+	// with the key holder's verified Device ID, the public key it
+	// wants enrolled and the short code (mrcore.PairSAS) that the
+	// key holder shows too, for the operator to compare.
+	// Returning false abandons the pairing.
+	confirm func(peerID string, pubKey []byte, sas string) bool
 
 	// confirmReplace is asked instead of confirm when the key holder's
 	// transport id is already enrolled with a different key: it names both
@@ -176,7 +178,7 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 		return nil
 	}
 
-	if opts.confirm != nil && !opts.confirm(peerID, req.PubKey) {
+	if opts.confirm != nil && !opts.confirm(peerID, req.PubKey, mrcore.PairSAS(machineID, peerID, req.PubKey, nonce)) {
 		return refusePairing(conn, mrcore.PairRefusedDeclined)
 	}
 
@@ -378,15 +380,20 @@ func confirmationInput(passphraseFile string, assumeYes bool, stdin io.Reader) (
 // stdin should be one *bufio.Reader shared with pairReplaceConfirmer, so that
 // whichever question is asked reads what was typed and nothing is buffered
 // away from the other.
-func pairConfirmer(assumeYes bool, stdout io.Writer, stdin io.Reader) func(string, []byte) bool {
+func pairConfirmer(assumeYes bool, stdout io.Writer, stdin io.Reader) func(string, []byte, string) bool {
 	if assumeYes {
-		return func(string, []byte) bool { return true }
+		return func(string, []byte, string) bool { return true }
 	}
 	reader := bufio.NewReader(stdin)
-	return func(peerID string, pubKey []byte) bool {
+	return func(peerID string, pubKey []byte, sas string) bool {
 		fmt.Fprintf(stdout, "\na key holder answered the pairing code:\n\n")
 		fmt.Fprintf(stdout, "  transport id:  %s\n", peerID)
-		fmt.Fprintf(stdout, "  public key:    %s\n\n", shortKid(pubKey))
+		fmt.Fprintf(stdout, "  public key:    %s\n", shortKid(pubKey))
+		fmt.Fprintf(stdout, "  code:          %s\n\n", sas)
+		// The pairing code only proves that whoever answered had it, and a code that was photographed
+		// or pasted somewhere is had by more than one party: the comparison is what tells them apart.
+		fmt.Fprint(stdout, "If this is a laptop (synctang-keyholder pair), it shows the same code: enrol it only if they are the same.\n"+
+			"A phone does not show a code yet: enrol it only if you scanned this QR code just now and nobody else could have.\n\n")
 		fmt.Fprint(stdout, "enrol it on this volume? [y/N] ")
 
 		line, err := reader.ReadString('\n')

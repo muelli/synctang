@@ -46,7 +46,7 @@ func TestPairGivesUpOnAPeerThatNeverSendsItsRequest(t *testing.T) {
 			machineCert: machineCert,
 			machineName: "test-machine",
 			secret:      secret,
-			confirm:     func(string, []byte) bool { return true },
+			confirm:     func(string, []byte, string) bool { return true },
 			listenOpts:  transport.ListenOptions{DirectAddr: addr},
 		})
 	}()

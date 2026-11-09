@@ -343,7 +343,7 @@ func pairWith(t *testing.T, f *pairFixture, confirmAnswer, replaceAnswer bool) *
 			machineCert:        f.machineCert,
 			machineName:        "test-machine",
 			secret:             secret,
-			confirm:            func(string, []byte) bool { r.confirmed++; return confirmAnswer },
+			confirm:            func(string, []byte, string) bool { r.confirmed++; return confirmAnswer },
 			confirmReplace: func(_ string, old existingRecipient, newKid []byte) bool {
 				r.replaceAsk = append(r.replaceAsk, old)
 				r.replaceNew = append(r.replaceNew, newKid)
