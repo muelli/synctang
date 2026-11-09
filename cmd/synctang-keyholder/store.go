@@ -181,7 +181,7 @@ func chooseStore(spec, keyFile string) (keyStore, string, error) {
 		return newFileStore(keyFile), "", nil
 	case "secret-service":
 		if err := keyringAvailable(); err != nil {
-			return nil, "", fmt.Errorf("--store secret-service was asked for, but there is no keyring to ask: %w", err)
+			return nil, "", fmt.Errorf("--store secret-service was asked for, but there is no keyring to ask: %s", keyringReason(err))
 		}
 		return newSecretServiceStore(keyFile), "", nil
 	case "systemd-creds", "systemd-creds:tpm2":
@@ -192,7 +192,7 @@ func chooseStore(spec, keyFile string) (keyStore, string, error) {
 		return newCredStore(keyFile+".cred", tpm), "", nil
 	case "auto":
 		if err := keyringAvailable(); err != nil {
-			return newFileStore(keyFile), fmt.Sprintf("no keyring is available in this session (%v), so the key is kept in a plain file", err), nil
+			return newFileStore(keyFile), fmt.Sprintf("no keyring is available in this session (%s), so the key is kept in a plain file", keyringReason(err)), nil
 		}
 		return newSecretServiceStore(keyFile), "", nil
 	}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/muelli/synctang/mrcore"
 	"github.com/zalando/go-keyring"
@@ -91,6 +92,23 @@ func (s *secretServiceStore) Delete() error {
 		return unreachable(err)
 	}
 	return nil
+}
+
+// keyringReason turns what the keyring library says into what is wrong and what to do about it,
+// for the causes people meet: no D-Bus session (a plain ssh login has none), no Secret Service
+// running, or a login keyring that nobody unlocked. Anything else is passed on as it came.
+func keyringReason(err error) string {
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "dbus-launch") || strings.Contains(msg, "DBUS_SESSION_BUS_ADDRESS") ||
+		strings.Contains(msg, "/bus: connect") || strings.Contains(msg, "session bus"):
+		return "there is no D-Bus session here, which a desktop login has and a plain ssh login does not"
+	case strings.Contains(msg, "org.freedesktop.secrets") && strings.Contains(msg, "provided"):
+		return "no Secret Service is running: start GNOME Keyring, KWallet or KeePassXC with its Secret Service switched on"
+	case strings.Contains(msg, "unlock"):
+		return "the login keyring is locked and nobody unlocked it: " + msg
+	}
+	return msg
 }
 
 // secretServiceAvailable reports whether there is a keyring to ask, as nil or the reason. A

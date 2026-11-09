@@ -241,3 +241,29 @@ func TestRealKeyringChild(t *testing.T) {
 		t.Errorf("after delete: %v", err)
 	}
 }
+
+func TestKeyringFailuresAreExplainedInWords(t *testing.T) {
+	for raw, want := range map[string]string{
+		`exec: "dbus-launch": executable file not found in $PATH`:                        "no D-Bus session",
+		"dial unix /run/user/0/bus: connect: no such file or directory":                  "no D-Bus session",
+		"The name org.freedesktop.secrets was not provided by any .service files":        "no Secret Service is running",
+		"failed to unlock correct collection '/org/freedesktop/secrets/aliases/default'": "locked",
+		"something nobody has seen before":                                               "something nobody has seen before",
+	} {
+		got := keyringReason(errors.New(raw))
+		if !strings.Contains(got, want) {
+			t.Errorf("%q explained as %q, want it to say %q", raw, got, want)
+		}
+	}
+}
+
+func TestTheFallbackWarningSaysWhyInWords(t *testing.T) {
+	keyFile, transportFile := keyholderDir(t)
+	was := keyringAvailable
+	t.Cleanup(func() { keyringAvailable = was })
+	keyringAvailable = func() error { return errors.New(`exec: "dbus-launch": executable file not found in $PATH`) }
+	_, out, errOut := runKH("init", "--key-file", keyFile, "--transport-key-file", transportFile)
+	if !strings.Contains(out+errOut, "no D-Bus session") || strings.Contains(out+errOut, "dbus-launch") && !strings.Contains(out+errOut, "no D-Bus session") {
+		t.Errorf("%s%s", out, errOut)
+	}
+}
