@@ -217,8 +217,6 @@ Says where the long-term key is kept and what that does and does not protect aga
 plain words, and whether the key can be read: it loads the key, only to say so, and wipes it
 at once.
 It prints no secret, and changes nothing: it makes no key, no record and no transport identity.
-When a plain copy of the key is still beside a key that another store holds, which is what a
-migration leaves, it says so, because that copy undoes what the other store is for.
 .TP
 \fB\-\-key\-file\fR \fIfile\fR
 Where the key is, or, when it is kept elsewhere, where its record is
@@ -281,6 +279,20 @@ The long-term private key, hex-encoded.
 Mode 0600, in a directory created with mode 0700.
 Whoever can read it can answer for this key holder, so keep it private and back
 it up: without it, the volumes enrolled against it cannot be opened.
+.TP
+.I <user\ config\ dir>/synctang\-keyholder/key.store
+Which store holds the key when it is not the file
+.IR key :
+one line, such as
+.BR secret\-service .
+It holds no secret.
+.TP
+.I <user\ config\ dir>/synctang\-keyholder/key.cred
+The key sealed by
+.BR systemd\-creds (1),
+when that is the store.
+Mode 0600.
+Useless away from the machine and account that sealed it.
 .TP
 .I <user\ config\ dir>/synctang\-keyholder/transport.pem
 This key holder's transport identity, a certificate and key, whose Device ID the

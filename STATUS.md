@@ -51,10 +51,14 @@ paired again, and nothing migrates an old file layout.
   Settings for private servers come from `/etc/synctang/network.conf` and `rd.synctang.*`
   kernel arguments. Manual pages for every command, flag, file and kernel argument are
   checked against the code by tests.
-- **WP4** (`synctang-keyholder`): `init`, `export-pubkey` and `unlock` with the file
-  backend. The key is a plain file under the user's config directory, mode 0600; the
-  TPM2 backend is not started, and a keyring or `systemd-creds` backend is planned but
-  waits on decisions (see Open items). `synctang-keyholder pair` does not exist: a
+- **WP4** (`synctang-keyholder`): `init`, `export-pubkey`, `unlock` and `status`. The key is
+  kept by a store chosen by `init --store`: the desktop keyring through the Secret Service (`go-keyring`),
+  `systemd-creds` in the user's own scope (and a `:tpm2` variant), or a plain file, which is the fallback
+  when there is no keyring, with a warning. Each store says what it protects and what it does not
+  (`docs/threat-model.md`); none stops software running as the user. Tested with the library's mock and a fake
+  tool, and against a real `gnome-keyring-daemon` on a private session bus and the real `systemd-creds`
+  (user scope, systemd 259) where they are installed. Not tried: the TPM variant (the test VM has no TPM), a
+  keyring other than GNOME Keyring, and KWallet or KeePassXC. `synctang-keyholder pair` does not exist: a
   laptop is enrolled by hand with `export-pubkey` and `synctang-unlocker enrol`.
 - **WP5** (Android app): `gomobile bind` plus a Kotlin and Compose UI.
   Unlock is one tap: it connects, and the fingerprint prompt comes up when the
@@ -174,9 +178,8 @@ publish have never run: every release so far has been a release candidate from `
   depends on dracut and regenerates every installed kernel's initrd with it, which would
   replace initramfs-tools images. Every machine tested here used dracut from the start.
 - A real machine (a physical NIC, the owner's own network) and a second phone.
-- The laptop key is a plain file. A keyring or `systemd-creds` backend is planned
-  and waits on three decisions: the order of Secret Service and `systemd-creds`, whether a
-  new dependency may be added, and whether `init` defaults to the best backend or asks.
+- The laptop key's stores are on a branch, `keyholder-key-storage`, and not yet on `main`. There is no
+  migration between stores: a key lives where `init` put it, and `init --force --store` makes a new one.
 - Reliability: one of the five relay integration tests failed once in thirteen runs with
   "already connected" (a join race, not fixed); one dial gave up after 90 s with every
   relay in the record "not found" and was not reproduced; and the machine took about 17 to

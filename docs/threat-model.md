@@ -72,12 +72,26 @@ What the key holder does to help, cheapest first:
   cannot be told from the outside. What this does not do is keep the scalar out of the app's memory
   while it is used: see the next section.
 
-**Key holder compromise.** On the laptop, a plain key file is the weak
-point; a TPM2 ECDH backend (behind a build tag) is the intended fix.
-`[U]` whether `go-tpm` integration is reachable in the time available;
-may remain a stub with its tests skipped, in which case the file backend
-is what actually protects a laptop key holder, no better than any other
-secret in a home directory. On Android, see the next section.
+**Key holder compromise.** On the laptop the long-term key is kept by a store that is chosen
+when it is made (`synctang-keyholder init --store`) and that `synctang-keyholder status` names.
+What each protects, against four attackers:
+
+| | plain file | keyring (`secret-service`) | `systemd-creds` | `systemd-creds:tpm2` |
+| --- | --- | --- | --- | --- |
+| A copy of `~/.config` (a backup, a synced folder) | no: the file is the key | yes: encrypted with a key your login unlocks | yes: sealed by systemd for your account on this machine | yes |
+| An image of the whole disk of an unencrypted laptop | no | yes, until the login password is guessed | no: the key that unseals it is on the same disk | yes: it is sealed to the TPM |
+| Another user of the laptop | yes | yes | yes | yes |
+| Software running as you, after login | no | no: the keyring is unlocked for the session and answers any process of yours | no: it can run `systemd-creds` itself | no |
+| Root | no | no | no | partly: it can use the TPM, not copy the key |
+
+None of them stops software running as you: that needs something software cannot supply, a touch on a
+hardware key, and nothing here uses one. The prompt that `synctang-keyholder unlock` shows is a
+good habit and not a boundary, because the same software can call the same library. The
+TPM variant ties the key to one machine: it cannot be moved, and may be lost if the TPM or its measured
+state changes, so the key needs a backup some other way. The keyring needs a desktop session and a D-Bus
+session, which plain ssh does not give; `systemd-creds` needs systemd 256 or later but no desktop.
+The key passes through a Go string inside the keyring library and cannot be wiped from memory
+there, where the file and credential stores wipe their copy. On Android, see the next section.
 
 **The phone's key is wrapped, not held, and what that means.** The MR-1 key
 agreement could be a Keystore key (`PURPOSE_AGREE_KEY`), non-exportable and
