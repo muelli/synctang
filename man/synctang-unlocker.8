@@ -224,9 +224,16 @@ holder that answers it.
 The phone app scans the code; its text form is a
 .B synctang://pair
 link, printed under the code, for a camera that cannot scan.
+A laptop takes the same link: the command to run on it,
+.BR "synctang\-keyholder pair" ,
+is printed with the link.
 Before anything is written to the volume, the person at the machine is shown
-the Device ID and public key of the key holder that answered, and is asked to
+the Device ID and public key of the key holder that answered, and a six-digit code, and is asked to
 confirm.
+A laptop prints the same code, and the two must match: the one-time code only proves that whoever
+answered had it, and a link that was photographed or pasted somewhere is had by more than one party.
+A phone does not show a code yet, so for a phone the check is that the operator has just scanned the
+code themselves.
 If that Device ID is already enrolled with the same key, nothing is asked and
 nothing is added: the command says so and succeeds.
 If it is enrolled with a different key, as when a phone's app was updated and

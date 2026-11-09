@@ -118,6 +118,9 @@ func TestPairingInstructionsGiveTheLinkWhereTheQRCodeCannotBeScanned(t *testing.
 	if !strings.Contains(text, link) {
 		t.Errorf("instructions do not contain the link the QR code carries (%s):\n%s", link, text)
 	}
+	if !strings.Contains(text, "synctang-keyholder pair '"+link+"'") {
+		t.Errorf("instructions do not give the command for a laptop:\n%s", text)
+	}
 	if !strings.Contains(text, "5m0s") {
 		t.Errorf("instructions do not say how long the code lasts:\n%s", text)
 	}

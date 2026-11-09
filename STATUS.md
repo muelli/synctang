@@ -51,15 +51,18 @@ paired again, and nothing migrates an old file layout.
   Settings for private servers come from `/etc/synctang/network.conf` and `rd.synctang.*`
   kernel arguments. Manual pages for every command, flag, file and kernel argument are
   checked against the code by tests.
-- **WP4** (`synctang-keyholder`): `init`, `export-pubkey`, `unlock` and `status`. The key is
+- **WP4** (`synctang-keyholder`): `pair`, `init`, `export-pubkey`, `unlock`, `machines` and `status`. The key is
   kept by a store chosen by `init --store`: the desktop keyring through the Secret Service (`go-keyring`),
   `systemd-creds` in the user's own scope (and a `:tpm2` variant), or a plain file, which is the fallback
   when there is no keyring, with a warning. Each store says what it protects and what it does not
   (`docs/threat-model.md`); none stops software running as the user. Tested with the library's mock and a fake
   tool, and against a real `gnome-keyring-daemon` on a private session bus and the real `systemd-creds`
   (user scope, systemd 259) where they are installed. The TPM variant as first written could never work (user scope refuses a bare `tpm2` key; it now asks for `host+tpm2`); it has not been run on a TPM, as the test VM has none. Also not tried: a
-  keyring other than GNOME Keyring, and KWallet or KeePassXC. `synctang-keyholder pair` does not exist: a
-  laptop is enrolled by hand with `export-pubkey` and `synctang-unlocker enrol`.
+  keyring other than GNOME Keyring, and KWallet or KeePassXC. `synctang-keyholder pair` enrols a laptop from the link
+  `synctang-unlocker pair` shows, the same protocol as a phone, and both sides show a six-digit code to
+  compare (`mrcore.PairSAS`); the phone app does not show one yet, so for a phone the machine says what
+  the check is instead. `unlock` takes a machine's name, kept in `~/.config/synctang-keyholder/machines`.
+  `synctang-unlocker enrol` remains, with `--recipient-transport-id` required.
 - **WP5** (Android app): `gomobile bind` plus a Kotlin and Compose UI.
   Unlock is one tap: it connects, and the fingerprint prompt comes up when the
   machine's request arrives, naming the machine; cancelling the prompt returns to an

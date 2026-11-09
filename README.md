@@ -193,16 +193,42 @@ everywhere else, which is what a serial console, a pipe, `tmux` and
 through, so `--qr kitty` or `--qr iterm2` is how to ask for one there (the
 sequence is wrapped for tmux's `allow-passthrough`).
 
-### Enrol a laptop key holder
+### Pair a laptop
 
-On the laptop:
+Run the same command as for a phone on the machine:
+
+    synctang-unlocker pair --device /dev/sdXN --name my-machine \
+      --existing-passphrase-file <(printf %s "$PASS")
+
+Under the QR code it prints a second command, with the link in it. On the laptop, run that (the quotes
+matter, the link contains `&`):
+
+    synctang-keyholder pair 'synctang://pair?machine=...&name=my-machine&psk=...'
+
+That one string is all that is copied. The laptop makes its key if it has none, proves it holds the
+one-time code, and sends its public key. **Both sides now show a six-digit code, and the person at the
+machine is asked whether to enrol: say yes only if the code on the laptop is the same.** The one-time
+code only proves that whoever answered had it, and a link that was photographed, read over a shoulder
+or pasted somewhere is had by more than one party. If the codes differ, answer `n` on the machine and
+pair again for a new link. (A phone does not show a code yet.)
+
+The laptop remembers the machine under the name in the link, so unlocking is:
+
+    synctang-keyholder unlock my-machine
+
+`synctang-keyholder machines` lists the names, and `machines add <name> <transport id>` names a machine
+by hand. The names live in a plain text file, `~/.config/synctang-keyholder/machines`.
+
+#### By hand
+
+`enrol` is the low-level way, for what pairing cannot reach (a machine that cannot be reached over the
+network while you pair, an image, a script). On the laptop:
 
     synctang-keyholder init
 
 It prints the public key and the transport ID, and the command below with them filled in
-(`synctang-keyholder export-pubkey` prints the two values again later).
-
-On the machine, with the two values that printed:
+(`synctang-keyholder export-pubkey` prints the two values again later). On the machine, with the two
+values that printed (both are required):
 
     synctang-unlocker enrol --device /dev/sdXN --name my-laptop \
       --pubkey <public key> --recipient-transport-id <transport id> \
@@ -210,7 +236,7 @@ On the machine, with the two values that printed:
 
 This adds a LUKS2 keyslot holding a fresh secret and an `mr-1` token
 entry for that key holder, and prints the machine's own transport ID,
-which the laptop needs to dial it. (`synctang-keyholder pair` is not built yet.)
+which the laptop needs to dial it. Name it with `synctang-keyholder machines add`.
 
 ### Where the laptop's key is kept
 

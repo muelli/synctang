@@ -99,6 +99,23 @@ The key passes through a Go string inside the keyring library and cannot be wipe
 there, nor in the string the program makes to hand it over, where the file and credential stores keep their
 copies in byte slices and wipe them. On Android, see the next section.
 
+**A leaked pairing link.** Pairing (`synctang-unlocker pair`, then `synctang-keyholder pair` or the app)
+turns a one-time code into an enrolled key holder. The code authenticates the key holder to the machine
+and nothing more, so whoever uses it first, while it lasts (five minutes, one pairing), is offered to the
+operator as a key holder, and if the operator says yes they hold a keyslot that opens the disk. The link
+leaks by being photographed, read over a shoulder, or pasted into a chat or a shell history. The defence
+is the operator's check: the machine and a laptop both show a six-digit code derived from both Device
+IDs, the key being enrolled and a nonce the machine chose for that connection (`mrcore.PairSAS`), and the
+operator enrols only if the two match. An attacker has to choose a key before the nonce exists, so cannot
+make a code that will match, and gets one try in a million; if they answered first, the laptop is refused
+and prints no code, which is also noticed. This is only as good as the comparison: an operator who
+answers yes without looking gets no protection from it. `[V]` The two programs show the same code in a
+test that runs both (`integration/`). A phone does not show a code yet, so for a phone the machine says
+what the check is (that the operator has just scanned the code themselves) and the weaker guarantee
+stands until the app shows one. The machine's side of the link, its transport id, is checked by the
+key holder against the certificate it connects to, so a link cannot be used to make a laptop pair with
+a different machine.
+
 **The phone's key is wrapped, not held, and what that means.** The MR-1 key
 agreement could be a Keystore key (`PURPOSE_AGREE_KEY`), non-exportable and
 used inside the secure hardware. It is not, because that only works in
