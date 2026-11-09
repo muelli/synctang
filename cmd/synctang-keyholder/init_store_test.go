@@ -148,3 +148,21 @@ func pubOf(t *testing.T, keyFile, transportFile string) string {
 	t.Fatal("no S line")
 	return ""
 }
+
+// --force with the recorded store out of reach cannot remove the old copy, and must say that it
+// did not rather than leave a stale key in the keyring that nobody is told about.
+func TestInitForceSaysWhenTheOldCopyCouldNotBeChecked(t *testing.T) {
+	withMockKeyring(t)
+	keyFile, transportFile := keyholderDir(t)
+	if code, _, e := runKH("init", "--key-file", keyFile, "--transport-key-file", transportFile); code != 0 {
+		t.Fatal(e)
+	}
+	keyring.MockInitWithError(errors.New("no bus"))
+	code, out, errOut := runKH("init", "--force", "--store", "file", "--key-file", keyFile, "--transport-key-file", transportFile)
+	if code != 0 {
+		t.Fatalf("exit %d: %s%s", code, out, errOut)
+	}
+	if !strings.Contains(errOut, "secret-service") || !strings.Contains(errOut, "remove") {
+		t.Errorf("nothing said about the key left in the keyring:\n%s", errOut)
+	}
+}

@@ -122,6 +122,8 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		if ok, err := existing.Exists(); err != nil && !*force {
 			fmt.Fprintf(stderr, "synctang-keyholder: cannot tell whether a key is already held by %s (%v); use --force to make a new one anyway\n", existing.Name(), err)
 			return 1
+		} else if err != nil {
+			fmt.Fprintf(stderr, "synctang-keyholder: could not check whether %s still holds the old key (%v): if it does, remove it yourself once it is reachable, because a replaced key left behind is one nobody remembers\n", existing.Name(), err)
 		} else if ok {
 			if !*force {
 				fmt.Fprintf(stderr, "synctang-keyholder: a key is already held by %s, use --force to replace it\n", existing.Name())
