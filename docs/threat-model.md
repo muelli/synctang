@@ -96,8 +96,8 @@ something seen here; it asks `systemd-analyze has-tpm2` first and refuses where 
 state changes, so the key needs a backup some other way. The keyring needs a desktop session and a D-Bus
 session, which plain ssh does not give; `systemd-creds` needs systemd 256 or later but no desktop.
 The key passes through a Go string inside the keyring library and cannot be wiped from memory
-there, and the file and credential stores hand the hex form of the key through Go strings too: they wipe the
-byte copies they make and cannot wipe those. On Android, see the next section.
+there, nor in the string the program makes to hand it over, where the file and credential stores keep their
+copies in byte slices and wipe them. On Android, see the next section.
 
 **The phone's key is wrapped, not held, and what that means.** The MR-1 key
 agreement could be a Keystore key (`PURPOSE_AGREE_KEY`), non-exportable and

@@ -139,7 +139,7 @@ func (c *credStore) Load() ([]byte, error) {
 		return nil, credsUnusable(err)
 	}
 	defer mrcore.Wipe(plain)
-	return scalarFromHex(string(plain), "the credential "+c.blob)
+	return scalarFromHex(plain, "the credential "+c.blob)
 }
 
 func (c *credStore) Save(scalar []byte, overwrite bool) error {
@@ -150,7 +150,7 @@ func (c *credStore) Save(scalar []byte, overwrite bool) error {
 			return fmt.Errorf("%s already holds a key, use --force to overwrite", c.blob)
 		}
 	}
-	plain := []byte(hexOf(scalar))
+	plain := hexBytes(scalar)
 	defer mrcore.Wipe(plain)
 	sealed, err := credsRun(plain, credsArgs("encrypt", c.tpm2)...)
 	if err != nil {

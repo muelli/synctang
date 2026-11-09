@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -36,17 +37,29 @@ type keyStore interface {
 	Delete() error
 }
 
-// scalarFromHex decodes what the stores keep: the scalar as hex, with or without a newline.
-func scalarFromHex(text, where string) ([]byte, error) {
-	s, err := hex.DecodeString(strings.TrimSpace(text))
+// scalarFromHex decodes what the stores keep: the scalar as hex, with or without a newline. It
+// takes bytes, not a string, so that the caller can wipe what it read; the caller still wipes text.
+func scalarFromHex(text []byte, where string) ([]byte, error) {
+	text = bytes.TrimSpace(text)
+	s := make([]byte, hex.DecodedLen(len(text)))
+	n, err := hex.Decode(s, text)
 	if err != nil {
+		mrcore.Wipe(s)
 		return nil, fmt.Errorf("%s does not contain a valid hex scalar: %w", where, err)
 	}
-	if len(s) != 32 {
+	if n != 32 {
 		mrcore.Wipe(s)
-		return nil, fmt.Errorf("%s contains a %d-byte scalar, want 32", where, len(s))
+		return nil, fmt.Errorf("%s contains a %d-byte scalar, want 32", where, n)
 	}
-	return s, nil
+	return s[:n], nil
+}
+
+// hexBytes is the scalar as hex text in a slice the caller wipes, which hex.EncodeToString would
+// not allow.
+func hexBytes(scalar []byte) []byte {
+	out := make([]byte, hex.EncodedLen(len(scalar)))
+	hex.Encode(out, scalar)
+	return out
 }
 
 // fileStore keeps the scalar in a file, as hex, mode 0600.
@@ -82,19 +95,48 @@ func (f *fileStore) Load() ([]byte, error) {
 		return nil, fmt.Errorf("reading key file: %w", err)
 	}
 	defer mrcore.Wipe(data)
-	return scalarFromHex(string(data), "key file "+f.path)
+	return scalarFromHex(data, "key file "+f.path)
 }
 
 func (f *fileStore) Save(scalar []byte, overwrite bool) error {
-	if !overwrite {
-		if _, err := os.Stat(f.path); err == nil {
-			return fmt.Errorf("%s already exists, use --force to overwrite", f.path)
-		}
-	}
 	if err := os.MkdirAll(filepath.Dir(f.path), 0o700); err != nil {
 		return fmt.Errorf("creating key directory: %w", err)
 	}
-	if err := os.WriteFile(f.path, []byte(hex.EncodeToString(scalar)+"\n"), 0o600); err != nil {
+	text := append(hexBytes(scalar), '\n')
+	defer mrcore.Wipe(text)
+	if !overwrite {
+		// O_EXCL: the check and the creation are one step.
+		out, err := os.OpenFile(f.path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if os.IsExist(err) {
+			return fmt.Errorf("%s already exists, use --force to overwrite", f.path)
+		}
+		if err != nil {
+			return fmt.Errorf("writing key file: %w", err)
+		}
+		if _, err := out.Write(text); err != nil {
+			out.Close()
+			return fmt.Errorf("writing key file: %w", err)
+		}
+		if err := out.Close(); err != nil {
+			return fmt.Errorf("writing key file: %w", err)
+		}
+		return nil
+	}
+	// Replacing goes through a new file, which is 0600 whatever the old one was, and a rename, so a
+	// crash leaves the old key or the new one and never half of either.
+	tmp, err := os.CreateTemp(filepath.Dir(f.path), ".key-")
+	if err != nil {
+		return fmt.Errorf("writing key file: %w", err)
+	}
+	_, werr := tmp.Write(text)
+	serr := tmp.Sync()
+	cerr := tmp.Close()
+	if err := errors.Join(werr, serr, cerr); err != nil {
+		os.Remove(tmp.Name())
+		return fmt.Errorf("writing key file: %w", err)
+	}
+	if err := os.Rename(tmp.Name(), f.path); err != nil {
+		os.Remove(tmp.Name())
 		return fmt.Errorf("writing key file: %w", err)
 	}
 	return nil

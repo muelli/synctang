@@ -114,3 +114,42 @@ func TestFileStoreDescribesItselfWithoutOverclaiming(t *testing.T) {
 		t.Errorf("a store is never called secure: %s", d)
 	}
 }
+
+func TestFileStoreForceMakesTheFileOwnerOnlyEvenIfItWasNot(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "key")
+	if err := os.WriteFile(path, []byte("old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st := newFileStore(path)
+	if err := st.Save(scalar32(5), true); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf("mode %v: a replaced key file keeps the readability the old file had", info.Mode().Perm())
+	}
+	got, err := st.Load()
+	if err != nil || !bytes.Equal(got, scalar32(5)) {
+		t.Fatalf("%x %v", got, err)
+	}
+	if left, _ := filepath.Glob(filepath.Join(filepath.Dir(path), ".*")); len(left) != 0 {
+		t.Errorf("temporary files left behind: %v", left)
+	}
+}
+
+func TestFileStoreWithoutForceNeverReplacesAndLeavesTheFileAlone(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "key")
+	st := newFileStore(path)
+	if err := st.Save(scalar32(5), false); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Save(scalar32(6), false); err == nil {
+		t.Fatal("replaced without --force")
+	}
+	if got, _ := st.Load(); !bytes.Equal(got, scalar32(5)) {
+		t.Error("the refused save changed the file")
+	}
+}

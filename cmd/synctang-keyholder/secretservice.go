@@ -66,7 +66,10 @@ func (s *secretServiceStore) Load() ([]byte, error) {
 	if err != nil {
 		return nil, unreachable(err)
 	}
-	return scalarFromHex(stored, "the keyring item for "+s.account)
+	// The library returned a string, which cannot be wiped; the copy made here can.
+	text := []byte(stored)
+	defer mrcore.Wipe(text)
+	return scalarFromHex(text, "the keyring item for "+s.account)
 }
 
 func (s *secretServiceStore) Save(scalar []byte, overwrite bool) error {
@@ -121,11 +124,7 @@ func secretServiceAvailable() error {
 }
 
 func hexOf(scalar []byte) string {
-	b := make([]byte, 0, 64)
-	const digits = "0123456789abcdef"
-	for _, c := range scalar {
-		b = append(b, digits[c>>4], digits[c&15])
-	}
+	b := hexBytes(scalar)
 	defer mrcore.Wipe(b)
 	return string(b)
 }
