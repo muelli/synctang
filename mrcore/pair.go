@@ -97,6 +97,37 @@ func PairProof(secret []byte, machineID, peerID string, pubKey, nonce []byte) []
 	return mac.Sum(nil)
 }
 
+// pairSASLabel is mixed into the short code so that it cannot collide with another use of SHA-256 over
+// the same fields.
+const pairSASLabel = "synctang-pair-sas-v1"
+
+// PairSAS is the short code both the machine and the key holder show after a pairing request, for the
+// person to compare: six digits, in two groups.
+//
+// The pairing code authenticates the key holder to the machine, and that is all it does: whoever has
+// the code first is enrolled if the operator says yes. If the code leaks (a photographed QR code, a
+// pasted link), the operator has to be able to tell the key holder in front of them from somebody
+// else's, and this is how. It is derived from the machine's and the key holder's Device IDs, the key
+// being enrolled and the nonce the machine chose for this connection, so each side can compute it
+// with nothing sent for the purpose. The nonce is the point: an attacker picks a key and identity
+// before it exists, so cannot make a code that will match, and gets one try in a million.
+//
+// It is not secret, and deliberately does not include the pairing code.
+func PairSAS(machineID, peerID string, pubKey, nonce []byte) string {
+	h := sha256.New()
+	for _, part := range [][]byte{[]byte(pairSASLabel), []byte(machineID), []byte(peerID), pubKey, nonce} {
+		var lenBuf [8]byte
+		for i := 0; i < 8; i++ {
+			lenBuf[7-i] = byte(len(part) >> (8 * i))
+		}
+		h.Write(lenBuf[:])
+		h.Write(part)
+	}
+	sum := h.Sum(nil)
+	n := (uint32(sum[0])<<24 | uint32(sum[1])<<16 | uint32(sum[2])<<8 | uint32(sum[3])) % 1_000_000
+	return fmt.Sprintf("%03d %03d", n/1000, n%1000)
+}
+
 // PairChallenge is the machine's first message on a pairing
 // connection: a fresh random nonce the key holder must bind its proof
 // to.

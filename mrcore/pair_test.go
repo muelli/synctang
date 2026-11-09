@@ -124,3 +124,61 @@ func TestDecodePairingSecretRejectsRubbish(t *testing.T) {
 		}
 	}
 }
+
+func TestPairSASIsSixDigitsInTwoGroups(t *testing.T) {
+	sas := PairSAS("MACHINE", "PEER", []byte{4, 1, 2, 3}, []byte("nonce"))
+	if len(sas) != 7 || sas[3] != ' ' {
+		t.Fatalf("%q, want \"123 456\"", sas)
+	}
+	for i, c := range sas {
+		if i != 3 && (c < '0' || c > '9') {
+			t.Fatalf("%q has a character that is not a digit", sas)
+		}
+	}
+}
+
+// Both sides compute it from what they both know, so it has to be a pure function of the four inputs
+// and has to change when any one of them does: that is what makes a mismatch mean something.
+func TestPairSASDependsOnEveryInput(t *testing.T) {
+	machine, peer, pub, nonce := "MACHINE", "PEER", []byte{4, 1, 2, 3}, []byte("nonce-one")
+	base := PairSAS(machine, peer, pub, nonce)
+	if again := PairSAS(machine, peer, pub, nonce); again != base {
+		t.Fatalf("not deterministic: %q then %q", base, again)
+	}
+	// Six digits cannot tell every change apart (one in a million would collide), so try several
+	// variations of each input and require that most differ.
+	changed := func(name string, f func(i int) string) {
+		t.Helper()
+		same := 0
+		const tries = 20
+		for i := 0; i < tries; i++ {
+			if f(i) == base {
+				same++
+			}
+		}
+		if same > 1 {
+			t.Errorf("changing the %s left the code the same %d times in %d", name, same, tries)
+		}
+	}
+	changed("machine id", func(i int) string { return PairSAS(machine+string(rune('a'+i)), peer, pub, nonce) })
+	changed("peer id", func(i int) string { return PairSAS(machine, peer+string(rune('a'+i)), pub, nonce) })
+	changed("public key", func(i int) string { return PairSAS(machine, peer, []byte{4, 1, 2, byte(10 + i)}, nonce) })
+	changed("nonce", func(i int) string { return PairSAS(machine, peer, pub, []byte{byte(i), 9}) })
+}
+
+// Moving a byte from one field to the next must not give the same code, which is what length
+// prefixes are for.
+func TestPairSASFieldsCannotBeShifted(t *testing.T) {
+	if PairSAS("AB", "C", []byte{1}, []byte{2}) == PairSAS("A", "BC", []byte{1}, []byte{2}) {
+		t.Error("shifting a byte between the two ids gave the same code")
+	}
+}
+
+// A fixed value, so that an accidental change to the derivation (which would make a new key holder
+// and an old machine disagree) fails a test.
+func TestPairSASKnownValue(t *testing.T) {
+	got := PairSAS("MACHINE-ID", "PEER-ID", []byte{4, 0xaa, 0xbb}, []byte("a nonce"))
+	if got != "162 914" {
+		t.Fatalf("PairSAS = %q", got)
+	}
+}
