@@ -126,7 +126,7 @@ func TestEnrolRecordsTheHostnameInANewToken(t *testing.T) {
 	s, _ := mrcore.P256().RandomScalar()
 	S, _ := mrcore.P256().ScalarBaseMult(s)
 	var out, errOut bytes.Buffer
-	code := run([]string{"enrol", "--device", device, "--pubkey", hex.EncodeToString(S),
+	code := run([]string{"enrol", "--device", device, "--pubkey", hex.EncodeToString(S), "--recipient-transport-id", testKH1,
 		"--existing-passphrase-file", ppFile, "--machine-key-file", filepath.Join(dir, "machine.pem")}, &out, &errOut)
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut.String())

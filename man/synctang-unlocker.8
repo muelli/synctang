@@ -144,6 +144,8 @@ holder.
 The key holder's own transport identity, as printed by
 .BR "synctang\-keyholder export\-pubkey" ,
 recorded with its entry so that the agent answers only that key holder.
+Required when adding a key holder: an entry without it could never be used, because
+the agent tells key holders from strangers by it and refuses to listen when none of the enrolled ones has one.
 With
 .B \-\-replace
 it defaults to the identity being replaced.

@@ -260,7 +260,7 @@ func enrolArgs(t *testing.T, extra ...string) ([]string, string) {
 	}
 	s, _ := mrcore.P256().RandomScalar()
 	S, _ := mrcore.P256().ScalarBaseMult(s)
-	args := append([]string{"enrol", "--device", device, "--pubkey", hex.EncodeToString(S),
+	args := append([]string{"enrol", "--device", device, "--pubkey", hex.EncodeToString(S), "--recipient-transport-id", testKH1,
 		"--existing-passphrase-file", ppFile, "--machine-key-file", filepath.Join(dir, "machine.pem")}, extra...)
 	return args, device
 }

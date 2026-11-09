@@ -334,6 +334,7 @@ func TestRunEnrolWarnsWhenItCreatesAMachineIdentity(t *testing.T) {
 			"enrol",
 			"--device", device,
 			"--pubkey", hex.EncodeToString(S),
+			"--recipient-transport-id", testKH1,
 			"--existing-passphrase-file", passphraseFile,
 			"--name", "cli-test-machine",
 			"--machine-key-file", keyFile,

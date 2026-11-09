@@ -212,6 +212,15 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
+	// An entry without the key holder's transport id can never be used: the agent tells key
+	// holders from strangers by it and refuses to listen when none has one.
+	if *recipientTransportID == "" {
+		fmt.Fprintln(stderr, "synctang-unlocker: --recipient-transport-id is required: the key holder's transport id, "+
+			"which \"synctang-keyholder export-pubkey\" prints as \"transport-id:\" next to the public key. "+
+			"Without it the machine cannot tell this key holder from a stranger, so nothing was enrolled")
+		return 2
+	}
+
 	passphrase, err := readPassphrase(*passphraseFile)
 	if err != nil {
 		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
