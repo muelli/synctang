@@ -43,7 +43,7 @@ machine. It does not test the Keystore, the fingerprint or the Kotlin screens, w
 are tried by hand on a phone.
 
 `[V]` Run on this host (KVM, Ubuntu 26.04 guest, packages built from the commit before this line
-was written), 33 checks passed and none failed, including the two laptop-key legs of step 7, which
+was written), 36 checks passed and none failed, including the two laptop-key legs of step 7 (each paired, with the two codes compared), which
 ran against a real `gnome-keyring-daemon` and the real `systemd-creds`; the TPM variant is not in it, as the
 VM has no TPM. A key holder that was never
 enrolled was refused by the machine at the first message (`reading hello: EOF`).
