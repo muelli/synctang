@@ -138,6 +138,10 @@ func storeFromSpec(spec, keyFile string) (keyStore, error) {
 		return newFileStore(keyFile), nil
 	case "secret-service":
 		return newSecretServiceStore(keyFile), nil
+	case "systemd-creds":
+		return newCredStore(keyFile+".cred", false), nil
+	case "systemd-creds:tpm2":
+		return newCredStore(keyFile+".cred", true), nil
 	}
 	return nil, fmt.Errorf("unknown store %q (named in %s)", spec, storeRecordPath(keyFile))
 }
@@ -166,7 +170,7 @@ func openStore(keyFile string) (keyStore, error) {
 var keyringAvailable = secretServiceAvailable
 
 // storeNames are what --store accepts, in the order they are offered.
-const storeNames = "auto, file, secret-service"
+const storeNames = "auto, file, secret-service, systemd-creds, systemd-creds:tpm2"
 
 // chooseStore is the store init puts a new key in. "auto" is the keyring when there is one and a
 // plain file when there is not, and says so: the person is told what was chosen and why, and a
@@ -180,6 +184,12 @@ func chooseStore(spec, keyFile string) (keyStore, string, error) {
 			return nil, "", fmt.Errorf("--store secret-service was asked for, but there is no keyring to ask: %w", err)
 		}
 		return newSecretServiceStore(keyFile), "", nil
+	case "systemd-creds", "systemd-creds:tpm2":
+		tpm := spec == "systemd-creds:tpm2"
+		if err := credsAvailable(tpm); err != nil {
+			return nil, "", fmt.Errorf("--store %s was asked for, but it cannot work here: %w", spec, err)
+		}
+		return newCredStore(keyFile+".cred", tpm), "", nil
 	case "auto":
 		if err := keyringAvailable(); err != nil {
 			return newFileStore(keyFile), fmt.Sprintf("no keyring is available in this session (%v), so the key is kept in a plain file", err), nil

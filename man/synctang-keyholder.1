@@ -76,6 +76,8 @@ is left behind.
 Where to keep the long-term key:
 .BR file ,
 .BR secret\-service ,
+.BR systemd\-creds ,
+.B systemd\-creds:tpm2
 or
 .B auto
 (the default).
@@ -86,6 +88,20 @@ is the desktop's keyring over D-Bus (GNOME Keyring, KWallet or KeePassXC), encry
 the login unlocks, so a copy of the configuration directory is useless without the login password;
 it is unlocked for the whole session, so software running as you can ask for it, and it needs a session
 bus, which plain ssh does not give.
+.B systemd\-creds
+seals the key with
+.BR systemd\-creds (1)
+in your own scope, into a file beside the key file
+.RB ( key.cred ):
+it needs systemd 256 or later, not a desktop session, so it works over ssh; but root can unseal it,
+software running as you can run the tool itself, and the key that unseals it is on the same disk, so an image of
+the disk of a laptop that is not encrypted gives both.
+.B systemd\-creds:tpm2
+also seals it to this machine's TPM, which makes a copy of the disk useless without it, and ties the key to that
+machine: it cannot be moved, and may be lost if the TPM or its measured state changes, so keep a backup of the
+key some other way.
+.B auto
+never chooses these two; they are for those who ask.
 .B auto
 is the keyring when there is one and a plain file, with a warning that says why, when there is not.
 A store named explicitly is never replaced by another when it is not there: the command fails.
