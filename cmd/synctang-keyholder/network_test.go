@@ -109,7 +109,7 @@ func TestKeyholderConfigRefusesRelayPool(t *testing.T) {
 // There is no --relay-pool flag any more.
 func TestRunUnlockHasNoRelayPoolFlag(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"unlock", "--relay-pool", "https://pool.example.net/endpoint", "MACHINE"}, strings.NewReader(""), &stdout, &stderr)
+	code := run([]string{"unlock", "--relay-pool", "https://pool.example.net/endpoint", machineIDA}, strings.NewReader(""), &stdout, &stderr)
 	if code != 2 || !strings.Contains(stderr.String(), "relay-pool") {
 		t.Errorf("exit %d, stderr %q", code, stderr.String())
 	}
@@ -119,7 +119,7 @@ func TestRunUnlockHasNoRelayPoolFlag(t *testing.T) {
 // once rather than after a dial that was never going to be the one meant.
 func TestRunUnlockRefusesBadNetworkSettings(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"unlock", "--discovery", "ftp://x.example.net/", "MACHINE"}, strings.NewReader(""), &stdout, &stderr)
+	code := run([]string{"unlock", "--discovery", "ftp://x.example.net/", machineIDA}, strings.NewReader(""), &stdout, &stderr)
 	if code == 0 {
 		t.Fatal("expected a failure")
 	}

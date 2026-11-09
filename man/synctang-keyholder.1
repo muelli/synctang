@@ -11,7 +11,17 @@ synctang\-keyholder \- the laptop key holder for synctang
 .br
 .B synctang\-keyholder unlock
 .RI [ flags ]
-.I machine\-transport\-id
+.IR machine\-name | machine\-transport\-id
+.br
+.B synctang\-keyholder machines
+.RB [ list ]
+.br
+.B synctang\-keyholder machines add
+.RI [ flags ]
+.I name transport\-id
+.br
+.B synctang\-keyholder machines remove
+.I name
 .br
 .B synctang\-keyholder status
 .RI [ flags ]
@@ -147,10 +157,13 @@ in the key holder's directory (see
 .BR FILES ).
 .SS unlock
 Answers one machine's recovery attempt.
-The argument is the machine's transport identity, as printed by
+The argument is the machine's name, as listed by
+.BR machines ,
+or its transport identity, as printed by
 .B synctang\-unlocker enrol
 or
 .BR "synctang\-unlocker status" .
+A name also brings the discovery server that was recorded with it.
 .PP
 It prints the machine's name and identity and waits for Enter before
 answering; Ctrl-C aborts.
@@ -184,6 +197,14 @@ Skip the approval prompt.
 \fB\-\-timeout\fR \fIduration\fR
 Give up dialling the machine after this long.
 Default 2 minutes.
+.TP
+\fB\-\-machines\-file\fR \fIfile\fR
+The file that names the machines (see
+.BR machines ).
+Default: the file
+.I machines
+in the key holder's directory (see
+.BR FILES ).
 .TP
 \fB\-\-discovery\fR \fIURL\fR
 The discovery server to look the machine up on, instead of the public one.
@@ -243,6 +264,46 @@ This key holder's transport identity, whose Device ID is printed.
 Default: the file
 .I transport.pem
 in the key holder's directory.
+.SS machines
+The key holder's address book: a name for each machine it can unlock, so that
+.B synctang\-keyholder unlock my\-machine
+works without anybody remembering a transport identity.
+With no subcommand, or
+.BR list ,
+it lists them.
+.B add
+gives a name to a transport identity, as printed by
+.B synctang\-unlocker enrol
+on the machine; an existing name is not changed to mean another machine without
+.BR \-\-force .
+.B remove
+forgets a name only: the machine still lets this key holder unlock it.
+A name is letters, digits, dots, dashes and underscores, and cannot be one that
+could be taken for a transport identity.
+.PP
+The file is plain text, one machine to a line, and may be edited by hand:
+.B name transport\-id
+and optionally a discovery server URL; blank lines and lines starting with
+.B #
+are ignored.
+It holds nothing secret.
+.TP
+\fB\-\-machines\-file\fR \fIfile\fR
+Where the names are.
+Default: the file
+.I machines
+in the key holder's directory (see
+.BR FILES ).
+.TP
+\fB\-\-discovery\fR \fIURL\fR
+With
+.BR add :
+the discovery server this machine uses, if it is not the public one.
+.TP
+\fB\-\-force\fR
+With
+.BR add :
+let an existing name mean this machine instead.
 .SS completion
 Writes to standard output the completion script for the shell named: bash, zsh or fish.
 The program makes the script from its own usage text and the flag help of each command, so it
@@ -290,6 +351,11 @@ The long-term private key, hex-encoded.
 Mode 0600, in a directory created with mode 0700.
 Whoever can read it can answer for this key holder, so keep it private and back
 it up: without it, the volumes enrolled against it cannot be opened.
+.TP
+.I <user\ config\ dir>/synctang\-keyholder/machines
+The names of the machines this key holder can unlock, one to a line: a name, a transport
+identity and optionally a discovery server.
+Holds nothing secret.
 .TP
 .I <user\ config\ dir>/synctang\-keyholder/key.store
 Which store holds the key when it is not the file

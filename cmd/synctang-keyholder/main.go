@@ -29,7 +29,8 @@ const usage = `usage: synctang-keyholder <command> [flags]
 commands:
   init            generate a new long-term key and transport identity
   export-pubkey   print the public key and transport id, for "synctang-unlocker enrol"
-  unlock          answer one machine's recovery attempt
+  unlock          answer one machine's recovery attempt (by name or transport id)
+  machines        list, add or remove the names of the machines this key holder can unlock
   status          say where the key is kept, what that protects, and whether it can be read
   completion      print a shell completion script (bash, zsh or fish)
 `
@@ -53,6 +54,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runUnlock(args[1:], stdin, stdout, stderr)
 	case "status":
 		return runStatus(args[1:], stdout, stderr)
+	case "machines":
+		return runMachines(args[1:], stdout, stderr)
 	case "completion":
 		return completion.Run("synctang-keyholder", usage, func(command string) string {
 			if command == "completion" {
@@ -237,15 +240,28 @@ func runUnlock(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	timeout := fs.Duration("timeout", defaultUnlockTimeout, "give up dialling the machine after this long")
 	discovery := fs.String("discovery", "", "discovery server URL, instead of the public one; the machine must announce to the same one")
 	discoveryAnnounce := fs.String("discovery-announce", "", "discovery announce URL, if it differs from --discovery")
+	machinesFile := machinesFileFlag(fs)
 	configFile := fs.String("config", "", "file with discovery and discovery-announce settings (default: synctang-keyholder/config in the user config directory)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "synctang-keyholder: unlock requires exactly one argument, the machine's transport id")
+		fmt.Fprintln(stderr, "synctang-keyholder: unlock requires exactly one argument, the machine's name or transport id")
 		return 2
 	}
-	machineID := fs.Arg(0)
+	if *machinesFile == "" {
+		fmt.Fprintln(stderr, "synctang-keyholder: --machines-file is required (could not determine a default)")
+		return 2
+	}
+	target, err := resolveMachine(*machinesFile, fs.Arg(0))
+	if err != nil {
+		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+		return 2
+	}
+	machineID := target.ID
+	if *discovery == "" {
+		*discovery = target.Discovery
+	}
 
 	configPath, explicitConfig := *configFile, *configFile != ""
 	if !explicitConfig {
