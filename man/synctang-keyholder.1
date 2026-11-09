@@ -3,6 +3,10 @@
 .SH NAME
 synctang\-keyholder \- the laptop key holder for synctang
 .SH SYNOPSIS
+.B synctang\-keyholder pair
+.RI [ flags ]
+.I link
+.br
 .B synctang\-keyholder init
 .RI [ flags ]
 .br
@@ -50,6 +54,86 @@ Every command accepts
 .B \-h
 and prints its flags and exits with status 2.
 Flags may be written with one or two dashes.
+.SS pair
+Enrols this key holder on a machine from the pairing link that
+.B synctang\-unlocker pair
+prints under its QR code.
+That one string is all that is copied: it carries the machine's transport identity, its name, the
+discovery server if it is not the public one, and a one-time code.
+Quote it, because it contains
+.BR & .
+.PP
+If there is no key yet, one is made first, as
+.B init
+would, in the store
+.B \-\-store
+names.
+The key holder then dials the machine, proves it holds the code, sends its public key and
+transport identity, and prints a six-digit code, for example
+.BR "483 291" .
+The machine shows its operator the same code with the question whether to enrol this key holder.
+.B Compare them.
+The one-time code only proves that whoever answered had it, and a link that was photographed, shown
+over a shoulder or pasted somewhere is had by more than one party: if the codes differ, somebody else
+used the link first, and the operator should answer no.
+.PP
+When the operator confirms, the machine writes a keyslot and the command exits 0 after saving the
+machine's name (from the link, or
+.BR \-\-as )
+in the file that
+.B machines
+manages, so that
+.B synctang\-keyholder unlock
+.I name
+works.
+A name that already meant another machine is taken over, and the command says so.
+The passphrase never leaves the machine.
+.B synctang\-unlocker enrol
+remains for the cases pairing cannot reach.
+.TP
+\fB\-\-store\fR \fIstore\fR
+If a key has to be made: where to keep it; see
+.BR init .
+.TP
+\fB\-\-name\fR \fIname\fR
+The name this key holder gives itself, shown on the machine.
+Default: this computer's host name.
+.TP
+\fB\-\-as\fR \fIname\fR
+The name to unlock this machine by.
+Default: the name in the link; with neither, no name is saved and the command gives the transport
+identity to unlock by.
+.TP
+\fB\-\-timeout\fR \fIduration\fR
+Give up reaching the machine after this long.
+Default 2 minutes.
+.TP
+\fB\-\-wait\fR \fIduration\fR
+How long to wait for the person at the machine to confirm.
+Default 5 minutes, the machine's own window.
+.TP
+\fB\-\-discovery\fR \fIURL\fR
+The discovery server to look the machine up on, instead of the one in the link or the public one.
+.TP
+\fB\-\-config\fR \fIfile\fR
+A file with the discovery settings, as for
+.BR unlock .
+.TP
+\fB\-\-machines\-file\fR \fIfile\fR
+The file that names the machines; see
+.BR machines .
+.TP
+\fB\-\-key\-file\fR \fIfile\fR
+The long-term key, or where its record is; as for
+.BR init .
+.TP
+\fB\-\-transport\-key\-file\fR \fIfile\fR
+This key holder's persistent transport identity; as for
+.BR init .
+.TP
+\fB\-\-direct\-addr\fR \fIhost:port\fR
+Dial this address directly, bypassing relay and discovery.
+For testing only.
 .SS init
 Generates a new long-term key and this key holder's transport identity, and
 writes them under

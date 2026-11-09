@@ -27,6 +27,7 @@ import (
 const usage = `usage: synctang-keyholder <command> [flags]
 
 commands:
+  pair            enrol this key holder on a machine from the link "synctang-unlocker pair" shows
   init            generate a new long-term key and transport identity
   export-pubkey   print the public key and transport id, for "synctang-unlocker enrol"
   unlock          answer one machine's recovery attempt (by name or transport id)
@@ -46,6 +47,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 
 	switch args[0] {
+	case "pair":
+		return runPair(args[1:], stdout, stderr)
 	case "init":
 		return runInit(args[1:], stdout, stderr)
 	case "export-pubkey":
