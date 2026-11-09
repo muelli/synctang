@@ -136,6 +136,8 @@ func storeFromSpec(spec, keyFile string) (keyStore, error) {
 	switch spec {
 	case "file":
 		return newFileStore(keyFile), nil
+	case "secret-service":
+		return newSecretServiceStore(keyFile), nil
 	}
 	return nil, fmt.Errorf("unknown store %q (named in %s)", spec, storeRecordPath(keyFile))
 }
