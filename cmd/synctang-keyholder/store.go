@@ -14,7 +14,7 @@ import (
 )
 
 // errNoKey says there is no key in the store yet, as opposed to a key that could not be read.
-var errNoKey = errors.New("no key")
+var errNoKey = errors.New("there is no key")
 
 // keyStore is where the long-term scalar s lives. Which store holds it decides what a copy of the
 // key holder's files is worth to somebody who is not its owner, so each says, in its Describe,
@@ -105,4 +105,56 @@ func (f *fileStore) Delete() error {
 		return err
 	}
 	return nil
+}
+
+// A key that is not in a plain file at keyFile has a record beside it, keyFile + ".store",
+// naming the store that holds it. The record holds no secret: it only says where to look.
+
+func storeRecordPath(keyFile string) string { return keyFile + ".store" }
+
+func writeStoreRecord(keyFile, spec string) error {
+	if err := os.MkdirAll(filepath.Dir(keyFile), 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(storeRecordPath(keyFile), []byte(spec+"\n"), 0o600)
+}
+
+// readStoreRecord returns the store recorded for keyFile; false when there is no record.
+func readStoreRecord(keyFile string) (string, bool, error) {
+	raw, err := os.ReadFile(storeRecordPath(keyFile))
+	if os.IsNotExist(err) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return strings.TrimSpace(string(raw)), true, nil
+}
+
+// storeFromSpec makes the store a --store value or a record names, for the key at keyFile.
+func storeFromSpec(spec, keyFile string) (keyStore, error) {
+	switch spec {
+	case "file":
+		return newFileStore(keyFile), nil
+	}
+	return nil, fmt.Errorf("unknown store %q (named in %s)", spec, storeRecordPath(keyFile))
+}
+
+// openStore is the store that holds the key for keyFile: the one its record names, or, with no
+// record, the plain file keyFile if that is there.
+func openStore(keyFile string) (keyStore, error) {
+	spec, recorded, err := readStoreRecord(keyFile)
+	if err != nil {
+		return nil, err
+	}
+	if recorded {
+		return storeFromSpec(spec, keyFile)
+	}
+	f := newFileStore(keyFile)
+	if ok, err := f.Exists(); err != nil {
+		return nil, err
+	} else if !ok {
+		return nil, fmt.Errorf("%w at %s", errNoKey, keyFile)
+	}
+	return f, nil
 }

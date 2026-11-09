@@ -13,6 +13,9 @@ synctang\-keyholder \- the laptop key holder for synctang
 .RI [ flags ]
 .I machine\-transport\-id
 .br
+.B synctang\-keyholder status
+.RI [ flags ]
+.br
 .B synctang\-keyholder completion
 .I shell
 .SH DESCRIPTION
@@ -168,6 +171,28 @@ Flags win over the file.
 \fB\-\-direct\-addr\fR \fIhost:port\fR
 Dial this address directly, bypassing relay and discovery.
 For testing only.
+.SS status
+Says where the long-term key is kept and what that does and does not protect against, in
+plain words, and whether the key can be read: it loads the key, only to say so, and wipes it
+at once.
+It prints no secret, and changes nothing: it makes no key, no record and no transport identity.
+When a plain copy of the key is still beside a key that another store holds, which is what a
+migration leaves, it says so, because that copy undoes what the other store is for.
+.TP
+\fB\-\-key\-file\fR \fIfile\fR
+Where the key is, or, when it is kept elsewhere, where its record is
+.RB ( key.store
+beside it).
+Default: the file
+.I key
+in the key holder's directory (see
+.BR FILES ).
+.TP
+\fB\-\-transport\-key\-file\fR \fIfile\fR
+This key holder's transport identity, whose Device ID is printed.
+Default: the file
+.I transport.pem
+in the key holder's directory.
 .SS completion
 Writes to standard output the completion script for the shell named: bash, zsh or fish.
 The program makes the script from its own usage text and the flag help of each command, so it

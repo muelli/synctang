@@ -67,7 +67,11 @@ func generateAndSave(keyFile string, force bool) ([]byte, error) {
 
 // loadPrivateKey reads the long-term scalar s back from the store for keyFile.
 func loadPrivateKey(keyFile string) ([]byte, error) {
-	return newFileStore(keyFile).Load()
+	st, err := openStore(keyFile)
+	if err != nil {
+		return nil, err
+	}
+	return st.Load()
 }
 
 // publicKeyHex loads s from keyFile and returns S = s.G, hex-encoded,

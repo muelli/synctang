@@ -29,6 +29,7 @@ commands:
   init            generate a new long-term key and transport identity
   export-pubkey   print the public key and transport id, for "synctang-unlocker enrol"
   unlock          answer one machine's recovery attempt
+  status          say where the key is kept, what that protects, and whether it can be read
   completion      print a shell completion script (bash, zsh or fish)
 `
 
@@ -49,6 +50,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runExportPubkey(args[1:], stdout, stderr)
 	case "unlock":
 		return runUnlock(args[1:], stdin, stdout, stderr)
+	case "status":
+		return runStatus(args[1:], stdout, stderr)
 	case "completion":
 		return completion.Run("synctang-keyholder", usage, func(command string) string {
 			if command == "completion" {

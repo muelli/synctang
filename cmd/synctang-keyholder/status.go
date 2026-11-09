@@ -1,0 +1,64 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+package main
+
+import (
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+
+	"github.com/muelli/synctang/internal/gnuflag"
+	"github.com/muelli/synctang/mrcore"
+	"github.com/muelli/synctang/mrcore/transport"
+	"github.com/syncthing/syncthing/lib/protocol"
+)
+
+// runStatus says where the key is kept and what that protects, in plain words, and whether it
+// can be read. Read only: it makes no key, no record and no identity, and prints no secret.
+func runStatus(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("status", flag.ContinueOnError)
+	fs.SetOutput(gnuflag.Writer(stderr))
+	keyFile := keyFileFlag(fs)
+	transportKeyFile := transportKeyFileFlag(fs)
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *keyFile == "" || *transportKeyFile == "" {
+		fmt.Fprintln(stderr, "synctang-keyholder: --key-file and --transport-key-file are required (could not determine a default)")
+		return 2
+	}
+
+	st, err := openStore(*keyFile)
+	if err != nil {
+		if errors.Is(err, errNoKey) {
+			fmt.Fprintf(stderr, "synctang-keyholder: %v; make one with: synctang-keyholder init\n", err)
+		} else {
+			fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+		}
+		return 1
+	}
+	fmt.Fprintf(stdout, "key: held by %s\n  %s\n", st.Name(), st.Describe())
+
+	// Loaded to say whether it can be, and wiped at once. For a keyring this may ask for the
+	// login password, which is the information: it is what an unlock will ask too.
+	if s, err := st.Load(); err != nil {
+		fmt.Fprintf(stdout, "readable: no (%v)\n", err)
+	} else {
+		mrcore.Wipe(s)
+		fmt.Fprintln(stdout, "readable: yes")
+	}
+
+	if _, err := os.Stat(*transportKeyFile); err != nil {
+		fmt.Fprintf(stdout, "transport identity: not created yet (%s)\n", *transportKeyFile)
+		return 0
+	}
+	cert, err := transport.LoadOrCreateCert(*transportKeyFile)
+	if err != nil {
+		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+		return 1
+	}
+	fmt.Fprintf(stdout, "transport identity: %s\n", protocol.NewDeviceID(cert.Certificate[0]))
+	return 0
+}
