@@ -404,24 +404,50 @@ kh() {
 	fi
 }
 
-# enrol_holder DIR [--keyring]: enrols the key holder in DIR on the machine, which is up.
-enrol_holder() {
-	local info pub id
-	info="$(kh "$@" export-pubkey)"
-	pub="$(sed -n 's/^S: //p' <<< "$info")"
-	id="$(sed -n 's/^transport-id: //p' <<< "$info")"
-	[ -n "$pub" ] && [ -n "$id" ] || fail "could not read the key of $1"
-	vm "printf %s '$VM_PASSPHRASE' | sudo synctang-unlocker enrol --device /dev/vda3 --pubkey '$pub' \
-		--recipient-transport-id '$id' --existing-passphrase-file -" > "$LOGS/enrol-$(basename "$1").log" 2>&1 \
-		|| { cat "$LOGS/enrol-$(basename "$1").log" >&2; fail "enrol failed for $1"; }
+# pair_holder DIR [--keyring] [PAIR-ARGS...]: pairs the key holder in DIR with the machine, which is up,
+# the way a person does: the machine shows a link and a question, the laptop is given the link, makes its
+# key if it has none, shows a code, and the machine's operator (here: an "echo y") says yes. Both codes
+# have to be the same. The laptop is not told the machine's id or discovery server: the link carries them.
+PAIR_N=0
+pair_holder() {
+	local dir=$1 link out mcode hcode keyring=()
+	shift
+	if [ "${1:-}" = --keyring ]; then
+		keyring=(--keyring)
+		shift
+	fi
+	PAIR_N=$((PAIR_N + 1))
+	out="/tmp/pair-$PAIR_N.out"
+	vm "sudo bash -c \"nohup synctang-unlocker pair --device /dev/vda3 --name e2e-vm --timeout 5m \
+		--existing-passphrase-file <(printf %s '$VM_PASSPHRASE') < <(echo y) > $out 2>&1 &\""
+	link=""
+	for _ in $(seq 1 60); do
+		link="$(vm "grep -a -o 'synctang://pair[^ ]*' $out" 2> /dev/null | head -1 || true)"
+		[ -n "$link" ] && break
+		sleep 1
+	done
+	[ -n "$link" ] || { vm "cat $out" >&2 || true; fail "the machine showed no pairing link for $dir"; }
+	kh "$dir" "${keyring[@]}" pair "$@" "$link" > "$LOGS/pair-$(basename "$dir").log" 2>&1 \
+		|| { cat "$LOGS/pair-$(basename "$dir").log" >&2; vm "cat $out" >&2 || true; fail "pair failed for $dir"; }
+	for _ in $(seq 1 30); do
+		vm 'pgrep -f "[s]ynctang-unlocker pair" > /dev/null' || break
+		sleep 1
+	done
+	mcode="$(vm "grep -a 'code:' $out" | grep -o '[0-9]\{3\} [0-9]\{3\}' | head -1 || true)"
+	hcode="$(grep -o '^    [0-9]\{3\} [0-9]\{3\}$' "$LOGS/pair-$(basename "$dir").log" | tr -d ' ' | head -1 || true)"
+	check "$(basename "$dir"): the machine and the laptop showed the same code" test -n "$mcode" -a "$(tr -d ' ' <<< "$mcode")" = "$hcode"
 }
 
-# unlock_leg LABEL DIR [--keyring]: reboot to the prompt, unlock with that key holder, and check.
+# unlock_leg LABEL TARGET DIR [--keyring]: reboot to the prompt, unlock TARGET (a name or an id) with that
+# key holder, and check. Unlocking by name leaves out --discovery: the name brings the one it was paired with.
 unlock_leg() {
-	local label=$1
-	shift
+	local label=$1 target=$2 discovery=(--discovery "$DISCOVERY")
+	shift 2
+	if [ "$target" != "$MACHINE_ID" ]; then
+		discovery=()
+	fi
 	reboot_to_prompt
-	kh "$@" unlock --yes --timeout 3m --discovery "$DISCOVERY" "$MACHINE_ID" > "$LOGS/$label-unlock.log" 2>&1 \
+	kh "$@" unlock --yes --timeout 3m "${discovery[@]}" "$target" > "$LOGS/$label-unlock.log" 2>&1 \
 		|| { cat "$LOGS/$label-unlock.log" >&2; FAILED=1; }
 	check "$label: the machine unlocked" unlocked_without_a_passphrase
 	check "$label: nobody typed a passphrase" bash -c "! tail -c +$((MARK + 1)) '$CONSOLE_LOG' | grep -aq '$VM_PASSPHRASE'"
@@ -430,31 +456,31 @@ unlock_leg() {
 if start_keyring; then
 	DIR_SS="$RUN/kh-secret-service"
 	mkdir -p "$DIR_SS"
-	kh "$DIR_SS" --keyring init --store secret-service > "$LOGS/ss-init.log" 2>&1 || { cat "$LOGS/ss-init.log" >&2; fail "init in the keyring failed"; }
+	# No init first: pairing makes the key, in the keyring, when there is none.
+	pair_holder "$DIR_SS" --keyring --store secret-service
 	check "secret-service: no key file was made" test ! -e "$DIR_SS/synctang-keyholder/key"
 	check "secret-service: the key is in the keyring" bash -c "'${KR[0]}' ${KR[*]:1} secret-tool lookup service synctang-keyholder > /dev/null"
 	ST="$(kh "$DIR_SS" --keyring status)"
 	# shellcheck disable=SC2329  # run by check
 	status_names_the_keyring() { grep -q 'held by secret-service' <<< "$ST" && grep -q 'readable: yes' <<< "$ST"; }
 	check "secret-service: status says where the key is, and that it reads" status_names_the_keyring
-	enrol_holder "$DIR_SS" --keyring
 	# An unreachable keyring must be said to be that, not to be an absent key: "no key" would send
 	# a person to make a new one while theirs is only out of reach.
 	UNREACH="$(env DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent XDG_CONFIG_HOME="$DIR_SS" "$KEYHOLDER" unlock --yes --timeout 5s "$MACHINE_ID" 2>&1 || true)"
 	# shellcheck disable=SC2329  # run by check
 	unreachable_is_said() { grep -q 'keyring could not be reached' <<< "$UNREACH" && ! grep -q 'there is no key' <<< "$UNREACH"; }
 	check "secret-service: an unreachable keyring is said to be that" unreachable_is_said
-	unlock_leg "secret-service" "$DIR_SS" --keyring
+	check "secret-service: the machine can be named" bash -c "grep -q '^e2e-vm $MACHINE_ID' '$DIR_SS/synctang-keyholder/machines'"
+	unlock_leg "secret-service" e2e-vm "$DIR_SS" --keyring
 fi
 
 if (printf x | systemd-creds encrypt --user --name=probe - - > /dev/null 2>&1); then
 	DIR_CR="$RUN/kh-systemd-creds"
 	mkdir -p "$DIR_CR"
-	kh "$DIR_CR" init --store systemd-creds > "$LOGS/cr-init.log" 2>&1 || { cat "$LOGS/cr-init.log" >&2; fail "init in systemd-creds failed"; }
+	pair_holder "$DIR_CR" --store systemd-creds
 	check "systemd-creds: no key file, a sealed blob instead" bash -c "test ! -e '$DIR_CR/synctang-keyholder/key' && test -s '$DIR_CR/synctang-keyholder/key.cred'"
 	check "systemd-creds: the scalar is not in the blob in the clear" bash -c "! grep -aEq '[0-9a-f]{64}' '$DIR_CR/synctang-keyholder/key.cred'"
-	enrol_holder "$DIR_CR"
-	unlock_leg "systemd-creds" "$DIR_CR"
+	unlock_leg "systemd-creds" "$MACHINE_ID" "$DIR_CR"
 else
 	echo "skip systemd-creds: user-scope credentials do not work here"
 fi
