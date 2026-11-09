@@ -22,7 +22,14 @@ holder that is not on it. `[V]` marks what was run here, `[U]` what was not.
 5. Reboots to the passphrase prompt. A key holder that was never enrolled tries to
    unlock it and must get nowhere; then the laptop unlocks it.
 6. Reboots again; the phone unlocks it.
-7. After each unlock it checks that the agent logged `recovery attempt succeeded` in
+7. Then the laptop's key in each store it can be kept in, each one a whole path: a key holder makes its key
+   there, is enrolled on the machine, and unlocks it after a reboot. The keyring (a private session bus and
+   `gnome-keyring-daemon`, started by the script): the key is in the keyring and no key file was made, `status`
+   says so and that it reads, a key holder with no reachable keyring is told that and not told there is no key, and
+   the machine unlocks. And
+   `systemd-creds` (user scope): a sealed blob and no key file, the key is not in it in the clear, and the machine
+   unlocks. A leg whose tools are not there is skipped, and says so.
+8. After each unlock it checks that the agent logged `recovery attempt succeeded` in
    the VM's journal, and that the passphrase was not typed on the console since the
    reboot.
 

@@ -164,7 +164,24 @@ func TestSecretServiceStoreAgainstARealKeyring(t *testing.T) {
 		"HOME="+home, "XDG_DATA_HOME="+filepath.Join(home, "data"), "XDG_RUNTIME_DIR="+home,
 		"SYNCTANG_REAL_KEYRING_CHILD=1")
 
-	bus := exec.Command(dbus, "--session", "--nofork", "--print-address=1")
+	// A bus with no services to activate: with the system's session configuration a request for
+	// the Secret Service can start a second, locked daemon beside the one started here with the
+	// login password, and which of the two answers is a race.
+	busConf := filepath.Join(home, "bus.conf")
+	if err := os.WriteFile(busConf, []byte(`<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN" "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<busconfig>
+  <type>session</type>
+  <listen>unix:tmpdir=/tmp</listen>
+  <auth>EXTERNAL</auth>
+  <policy context="default">
+    <allow send_destination="*" eavesdrop="true"/>
+    <allow eavesdrop="true"/>
+    <allow own="*"/>
+  </policy>
+</busconfig>`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bus := exec.Command(dbus, "--config-file="+busConf, "--nofork", "--print-address=1")
 	out, err := bus.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)

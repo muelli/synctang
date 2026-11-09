@@ -334,6 +334,131 @@ timeout 300 "$E2EPHONE" unlock "$PHONE" "$MACHINE_ID" "$DISCOVERY" > "$LOGS/phon
 check "the phone unlocked the machine" unlocked_without_a_passphrase
 check "nobody typed a passphrase on the console either" bash -c "! tail -c +$((MARK + 1)) '$CONSOLE_LOG' | grep -aq '$VM_PASSPHRASE'"
 
+# ---------------------------------------------------------------------------------
+# The laptop's key in each store it can be kept in: a key holder makes its key there, is enrolled
+# on the machine, and unlocks it after a reboot, so what is tried is the whole path and not only
+# the store. Needs the tools of the store; without them the leg is skipped, and says so.
+log "the laptop key in each store"
+
+KR_HOME="$RUN/keyring-home"
+KR=()
+# Nothing from an earlier run: a key still held for the same key file would make init refuse, rightly.
+rm -rf -- "$KR_HOME" "$RUN/kh-secret-service" "$RUN/kh-systemd-creds"
+start_keyring() {
+	local tool
+	for tool in dbus-daemon gnome-keyring-daemon secret-tool; do
+		command -v "$tool" > /dev/null || { echo "skip the keyring: no $tool"; return 1; }
+	done
+	mkdir -p "$KR_HOME/data"
+	# A bus with no services to activate: with the system's session configuration a request for
+	# the Secret Service can start a second, locked daemon beside the one started here with the
+	# login password, and which of the two answers is a race.
+	cat > "$KR_HOME/bus.conf" <<'BUSCONF'
+<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN" "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<busconfig>
+  <type>session</type>
+  <listen>unix:tmpdir=/tmp</listen>
+  <auth>EXTERNAL</auth>
+  <policy context="default">
+    <allow send_destination="*" eavesdrop="true"/>
+    <allow eavesdrop="true"/>
+    <allow own="*"/>
+  </policy>
+</busconfig>
+BUSCONF
+	dbus-daemon --config-file="$KR_HOME/bus.conf" --nofork --print-address=1 > "$LOGS/keyring-bus.address" 2> "$LOGS/keyring-bus.log" &
+	PIDS+=("$!")
+	local address=""
+	for _ in $(seq 1 30); do
+		address="$(head -1 "$LOGS/keyring-bus.address" 2> /dev/null || true)"
+		[ -n "$address" ] && break
+		sleep 0.3
+	done
+	[ -n "$address" ] || { echo "skip the keyring: the session bus did not start"; return 1; }
+	KR=(env HOME="$KR_HOME" XDG_DATA_HOME="$KR_HOME/data" XDG_RUNTIME_DIR="$KR_HOME" DBUS_SESSION_BUS_ADDRESS="$address")
+	"${KR[@]}" gnome-keyring-daemon --unlock --components=secrets --foreground \
+		< <(printf %s 'a-test-login-password') > "$LOGS/keyring-daemon.log" 2>&1 &
+	PIDS+=("$!")
+	# A desktop login makes the default keyring; a bare daemon makes it when something first
+	# stores an item.
+	for _ in $(seq 1 40); do
+		if printf v | "${KR[@]}" secret-tool store --label="e2e setup" setup probe 2> /dev/null; then
+			return 0
+		fi
+		sleep 0.5
+	done
+	echo "skip the keyring: the daemon did not come up"
+	return 1
+}
+
+# kh DIR [--keyring] ARGS...: the key holder with its configuration in DIR, with the keyring's
+# environment when asked.
+kh() {
+	local dir=$1
+	shift
+	if [ "${1:-}" = --keyring ]; then
+		shift
+		"${KR[@]}" XDG_CONFIG_HOME="$dir" "$KEYHOLDER" "$@"
+	else
+		XDG_CONFIG_HOME="$dir" "$KEYHOLDER" "$@"
+	fi
+}
+
+# enrol_holder DIR [--keyring]: enrols the key holder in DIR on the machine, which is up.
+enrol_holder() {
+	local info pub id
+	info="$(kh "$@" export-pubkey)"
+	pub="$(sed -n 's/^S: //p' <<< "$info")"
+	id="$(sed -n 's/^transport-id: //p' <<< "$info")"
+	[ -n "$pub" ] && [ -n "$id" ] || fail "could not read the key of $1"
+	vm "printf %s '$VM_PASSPHRASE' | sudo synctang-unlocker enrol --device /dev/vda3 --pubkey '$pub' \
+		--recipient-transport-id '$id' --existing-passphrase-file -" > "$LOGS/enrol-$(basename "$1").log" 2>&1 \
+		|| { cat "$LOGS/enrol-$(basename "$1").log" >&2; fail "enrol failed for $1"; }
+}
+
+# unlock_leg LABEL DIR [--keyring]: reboot to the prompt, unlock with that key holder, and check.
+unlock_leg() {
+	local label=$1
+	shift
+	reboot_to_prompt
+	kh "$@" unlock --yes --timeout 3m --discovery "$DISCOVERY" "$MACHINE_ID" > "$LOGS/$label-unlock.log" 2>&1 \
+		|| { cat "$LOGS/$label-unlock.log" >&2; FAILED=1; }
+	check "$label: the machine unlocked" unlocked_without_a_passphrase
+	check "$label: nobody typed a passphrase" bash -c "! tail -c +$((MARK + 1)) '$CONSOLE_LOG' | grep -aq '$VM_PASSPHRASE'"
+}
+
+if start_keyring; then
+	DIR_SS="$RUN/kh-secret-service"
+	mkdir -p "$DIR_SS"
+	kh "$DIR_SS" --keyring init --store secret-service > "$LOGS/ss-init.log" 2>&1 || { cat "$LOGS/ss-init.log" >&2; fail "init in the keyring failed"; }
+	check "secret-service: no key file was made" test ! -e "$DIR_SS/synctang-keyholder/key"
+	check "secret-service: the key is in the keyring" bash -c "'${KR[0]}' ${KR[*]:1} secret-tool search --all service synctang-keyholder 2>&1 | grep -q 'synctang-keyholder'"
+	ST="$(kh "$DIR_SS" --keyring status)"
+	# shellcheck disable=SC2329  # run by check
+	status_names_the_keyring() { grep -q 'held by secret-service' <<< "$ST" && grep -q 'readable: yes' <<< "$ST"; }
+	check "secret-service: status says where the key is, and that it reads" status_names_the_keyring
+	enrol_holder "$DIR_SS" --keyring
+	# An unreachable keyring must be said to be that, not to be an absent key: "no key" would send
+	# a person to make a new one while theirs is only out of reach.
+	UNREACH="$(env -u DBUS_SESSION_BUS_ADDRESS XDG_CONFIG_HOME="$DIR_SS" "$KEYHOLDER" unlock --yes --timeout 5s "$MACHINE_ID" 2>&1 || true)"
+	# shellcheck disable=SC2329  # run by check
+	unreachable_is_said() { grep -q 'keyring could not be reached' <<< "$UNREACH" && ! grep -q 'there is no key' <<< "$UNREACH"; }
+	check "secret-service: an unreachable keyring is said to be that" unreachable_is_said
+	unlock_leg "secret-service" "$DIR_SS" --keyring
+fi
+
+if (printf x | systemd-creds encrypt --user --name=probe - - > /dev/null 2>&1); then
+	DIR_CR="$RUN/kh-systemd-creds"
+	mkdir -p "$DIR_CR"
+	kh "$DIR_CR" init --store systemd-creds > "$LOGS/cr-init.log" 2>&1 || { cat "$LOGS/cr-init.log" >&2; fail "init in systemd-creds failed"; }
+	check "systemd-creds: no key file, a sealed blob instead" bash -c "test ! -e '$DIR_CR/synctang-keyholder/key' && test -s '$DIR_CR/synctang-keyholder/key.cred'"
+	check "systemd-creds: the scalar is not in the blob in the clear" bash -c "! grep -aEq '[0-9a-f]{64}' '$DIR_CR/synctang-keyholder/key.cred'"
+	enrol_holder "$DIR_CR"
+	unlock_leg "systemd-creds" "$DIR_CR"
+else
+	echo "skip systemd-creds: user-scope credentials do not work here"
+fi
+
 if [ "$FAILED" -eq 0 ]; then
 	log "end to end: all checks passed"
 else
