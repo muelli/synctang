@@ -21,6 +21,14 @@ type fakeCreds struct {
 	err   error
 }
 
+func reversed(b []byte) []byte {
+	out := make([]byte, len(b))
+	for i, c := range b {
+		out[len(b)-1-i] = c
+	}
+	return out
+}
+
 func (f *fakeCreds) install(t *testing.T) {
 	t.Helper()
 	was := credsRun
@@ -33,9 +41,10 @@ func (f *fakeCreds) install(t *testing.T) {
 		}
 		switch args[0] {
 		case "encrypt":
-			return append([]byte("CRED:"), stdin...), nil
+			// Reversed, so that what is on disk is not the hex scalar and a test can tell.
+			return append([]byte("CRED:"), reversed(stdin)...), nil
 		case "decrypt":
-			return bytes.TrimPrefix(stdin, []byte("CRED:")), nil
+			return reversed(bytes.TrimPrefix(stdin, []byte("CRED:"))), nil
 		}
 		return nil, errors.New("unexpected " + args[0])
 	}
@@ -53,7 +62,7 @@ func TestCredStoreSavesAnEncryptedBlobAndLoadsTheScalarBack(t *testing.T) {
 	if err != nil || !bytes.HasPrefix(raw, []byte("CRED:")) {
 		t.Fatalf("the blob should be what systemd-creds wrote: %q %v", raw, err)
 	}
-	if bytes.Contains(raw, []byte(hex.EncodeToString(scalar32(6)))) && !bytes.HasPrefix(raw, []byte("CRED:")) {
+	if bytes.Contains(raw, []byte(hex.EncodeToString(scalar32(6)))) {
 		t.Fatal("the scalar must not be on disk in the clear")
 	}
 	if fi, _ := os.Stat(blob); fi.Mode().Perm() != 0o600 {
@@ -300,5 +309,28 @@ func TestCredStoreWithTheRealSystemdCreds(t *testing.T) {
 	}
 	if err := st.Delete(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A blob that is not this store's (another name, not a credential at all) is not a systemd that is
+// too old, and saying "need systemd 256" sends the person after the wrong thing.
+func TestAWrongBlobIsNotBlamedOnTheSystemdVersion(t *testing.T) {
+	blob := filepath.Join(t.TempDir(), "key.cred")
+	if err := os.WriteFile(blob, []byte("not a credential"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, detail := range []string{"Name in credential doesn't match expectations", "Bad credential format"} {
+		(&fakeCreds{err: errors.New("systemd-creds: exit status 1: " + detail)}).install(t)
+		_, err := newCredStore(blob, false).Load()
+		if err == nil || !strings.Contains(err.Error(), detail) {
+			t.Fatalf("%s: %v", detail, err)
+		}
+		if strings.Contains(err.Error(), "systemd 256") || !strings.Contains(err.Error(), "not a credential this store sealed") {
+			t.Errorf("%s: %v", detail, err)
+		}
+	}
+	(&fakeCreds{err: errors.New("systemd-creds: exit status 1: Failed to decrypt: io.systemd.InteractiveAuthenticationRequired")}).install(t)
+	if _, err := newCredStore(blob, false).Load(); err == nil || !strings.Contains(err.Error(), "systemd 256") {
+		t.Errorf("a real scope problem should still say what the store needs: %v", err)
 	}
 }

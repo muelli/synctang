@@ -84,10 +84,14 @@ or
 .B file
 is a plain file with mode 0600: it keeps out other users of the laptop and nothing else.
 .B secret\-service
-is the desktop's keyring over D-Bus (GNOME Keyring, KWallet or KeePassXC), encrypted with a key that
-the login unlocks, so a copy of the configuration directory is useless without the login password;
+is the desktop's keyring over D-Bus, encrypted with a key that the login unlocks (run against GNOME Keyring
+with a keyring password; KWallet and KeePassXC unlock differently and were not tried, and a keyring with a
+blank password protects nothing against a copy of its files), so a copy of the configuration directory is
+useless without the login password;
 it is unlocked for the whole session, so software running as you can ask for it, and it needs a session
-bus, which plain ssh does not give.
+bus, which plain ssh does not give. The item is bound to the absolute path of the key file (a symbolic link
+and its target are two keys, and a key directory that moves leaves the item behind), and the library has no
+way to ask whether it exists without reading it.
 .B systemd\-creds
 seals the key with
 .BR systemd\-creds (1)

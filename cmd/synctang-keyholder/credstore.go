@@ -112,6 +112,10 @@ func (c *credStore) Describe() string {
 // unseal. Said so, with what the store needs, because "no key" would send a person to make a new
 // one while theirs is simply out of reach.
 func credsUnusable(err error) error {
+	msg := err.Error()
+	if strings.Contains(msg, "Name in credential") || strings.Contains(msg, "Bad credential format") {
+		return fmt.Errorf("the file is not a credential this store sealed for this key (a wrong file, or one sealed under another name): %w", err)
+	}
 	return fmt.Errorf("systemd-creds could not be used (user-scope credentials need systemd 256 or later and a login session of your own): %w", err)
 }
 

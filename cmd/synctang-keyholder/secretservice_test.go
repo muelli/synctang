@@ -280,7 +280,7 @@ func TestTheFallbackWarningSaysWhyInWords(t *testing.T) {
 	t.Cleanup(func() { keyringAvailable = was })
 	keyringAvailable = func() error { return errors.New(`exec: "dbus-launch": executable file not found in $PATH`) }
 	_, out, errOut := runKH("init", "--key-file", keyFile, "--transport-key-file", transportFile)
-	if !strings.Contains(out+errOut, "no D-Bus session") || strings.Contains(out+errOut, "dbus-launch") && !strings.Contains(out+errOut, "no D-Bus session") {
+	if !strings.Contains(out+errOut, "no D-Bus session") || strings.Contains(out+errOut, "dbus-launch") {
 		t.Errorf("%s%s", out, errOut)
 	}
 }

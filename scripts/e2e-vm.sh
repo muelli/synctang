@@ -432,7 +432,7 @@ if start_keyring; then
 	mkdir -p "$DIR_SS"
 	kh "$DIR_SS" --keyring init --store secret-service > "$LOGS/ss-init.log" 2>&1 || { cat "$LOGS/ss-init.log" >&2; fail "init in the keyring failed"; }
 	check "secret-service: no key file was made" test ! -e "$DIR_SS/synctang-keyholder/key"
-	check "secret-service: the key is in the keyring" bash -c "'${KR[0]}' ${KR[*]:1} secret-tool search --all service synctang-keyholder 2>&1 | grep -q 'synctang-keyholder'"
+	check "secret-service: the key is in the keyring" bash -c "'${KR[0]}' ${KR[*]:1} secret-tool lookup service synctang-keyholder > /dev/null"
 	ST="$(kh "$DIR_SS" --keyring status)"
 	# shellcheck disable=SC2329  # run by check
 	status_names_the_keyring() { grep -q 'held by secret-service' <<< "$ST" && grep -q 'readable: yes' <<< "$ST"; }
@@ -440,7 +440,7 @@ if start_keyring; then
 	enrol_holder "$DIR_SS" --keyring
 	# An unreachable keyring must be said to be that, not to be an absent key: "no key" would send
 	# a person to make a new one while theirs is only out of reach.
-	UNREACH="$(env -u DBUS_SESSION_BUS_ADDRESS XDG_CONFIG_HOME="$DIR_SS" "$KEYHOLDER" unlock --yes --timeout 5s "$MACHINE_ID" 2>&1 || true)"
+	UNREACH="$(env DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent XDG_CONFIG_HOME="$DIR_SS" "$KEYHOLDER" unlock --yes --timeout 5s "$MACHINE_ID" 2>&1 || true)"
 	# shellcheck disable=SC2329  # run by check
 	unreachable_is_said() { grep -q 'keyring could not be reached' <<< "$UNREACH" && ! grep -q 'there is no key' <<< "$UNREACH"; }
 	check "secret-service: an unreachable keyring is said to be that" unreachable_is_said
