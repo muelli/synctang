@@ -134,20 +134,21 @@ func checkInitrd(identityPath, networkConfPath string) initrdStatus {
 // printInitrdStatus writes the initrd's state as "status" shows it.
 func printInitrdStatus(w io.Writer, identityPath, networkConfPath string) {
 	st := checkInitrd(identityPath, networkConfPath)
+	look := ui.For(w)
 	switch {
 	case !st.Checked:
-		fmt.Fprintf(w, "initrd: could not be checked (%s)\n", st.Reason)
+		fmt.Fprintln(w, look.Line(look.Warn(""), fmt.Sprintf("initrd: could not be checked (%s)", st.Reason)))
 	case len(st.Problems) == 0:
 		if _, err := os.Stat(identityPath); err != nil {
 			fmt.Fprintln(w, "initrd: nothing to carry yet, this machine has no identity")
 			return
 		}
-		fmt.Fprintln(w, "initrd: carries this machine's identity"+map[bool]string{true: " and the current network.conf", false: ""}[fileExists(networkConfPath)])
+		fmt.Fprintln(w, look.Line(look.OK(""), "initrd: carries this machine's identity"+map[bool]string{true: " and the current network.conf", false: ""}[fileExists(networkConfPath)]))
 	default:
 		for _, p := range st.Problems {
-			fmt.Fprintf(w, "initrd: %s\n", p)
+			fmt.Fprintln(w, look.Line(look.Fail(""), look.Red(fmt.Sprintf("initrd: %s", p))))
 		}
-		fmt.Fprintln(w, "initrd: fix it with: dracut --force (as root; it rebuilds the initrd of the running kernel)")
+		fmt.Fprintln(w, "initrd: fix it with: "+look.Cyan("dracut --force")+" (as root; it rebuilds the initrd of the running kernel)")
 	}
 }
 

@@ -315,17 +315,40 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 	// One reader for both questions, so neither loses what the other buffered.
 	stdin := bufio.NewReader(answers)
 
+	// A line that turns while the machine waits for a key holder, at a terminal. Anything printed
+	// (a question, a note) clears it first, and it comes back after.
+	status := ui.NewStatus(stderr)
+	defer status.Stop()
+	started := time.Now()
+	showWaiting := func() {
+		status.Set(func() string {
+			return fmt.Sprintf("waiting for a key holder to answer the pairing code (%s of %s)", clock(time.Since(started)), clock(*window))
+		})
+	}
+	showWaiting()
+	confirm, confirmReplace := pairConfirmer(*yes, stdout, stdin), pairReplaceConfirmer(*yes, stdout, stdin)
+
 	opts := pairOptions{
 		device:             *device,
 		existingPassphrase: passphrase,
 		machineCert:        cert,
 		machineName:        *name,
 		secret:             secret,
-		confirm:            pairConfirmer(*yes, stdout, stdin),
-		confirmReplace:     pairReplaceConfirmer(*yes, stdout, stdin),
-		notify:             func(m string) { fmt.Fprintln(stdout, m) },
-		listenOpts:         transport.ListenOptions{DirectAddr: *directAddr},
-		network:            network,
+		confirm: func(peerID string, pubKey []byte, sas string) bool {
+			status.Stop()
+			ok := confirm(peerID, pubKey, sas)
+			showWaiting()
+			return ok
+		},
+		confirmReplace: func(peerID string, existing existingRecipient, newKid []byte) bool {
+			status.Stop()
+			ok := confirmReplace(peerID, existing, newKid)
+			showWaiting()
+			return ok
+		},
+		notify:     func(m string) { status.Stop(); fmt.Fprintln(stdout, m); showWaiting() },
+		listenOpts: transport.ListenOptions{DirectAddr: *directAddr},
+		network:    network,
 	}
 
 	// Retried rather than abandoned on the first refusal: a code read
@@ -333,8 +356,10 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 	// starting over with a new code for no reason.
 	for {
 		err := runPairOnce(ctx, opts)
+		status.Stop()
 		if err == nil {
-			fmt.Fprintln(stdout, "paired. The key holder can now unlock this volume.")
+			look := ui.For(stdout)
+			fmt.Fprintln(stdout, look.Line(look.OK(""), look.Emoji("🤝", "")+"paired. The key holder can now unlock this volume."))
 			fmt.Fprintln(stdout, rehearsalHint(*device))
 			// The first pairing on a machine makes its identity, which the initrd built
 			// before then does not carry.
@@ -345,6 +370,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		ui.Notef(stderr, "%v (still waiting)\n", err)
+		showWaiting()
 	}
 }
 
@@ -390,7 +416,11 @@ func pairConfirmer(assumeYes bool, stdout io.Writer, stdin io.Reader) func(strin
 		fmt.Fprintf(stdout, "\na key holder answered the pairing code:\n\n")
 		fmt.Fprintf(stdout, "  transport id:  %s\n", peerID)
 		fmt.Fprintf(stdout, "  public key:    %s\n", shortKid(pubKey))
-		fmt.Fprintf(stdout, "  code:          %s\n\n", sas)
+		if look := ui.For(stdout); look.Unicode {
+			fmt.Fprintf(stdout, "  code:\n%s\n\n", ui.CodeBox(look, "      ", sas))
+		} else {
+			fmt.Fprintf(stdout, "  code:          %s\n\n", sas)
+		}
 		// The pairing code only proves that whoever answered had it, and a code that was photographed
 		// or pasted somewhere is had by more than one party: the comparison is what tells them apart.
 		fmt.Fprint(stdout, "A laptop (synctang-keyholder pair) and the phone app show the same code: enrol it only if they are the same.\n"+

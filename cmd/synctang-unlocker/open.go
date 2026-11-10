@@ -195,19 +195,37 @@ func waitForApproval(device, machineName string, cert tls.Certificate, timeout t
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	tr := newAgentTransport(cert, nil, directAddr, network)
+	// A line that turns while it waits, at a terminal; anything printed first clears it.
+	status := ui.NewStatus(stderr)
+	defer status.Stop()
+	started := time.Now()
+	status.Set(func() string {
+		return fmt.Sprintf("waiting for a key holder to approve (%s of %s)", clock(time.Since(started)), clock(timeout))
+	})
 	for {
 		err := serveOneExchange(ctx, device, machineName, transport.ListenOptions{DirectAddr: directAddr}, tr, deliver)
 		if err == nil {
+			status.Stop()
 			return true
 		}
+		status.Stop()
 		if ctx.Err() != nil {
 			ui.Errorf(stderr, "nobody approved within %s\n", timeout)
 			return false
 		}
 		ui.Notef(stderr, "%v (still waiting)\n", err)
+		status.Set(func() string {
+			return fmt.Sprintf("waiting for a key holder to approve (%s of %s)", clock(time.Since(started)), clock(timeout))
+		})
 		select {
 		case <-ctx.Done():
 		case <-time.After(agentRetryInterval):
 		}
 	}
+}
+
+// clock is a duration as a clock: 1:05.
+func clock(d time.Duration) string {
+	d = d.Round(time.Second)
+	return fmt.Sprintf("%d:%02d", int(d.Minutes()), int(d.Seconds())%60)
 }

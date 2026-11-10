@@ -211,3 +211,15 @@ func TestErrorsAreRedAndNotesYellowAtATerminal(t *testing.T) {
 		t.Errorf("%q\nwant %q", buf.String(), want)
 	}
 }
+
+func TestCodeBoxFramesTheCodeOnlyWhereSymbolsWork(t *testing.T) {
+	if got := CodeBox(Style{Unicode: true}, "  ", "483 291"); got != "  ┌─────────┐\n  │ 483 291 │\n  └─────────┘" {
+		t.Errorf("%q", got)
+	}
+	if got := CodeBox(Style{}, "    ", "483 291"); got != "    483 291" {
+		t.Errorf("%q", got)
+	}
+	if got := CodeBox(Style{Color: true, Unicode: true}, "", "1 2"); !strings.Contains(got, "\x1b[1m1 2\x1b[0m") {
+		t.Errorf("the code is not bold: %q", got)
+	}
+}

@@ -13,7 +13,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 )
 
 // candidate is a block device that might carry a LUKS header: where it is, what the kernel
@@ -194,19 +193,30 @@ func listDevices() ([]luksDevice, error) {
 }
 
 // formatDevices lays the volumes out as a table with a header line.
-func formatDevices(devs []luksDevice) string {
-	var b strings.Builder
-	w := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "DEVICE\tUUID\tSIZE\tOPEN AS\tSYNCTANG")
-	for _, d := range devs {
+func formatDevices(devs []luksDevice) string { return formatDevicesFor(devs, ui.Style{}) }
+
+// formatDevicesFor is the table for a terminal that look describes: a bold header, and the state of
+// each volume in a colour (green when key holders are enrolled, yellow when it has none, red when it
+// cannot be used).
+func formatDevicesFor(devs []luksDevice, look ui.Style) string {
+	rows := make([][]string, len(devs))
+	for i, d := range devs {
 		open := "-"
 		if len(d.OpenAs) > 0 {
 			open = strings.Join(d.OpenAs, ",")
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", d.Path, d.UUID, humanSize(d.Size), open, d.synctang())
+		state := d.synctang()
+		switch {
+		case d.Version == "1":
+			state = look.Red(state)
+		case !d.HasToken || d.KeyHolders == 0:
+			state = look.Yellow(state)
+		default:
+			state = look.Green(state)
+		}
+		rows[i] = []string{d.Path, d.UUID, humanSize(d.Size), open, state}
 	}
-	w.Flush()
-	return b.String()
+	return ui.Table([]string{"DEVICE", "UUID", "SIZE", "OPEN AS", "SYNCTANG"}, rows, look)
 }
 
 // runDevices lists the LUKS volumes on this machine, so that the device to pair or enrol
@@ -234,7 +244,7 @@ func runDevices(args []string, stdout, stderr io.Writer) int {
 		ui.Errorln(stderr, "no LUKS device found")
 		return 1
 	}
-	fmt.Fprint(stdout, formatDevices(devs))
+	fmt.Fprint(stdout, formatDevicesFor(devs, ui.For(stdout)))
 	return 0
 }
 

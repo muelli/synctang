@@ -228,11 +228,27 @@ func loadedImageHash(file []byte) ([32]byte, bool) {
 // printChecks writes the checks and returns how many are problems.
 func printChecks(w io.Writer, checks []rehearsalCheck) int {
 	problems := 0
+	look := ui.For(w)
 	for _, c := range checks {
 		label := map[string]string{"ok": "ok", "problem": "PROBLEM", "unchecked": "unchecked"}[c.Status]
-		fmt.Fprintf(w, "  %-9s  %s\n", label, c.Name)
-		if c.Detail != "" {
-			fmt.Fprintf(w, "             %s\n", c.Detail)
+		if look == (ui.Style{}) {
+			// Plain: the columns the output has always had.
+			fmt.Fprintf(w, "  %-9s  %s\n", label, c.Name)
+			if c.Detail != "" {
+				fmt.Fprintf(w, "             %s\n", c.Detail)
+			}
+		} else {
+			mark, name := look.OK(label), c.Name
+			switch c.Status {
+			case "problem":
+				mark, name = look.Fail(label), look.Red(c.Name)
+			case "unchecked":
+				mark, name = look.Dim("-"), look.Dim(c.Name+" (not checked)")
+			}
+			fmt.Fprintf(w, "  %s %s\n", mark, name)
+			if c.Detail != "" {
+				fmt.Fprintf(w, "    %s\n", look.Dim(c.Detail))
+			}
 		}
 		if c.Status == "problem" {
 			problems++
@@ -336,7 +352,8 @@ func runRehearse(args []string, stdout, stderr io.Writer) int {
 	if !waitForApproval(dev, *machineName, cert, *timeout, *directAddr, network, nothing, stderr) {
 		return 1
 	}
-	fmt.Fprintf(stdout, "\nrehearsal passed: a key holder approved, and what it recovered opens %s, which is what the agent checks at boot\n", dev)
+	fmt.Fprintf(stdout, "\n%s", ui.For(stdout).Green(ui.For(stdout).Emoji("🎉", "")))
+	fmt.Fprintf(stdout, "rehearsal passed: a key holder approved, and what it recovered opens %s, which is what the agent checks at boot\n", dev)
 	fmt.Fprint(stdout, rehearsalNotTested)
 	return 0
 }

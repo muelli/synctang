@@ -14,7 +14,6 @@ import (
 	"io"
 	"net/url"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/muelli/synctang/internal/gnuflag"
@@ -233,7 +232,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "\nAsking %s to enrol this key holder. The machine shows its operator a code,\n"+
 			"and it must be the same as this one:\n\n%s\n\n"+
 			"If it is different, answer n on the machine: somebody else used the pairing link first.\n",
-			machineName, codeBox(look, sas))
+			machineName, ui.CodeBox(look, "    ", sas))
 		if !status.Live() {
 			fmt.Fprintf(stdout, "Waiting for the person at the machine to confirm (up to %s)...\n", (*wait).Round(time.Second))
 		}
@@ -289,14 +288,4 @@ func elapsed(since time.Time) string { return clock(time.Since(since)) }
 func clock(d time.Duration) string {
 	d = d.Round(time.Second)
 	return fmt.Sprintf("%d:%02d", int(d.Minutes()), int(d.Seconds())%60)
-}
-
-// codeBox shows the short code where the eye goes: in a frame, bold, where symbols work, and as the
-// indented line it always was where they do not.
-func codeBox(look ui.Style, code string) string {
-	if !look.Unicode {
-		return "    " + code
-	}
-	bar := strings.Repeat("─", len(code)+2)
-	return "    ┌" + bar + "┐\n    │ " + look.Bold(code) + " │\n    └" + bar + "┘"
 }

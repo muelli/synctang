@@ -50,7 +50,7 @@ func TestStatusAtATerminalMarksWhatIsGoodAndWhatIsNot(t *testing.T) {
 func TestStatusAtATerminalSaysWhenTheKeyCannotBeRead(t *testing.T) {
 	keyFile, transportFile := keyholderDir(t)
 	_, _, _ = runKH("init", "--store", "file", "--key-file", keyFile, "--transport-key-file", transportFile)
-	if err := removeFile(keyFile); err != nil {
+	if err := os.Remove(keyFile); err != nil {
 		t.Fatal(err)
 	}
 	// The record still names the file store, which can no longer be read: that is said, in red.
@@ -92,16 +92,3 @@ func TestMachinesAtATerminalIsATableWithAHeader(t *testing.T) {
 		}
 	}
 }
-
-func TestPairShowsTheCodeInAFrameAtATerminalAndPlainOtherwise(t *testing.T) {
-	look := ui.Style{Unicode: true}
-	box := codeBox(look, "483 291")
-	if want := "    ┌─────────┐\n    │ 483 291 │\n    └─────────┘"; box != want {
-		t.Errorf("%q", box)
-	}
-	if got := codeBox(ui.Style{}, "483 291"); got != "    483 291" {
-		t.Errorf("plain: %q", got)
-	}
-}
-
-func removeFile(p string) error { return os.Remove(p) }

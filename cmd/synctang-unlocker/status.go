@@ -91,6 +91,8 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "mr-1 token: %d\n", tokenID)
 	fmt.Fprintf(stdout, "enrolled key holders: %d\n", len(tok.Recipients))
 
+	look := ui.For(stdout)
+	var rows [][]string
 	for i, rec := range tok.Recipients {
 		id, ok := rec.TransportDeviceID()
 		if !ok || id == "" {
@@ -103,7 +105,18 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 		if i < len(tok.Keyslots) {
 			keyslot = tok.Keyslots[i]
 		}
-		fmt.Fprintf(stdout, "  %s  keyslot %s  kid %s\n", id, keyslot, shortKid(rec.Kid))
+		if look == (ui.Style{}) {
+			fmt.Fprintf(stdout, "  %s  keyslot %s  kid %s\n", id, keyslot, shortKid(rec.Kid))
+			continue
+		}
+		idCell := id
+		if !ok || id == "" || strings.HasPrefix(id, "(none") {
+			idCell = look.Yellow(id)
+		}
+		rows = append(rows, []string{idCell, keyslot, shortKid(rec.Kid)})
+	}
+	if rows != nil {
+		fmt.Fprint(stdout, ui.Table([]string{"TRANSPORT ID", "KEYSLOT", "KEY"}, rows, look))
 	}
 
 	// An entry without a transport id is never answered, and if none has one the agent does not
@@ -116,14 +129,14 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 	}
 	for _, i := range withoutID {
 		slot := keyslotOf(tok, i)
-		fmt.Fprintln(stdout, warning(wrap.Width(stdout),
+		printWarning(stdout,
 			fmt.Sprintf("the key holder in keyslot %s has no transport id, so the agent cannot tell it from a stranger and will never answer it. Remove it with:", slot),
 			[]string{fmt.Sprintf("synctang-unlocker enrol --device %s --remove-keyslot %s \\", activeDevice, slot), "  --existing-passphrase-file ..."},
-			"Then enrol it again with --recipient-transport-id (\"synctang-keyholder export-pubkey\" prints it)."))
+			"Then enrol it again with --recipient-transport-id (\"synctang-keyholder export-pubkey\" prints it).")
 	}
 	if len(withoutID) == len(tok.Recipients) {
-		fmt.Fprintln(stdout, warning(wrap.Width(stdout), "no enrolled key holder has a transport id, so the agent will not listen at all, at boot or for \"rehearse\"; "+
-			"enrol with --recipient-transport-id.", nil, ""))
+		printWarning(stdout, "no enrolled key holder has a transport id, so the agent will not listen at all, at boot or for \"rehearse\"; "+
+			"enrol with --recipient-transport-id.", nil, "")
 	}
 
 	// A transport id enrolled more than once leaves the agent unable to tell
@@ -137,11 +150,11 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 		}
 		seen[canonicalOrRaw(id)] = true
 		if idxs := recipientsByTransportID(tok, id); len(idxs) > 1 {
-			fmt.Fprintln(stdout, warning(wrap.Width(stdout),
+			printWarning(stdout,
 				fmt.Sprintf("transport id %s is enrolled %d times (%s), so the agent will refuse to answer for it. "+
 					"Keep the entry whose key is current and remove each of the others with:", id, len(idxs), describeRecipients(tok, idxs)),
 				[]string{fmt.Sprintf("synctang-unlocker enrol --device %s --remove %s \\", activeDevice, id), "  --keyslot <n> --existing-passphrase-file ..."},
-				""))
+				"")
 		}
 	}
 
@@ -189,4 +202,12 @@ func warning(width int, text string, command []string, after string) string {
 		out += "\n" + wrap.Paragraph(after, strings.Repeat(" ", len(prefix)), width)
 	}
 	return out
+}
+
+// printWarning prints a warning as warning makes it, wrapped to the terminal, with its word in yellow
+// at a terminal.
+func printWarning(stdout io.Writer, text string, command []string, after string) {
+	look := ui.For(stdout)
+	w := warning(wrap.Width(stdout), text, command, after)
+	fmt.Fprintln(stdout, look.Yellow("WARNING:")+strings.TrimPrefix(w, "WARNING:"))
 }

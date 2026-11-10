@@ -253,3 +253,13 @@ func Successln(w io.Writer, msg string) {
 	s := For(w)
 	fmt.Fprint(w, s.Green(s.symbolPrefix("✓", program+":"))+" "+msg+"\n")
 }
+
+// CodeBox shows a short code where the eye goes: in a frame, bold, where symbols work, and as the indented
+// line it always was where they do not. indent is put before every line.
+func CodeBox(s Style, indent, code string) string {
+	if !s.Unicode {
+		return indent + code
+	}
+	bar := strings.Repeat("─", VisibleWidth(code)+2)
+	return indent + "┌" + bar + "┐\n" + indent + "│ " + s.Bold(code) + " │\n" + indent + "└" + bar + "┘"
+}

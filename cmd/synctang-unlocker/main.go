@@ -196,7 +196,8 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 			ui.Errorf(stderr, "%v\n", err)
 			return 1
 		}
-		fmt.Fprintf(stdout, "rotated recipient %s on %s; its previous key no longer opens the device\n", *replace, *device)
+		look := ui.For(stdout)
+		fmt.Fprintln(stdout, look.Line(look.OK(""), fmt.Sprintf("rotated recipient %s on %s; its previous key no longer opens the device", *replace, *device)))
 		return 0
 	}
 
@@ -219,7 +220,8 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 			ui.Errorf(stderr, "%v\n", err)
 			return 1
 		}
-		fmt.Fprintf(stdout, "revoked the key holder in keyslot %s on %s\n", *removeKeyslot, *device)
+		look := ui.For(stdout)
+		fmt.Fprintln(stdout, look.Line(look.OK(""), fmt.Sprintf("revoked the key holder in keyslot %s on %s", *removeKeyslot, *device)))
 		return 0
 	}
 
@@ -239,7 +241,8 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 			ui.Errorf(stderr, "%v\n", err)
 			return 1
 		}
-		fmt.Fprintf(stdout, "revoked recipient %s on %s\n", *remove, *device)
+		look := ui.For(stdout)
+		fmt.Fprintln(stdout, look.Line(look.OK(""), fmt.Sprintf("revoked recipient %s on %s", *remove, *device)))
 		return 0
 	}
 
@@ -281,7 +284,8 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 	if outcome.Already {
 		fmt.Fprintf(stdout, "%s is already enrolled at keyslot %s on %s; nothing was added\n", *recipientTransportID, outcome.Keyslot, *device)
 	} else {
-		fmt.Fprintf(stdout, "enrolled a new recipient on %s\n", *device)
+		look := ui.For(stdout)
+		fmt.Fprintln(stdout, look.Line(look.OK(""), fmt.Sprintf("enrolled a new recipient on %s", *device)))
 	}
 
 	// The human doing this by hand needs this machine's own transport id
