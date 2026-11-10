@@ -240,8 +240,7 @@ which the laptop needs to dial it. Name it with `synctang-keyholder machines add
 
 ### Where the laptop's key is kept
 
-`synctang-keyholder init` keeps the key in the desktop's keyring (the Secret Service: GNOME Keyring,
-KWallet, KeePassXC) when there is one, and in a plain file, with a warning that says why, when there
+`synctang-keyholder init` keeps the key in GNOME Keyring (through the Secret Service) when there is one, and in a plain file, with a warning that says why, when there
 is not. `--store` chooses: `file`, `secret-service`, `systemd-creds` (sealed by systemd for your account,
 no desktop needed, systemd 256 or later) or `systemd-creds:tpm2` (also sealed to this machine's TPM, so
 the key cannot be moved or backed up from the blob; written for a machine with a TPM and not yet run on one). A keyring item is bound to the absolute path of the key file, so a moved key directory leaves it behind

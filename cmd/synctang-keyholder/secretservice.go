@@ -16,7 +16,7 @@ import (
 const secretServiceName = "synctang-keyholder"
 
 // secretServiceStore keeps the scalar, as hex, in the desktop's keyring through the freedesktop
-// Secret Service (D-Bus): GNOME Keyring, KWallet and KeePassXC implement it. One item for each key
+// Secret Service (D-Bus): GNOME Keyring, the one this is run against and supports. One item for each key
 // file, named by its absolute path, so that two key holders on one account (a test, a second
 // identity) do not meet.
 type secretServiceStore struct{ account string }
@@ -32,7 +32,7 @@ func newSecretServiceStore(keyFile string) *secretServiceStore {
 func (s *secretServiceStore) Name() string { return "secret-service" }
 
 func (s *secretServiceStore) Describe() string {
-	return "the desktop's keyring (the Secret Service, over D-Bus: GNOME Keyring, KWallet or KeePassXC), " +
+	return "the desktop's keyring (the Secret Service, over D-Bus: GNOME Keyring), " +
 		"item " + secretServiceName + " for " + s.account + ". It is encrypted with a key that your login unlocks, " +
 		"so a copy of ~/.config, a backup or an image of the disk is useless without your login password, " +
 		"and so is another user of this laptop. It stays unlocked for the whole session, so software running as you " +
@@ -107,7 +107,7 @@ func keyringReason(err error) string {
 		strings.Contains(msg, "/bus: connect") || strings.Contains(msg, "session bus"):
 		return "there is no D-Bus session here, which a desktop login has and a plain ssh login does not"
 	case strings.Contains(msg, "org.freedesktop.secrets") && strings.Contains(msg, "provided"):
-		return "no Secret Service is running: start GNOME Keyring, KWallet or KeePassXC with its Secret Service switched on"
+		return "no Secret Service is running: start GNOME Keyring"
 	case strings.Contains(msg, "unlock"):
 		return "the login keyring is locked and nobody unlocked it: " + msg
 	}

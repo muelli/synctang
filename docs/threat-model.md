@@ -87,9 +87,8 @@ What each protects, against four attackers:
 None of them stops software running as you: that needs something software cannot supply, a touch on a
 hardware key, and nothing here uses one. The prompt that `synctang-keyholder unlock` shows is a
 good habit and not a boundary, because the same software can call the same library. The
-keyring row was run against GNOME Keyring only. KWallet and KeePassXC were not tried, and they unlock differently
-(KeePassXC with its database password, KWallet with its own or a blank one); a keyring with a blank password,
-which automatic login often gives, protects nothing against a copy of its files. The TPM variant was never run on
+keyring row is GNOME Keyring, the only one supported and the one that was run. A keyring with a blank
+password, which automatic login often gives, protects nothing against a copy of its files. The TPM variant was never run on
 a machine with a TPM (the test machine has none), so what it protects is what systemd documents and not
 something seen here; it asks `systemd-analyze has-tpm2` first and refuses where that fails, because
 `systemd-creds` would otherwise seal to the machine key alone and say nothing. The TPM variant ties the key to one machine: it cannot be moved, and may be lost if the TPM or its measured
