@@ -36,8 +36,9 @@ no port forwarding and no server of your own are needed. The relay sees two
 identities and some traffic; the tunnel inside it is TLS 1.3 pinned to those
 identities, so the relay operator cannot read or alter the exchange.
 
-Deliberately not supported: unattended reboots. If a machine has to come back
-up on its own, use Tang directly. This project trades that away for a human
+Deliberately not supported: unattended restarts. Every unlock needs a person
+and their fingerprint. If a machine must restart on its own, use Tang with
+Clevis, which is made for that. This project trades that away for a human
 approval and a key that only hardware will open.
 
 No tracking, no analytics, no proprietary libraries. Free software under the
