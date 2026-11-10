@@ -107,7 +107,7 @@ done
 [ -n "$PASSED" ] || { echo "the screenshot test did not pass" >&2; exit 1; }
 
 mkdir -p "$OUT"
-for n in 1 2 3 4 5; do
+for n in 1 2 3 4 5 6; do
 	"$ADB" pull "/sdcard/Android/data/$APPID/files/screenshots/$n.png" "$OUT/$n.png"
 done
 

@@ -784,6 +784,25 @@ class UnlockFlowTest {
         await<UnlockUiState.Ready>()
     }
 
+    // The code that the person compares with the one the machine shows: the pairing code only proves that
+    // whoever answered had it, so while the operator decides the phone has to say which code is its own.
+    @Test
+    fun thePairingScreenCarriesTheCodeToCompareWhileTheOperatorDecides() {
+        onMain { flow.refresh() }
+        await<UnlockUiState.NeedsPairing>()
+        onMain { flow.pair(payload(machineB)) }
+        await<UnlockUiState.Pairing>()
+        val pairing = pairings.awaitOne()
+        pairing.started.await(5, TimeUnit.SECONDS)
+        assertEquals("", (await<UnlockUiState.Pairing>()).progress.shortCode)
+
+        pairing.shown = Progress(Stage.WAITING_FOR_OPERATOR, attempt = 1, shortCode = "483 291")
+        val shown = awaitState<UnlockUiState.Pairing> { it.progress.shortCode == "483 291" }
+        assertEquals(Stage.WAITING_FOR_OPERATOR, shown.progress.stage)
+        pairing.finish()
+        await<UnlockUiState.Ready>()
+    }
+
     @Test
     fun theWorkingScreenFollowsTheAnswer() {
         val session = connectToARequest()

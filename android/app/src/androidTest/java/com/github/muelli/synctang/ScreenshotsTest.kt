@@ -119,4 +119,17 @@ class ScreenshotsTest {
             ) { _, modifier -> CameraPermissionPrompt(CameraAccess.ASK, {}, {}, modifier) }
         }
     }
+
+    // While the machine's operator decides: the phone shows the same code the machine does.
+    @Test
+    fun pairingCode() = shoot(6) {
+        Frame {
+            Busy(
+                context.getString(R.string.pair_working),
+                machine,
+                Progress(Stage.WAITING_FOR_OPERATOR, attempt = 1, startedAtMillis = System.currentTimeMillis() - 14_000, shortCode = "483 291"),
+                onCancel = {},
+            )
+        }
+    }
 }

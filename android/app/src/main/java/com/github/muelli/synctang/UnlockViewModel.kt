@@ -223,6 +223,7 @@ private class GoPairing(
         Stage.fromGo(pairer.stage()),
         pairer.attempt().toInt(),
         Route.fromGo(pairer.route()),
+        shortCode = pairer.shortCode(),
     )
 
     override fun cancel() = pairer.cancel()

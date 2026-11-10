@@ -6,6 +6,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.isFocusable
@@ -15,6 +16,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.test.platform.app.InstrumentationRegistry
 import com.github.muelli.synctang.ui.BUSY_ELAPSED_TAG
 import com.github.muelli.synctang.ui.Busy
+import com.github.muelli.synctang.ui.PAIR_CODE_TAG
 import com.github.muelli.synctang.ui.SynctangTheme
 import org.junit.Rule
 import org.junit.Test
@@ -75,5 +77,35 @@ class BusyProgressTest {
         rule.onAllNodes(hasClickAction()).assertCountEquals(1)
         rule.onAllNodes(isFocusable()).assertCountEquals(1)
         rule.onNodeWithText(context.getString(R.string.busy_cancel)).assert(hasClickAction())
+    }
+
+    // The code to compare with the machine's, while its operator decides.
+
+    @Test
+    fun aPairingShowsTheCodeAndSaysWhatToDoIfItDiffers() {
+        show(Progress(Stage.WAITING_FOR_OPERATOR, attempt = 1, startedAtMillis = 0, shortCode = "483 291"))
+        rule.onNodeWithTag(PAIR_CODE_TAG).assertTextEquals("483 291").assertIsDisplayed()
+        rule.onNodeWithText(context.getString(R.string.pair_code_intro)).assertIsDisplayed()
+        rule.onNodeWithText(context.getString(R.string.pair_code_warning)).assertIsDisplayed()
+    }
+
+    @Test
+    fun theCodeIsReadOutDigitByDigit() {
+        show(Progress(Stage.WAITING_FOR_OPERATOR, attempt = 1, startedAtMillis = 0, shortCode = "483 291"))
+        rule.onNodeWithTag(PAIR_CODE_TAG)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("4, 8, 3, 2, 9, 1")))
+    }
+
+    @Test
+    fun noCodeIsShownBeforeTheRequestHasBeenSent() {
+        show(Progress(Stage.CONNECTING, attempt = 1, startedAtMillis = 0))
+        rule.onNodeWithTag(PAIR_CODE_TAG).assertDoesNotExist()
+    }
+
+    @Test
+    fun theCodeAddsNothingToFocusAndCancelIsStillTheOneControl() {
+        show(Progress(Stage.WAITING_FOR_OPERATOR, attempt = 1, startedAtMillis = 0, shortCode = "483 291"))
+        rule.onAllNodes(hasClickAction()).assertCountEquals(1)
+        rule.onAllNodes(isFocusable()).assertCountEquals(1)
     }
 }

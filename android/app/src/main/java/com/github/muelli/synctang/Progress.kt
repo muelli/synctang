@@ -77,6 +77,12 @@ data class Progress(
     val attempt: Int = 0,
     val route: Route = Route.UNKNOWN,
     val startedAtMillis: Long = 0,
+    /**
+     * (Pairing) The six digits, such as "483 291", that the machine shows its operator with the question
+     * whether to enrol this phone; empty until the request has been sent. The phone shows them too, for the
+     * person to compare: the pairing code only proves that whoever answered had it.
+     */
+    val shortCode: String = "",
 )
 
 /**

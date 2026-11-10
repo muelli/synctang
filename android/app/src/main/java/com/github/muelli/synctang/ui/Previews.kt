@@ -114,6 +114,17 @@ private fun PairingPreview() = Frame {
     Busy(stringResource(R.string.pair_working), machine, onCancel = {})
 }
 
+@Preview(name = "Pairing, waiting for the operator", widthDp = 360, heightDp = 640)
+@Composable
+private fun PairingCodePreview() = Frame {
+    Busy(
+        stringResource(R.string.pair_working),
+        machine,
+        Progress(Stage.WAITING_FOR_OPERATOR, attempt = 1, startedAtMillis = System.currentTimeMillis() - 20_000, shortCode = "483 291"),
+        onCancel = {},
+    )
+}
+
 @Preview(name = "Working", widthDp = 360, heightDp = 640)
 @Composable
 private fun WorkingPreview() = Frame {

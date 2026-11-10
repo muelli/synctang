@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 package com.github.muelli.synctang.ui
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,6 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
@@ -70,6 +73,7 @@ internal fun Busy(
             if (progress != null) BusyDetail(progress, clock)
         }
     }
+    if (progress != null && progress.shortCode.isNotEmpty()) PairCode(progress.shortCode)
     if (onCancel != null) {
         OutlinedButton(
             onClick = onCancel,
@@ -83,6 +87,32 @@ internal fun Busy(
         }
     }
 }
+
+/**
+ * The code to compare with the machine's while its operator decides. The pairing code only proves that
+ * whoever answered had it, so a code that was photographed or pasted is had by more than one party; two
+ * codes that are the same show that the one the operator is asked about is this phone. Read out digit
+ * by digit, so a screen reader does not say "four hundred and eighty-three".
+ */
+@Composable
+private fun PairCode(code: String) {
+    val spoken = code.filter(Char::isDigit).toList().joinToString(", ")
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.between)) {
+        Text(stringResource(R.string.pair_code_intro), style = MaterialTheme.typography.bodyLarge)
+        Text(
+            code,
+            style = MaterialTheme.typography.displaySmall,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier
+                .testTag(PAIR_CODE_TAG)
+                .semantics { contentDescription = spoken },
+        )
+        Text(stringResource(R.string.pair_code_warning), style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+/** Marks the code a pairing shows, so a test can find it without knowing the digits. */
+internal const val PAIR_CODE_TAG = "pair-code"
 
 /** The stage line, and the time and attempt under it. */
 @Composable
