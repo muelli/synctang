@@ -130,6 +130,10 @@ Required, except with
 A file holding an existing valid passphrase of the volume, or
 .B \-
 for standard input.
+The program says on standard error that it is reading the passphrase from standard input, so that it does
+not look hung while it waits.
+When standard input is a terminal it asks for the passphrase with the typing hidden, and it ends at Enter;
+from a pipe it reads to the end.
 One trailing newline is ignored.
 Required.
 Do not keep the passphrase in a file on disk; see

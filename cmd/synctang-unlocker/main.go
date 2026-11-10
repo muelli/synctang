@@ -20,6 +20,7 @@ import (
 	"github.com/muelli/synctang/internal/version"
 	"github.com/muelli/synctang/internal/wrap"
 	"github.com/muelli/synctang/mrcore"
+	"golang.org/x/term"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -466,11 +467,31 @@ func newAgentTransport(cert tls.Certificate, logger *slog.Logger, directAddr str
 // shell here-string, almost always does. Without this, --existing-
 // passphrase-file silently fails to match a passphrase that was in
 // fact typed correctly, for a reason invisible in the file's content.
+// Where readPassphrase gets its input and says what it is doing: variables so that tests can choose.
+var (
+	passphraseStdin  io.Reader = os.Stdin
+	passphraseNotice io.Writer = os.Stderr
+
+	stdinIsTerminal      = func() bool { return term.IsTerminal(int(os.Stdin.Fd())) }
+	readTerminalPassword = func() ([]byte, error) { return term.ReadPassword(int(os.Stdin.Fd())) }
+)
+
 func readPassphrase(path string) ([]byte, error) {
 	var data []byte
 	var err error
 	if path == "-" {
-		data, err = io.ReadAll(os.Stdin)
+		// Standard input is easy to forget about: a program that waits on it without saying so looks
+		// hung. The notice goes to standard error, which nothing the passphrase is piped through reads.
+		if stdinIsTerminal() {
+			// A person typing it: not shown, and it ends at Enter, as any passphrase does, instead of
+			// being read to the end of the stream (which would want Ctrl-D, and show every key).
+			fmt.Fprint(passphraseNotice, "synctang-unlocker: LUKS passphrase (typing is hidden; press Enter when done): ")
+			data, err = readTerminalPassword()
+			fmt.Fprintln(passphraseNotice)
+		} else {
+			fmt.Fprintln(passphraseNotice, "synctang-unlocker: reading the passphrase from standard input")
+			data, err = io.ReadAll(passphraseStdin)
+		}
 	} else {
 		data, err = os.ReadFile(path)
 	}
