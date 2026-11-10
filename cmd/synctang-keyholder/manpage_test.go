@@ -94,6 +94,7 @@ func TestManPageMentionsNoFlagTheProgramLacks(t *testing.T) {
 	}
 	// --version is not a flag of any command: it is the whole command line, and the program tests for it.
 	known["--version"] = true
+	known["--verbose"] = true
 	known["--color"] = true
 	for _, tok := range regexp.MustCompile(`--[a-z][a-z-]*`).FindAllString(page, -1) {
 		if !known[tok] {

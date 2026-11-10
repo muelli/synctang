@@ -31,6 +31,10 @@ func newSecretServiceStore(keyFile string) *secretServiceStore {
 
 func (s *secretServiceStore) Name() string { return "secret-service" }
 
+func (s *secretServiceStore) Location() string {
+	return "Secret Service item \"" + secretServiceName + "\" for " + s.account
+}
+
 func (s *secretServiceStore) Describe() string {
 	return "the desktop's keyring (the Secret Service, over D-Bus: GNOME Keyring), " +
 		"item " + secretServiceName + " for " + s.account + ". It is encrypted with a key that your login unlocks, " +

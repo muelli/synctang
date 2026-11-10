@@ -73,8 +73,10 @@ func loadPrivateKey(keyFile string) ([]byte, error) {
 	}
 	s, err := st.Load()
 	if err != nil {
+		debugf("could not read the key from %s (%s): %v\n", st.Name(), st.Location(), err)
 		return nil, err
 	}
+	debugf("read the key from %s (%s)\n", st.Name(), st.Location())
 	if err := verifyKey(keyFile, st, s); err != nil {
 		mrcore.Wipe(s)
 		return nil, err

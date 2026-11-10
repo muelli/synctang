@@ -223,3 +223,54 @@ func TestCodeBoxFramesTheCodeOnlyWhereSymbolsWork(t *testing.T) {
 		t.Errorf("the code is not bold: %q", got)
 	}
 }
+
+func TestExtractVerboseFlagFromAnywhere(t *testing.T) {
+	for _, tc := range []struct {
+		args    []string
+		rest    []string
+		verbose bool
+	}{
+		{[]string{"status"}, []string{"status"}, false},
+		{[]string{"--verbose", "status"}, []string{"status"}, true},
+		{[]string{"status", "-verbose", "--key-file", "k"}, []string{"status", "--key-file", "k"}, true},
+		{[]string{"unlock", "--", "--verbose"}, []string{"unlock", "--", "--verbose"}, false},
+	} {
+		rest, verbose := ExtractVerboseFlag(tc.args)
+		if strings.Join(rest, "\x00") != strings.Join(tc.rest, "\x00") || verbose != tc.verbose {
+			t.Errorf("%v: %v %v, want %v %v", tc.args, rest, verbose, tc.rest, tc.verbose)
+		}
+	}
+}
+
+func TestDebugPrintsOnlyWhenAskedAndCarriesTheProgramName(t *testing.T) {
+	SetProgram("synctang-x")
+	defer SetProgram("")
+	var buf bytes.Buffer
+	SetVerbose(false)
+	Debugf(&buf, "reading %s\n", "the key")
+	if buf.Len() != 0 {
+		t.Errorf("printed without --verbose: %q", buf.String())
+	}
+	SetVerbose(true)
+	defer SetVerbose(false)
+	Debugf(&buf, "reading %s\n", "the key")
+	if buf.String() != "synctang-x: debug: reading the key\n" {
+		t.Errorf("%q", buf.String())
+	}
+}
+
+func TestVerboseCanComeFromTheEnvironment(t *testing.T) {
+	t.Setenv("SYNCTANG_DEBUG", "1")
+	SetVerbose(false)
+	if !VerboseFromEnv() {
+		t.Error("SYNCTANG_DEBUG=1 was not taken")
+	}
+	t.Setenv("SYNCTANG_DEBUG", "0")
+	if VerboseFromEnv() {
+		t.Error("SYNCTANG_DEBUG=0 was taken")
+	}
+	t.Setenv("SYNCTANG_DEBUG", "")
+	if VerboseFromEnv() {
+		t.Error("an empty SYNCTANG_DEBUG was taken")
+	}
+}

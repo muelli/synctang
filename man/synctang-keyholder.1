@@ -78,6 +78,16 @@ terminal of type
 .B dumb
 get, and to anything that is not a terminal the output is the plain text it has always been, which scripts read.
 Prose is broken to the width of the terminal.
+.PP
+.B \-\-verbose
+(also spelled
+.BR \-verbose ),
+anywhere on the command line, or
+.B SYNCTANG_DEBUG=1
+in the environment, prints a debug log to standard error: which store the record names for the key file,
+where the key was read from (a path, or the name of the Secret Service item and its account), and whether its
+public key matched the one recorded when it was made.
+It never prints the key.
 .SH COMMANDS
 Every command accepts
 .B \-h
@@ -241,8 +251,13 @@ A store named explicitly is never replaced by another when it is not there: the 
 The choice is recorded beside the key file, in
 .BR key.store ,
 which holds no secret; the other commands follow it.
+The record also holds the public key the key was made with, and every use of the key is checked against it: a
+key that a store hands back and that is not the one that was made (another program wrote the item, a backup
+was restored over it) is refused, with a message that says so.
 .BR status
-says what holds the key.
+says what holds the key and whether it matches; with
+.BR \-\-verbose ,
+any command says where it read the key from.
 .SS export\-pubkey
 Prints the public key and the transport identity, to give to
 .BR "synctang\-unlocker enrol" :
@@ -473,10 +488,11 @@ identity and optionally a discovery server.
 Holds nothing secret.
 .TP
 .I <user\ config\ dir>/synctang\-keyholder/key.store
-Which store holds the key when it is not the file
-.IR key :
-one line, such as
-.BR secret\-service .
+Which store holds the key, and the public key it was made with: the store on the first line, such as
+.BR secret\-service ,
+and
+.BI "public " hex
+on the second.
 It holds no secret.
 .TP
 .I <user\ config\ dir>/synctang\-keyholder/key.cred
@@ -502,6 +518,10 @@ Optional settings; see
 Where the user config directory is.
 Default
 .BR ~/.config .
+.TP
+.B SYNCTANG_DEBUG
+If set and not 0, the debug log of
+.BR \-\-verbose .
 .TP
 .B NO_COLOR
 If set and not empty, no colour (see

@@ -47,8 +47,10 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 	// Loaded to say whether it can be, and wiped at once. For a keyring this may ask for the
 	// login password, which is the information: it is what an unlock will ask too.
 	if s, err := st.Load(); err != nil {
+		debugf("could not read the key from %s (%s): %v\n", st.Name(), st.Location(), err)
 		fmt.Fprintln(stdout, look.Line(look.Fail(""), look.Red(fmt.Sprintf("readable: no (%v)", err))))
 	} else {
+		debugf("read the key from %s (%s)\n", st.Name(), st.Location())
 		verr := verifyKey(*keyFile, st, s)
 		mrcore.Wipe(s)
 		if verr != nil {

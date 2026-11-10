@@ -173,6 +173,11 @@ what that does and does not protect against (`threat-model.md` has the table), a
 None of the stores stops
 software running as you from asking for the key.
 
+To see where a command reads the key from, add `--verbose` (or set `SYNCTANG_DEBUG=1`). The debug log goes to
+standard error. It names the store and the place (a path, or the Secret Service item and its account) and says
+whether the key matched the public key recorded when it was made. It never prints the key. A key that a store
+hands back and that is not the one that was made is refused, with a message that says so.
+
 ## See who can unlock
 
     synctang-unlocker status --device /dev/sdXN

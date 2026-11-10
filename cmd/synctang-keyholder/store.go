@@ -7,10 +7,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/muelli/synctang/internal/ui"
 	"github.com/muelli/synctang/mrcore"
 )
 
@@ -23,6 +25,8 @@ var errNoKey = errors.New("there is no key")
 type keyStore interface {
 	// Name is the store's name as --store spells it.
 	Name() string
+	// Location says in one line where the key is, for the debug log: a path, or the name of an item.
+	Location() string
 	// Describe says in plain words what the store protects the key against and what it does not.
 	Describe() string
 	// Exists reports whether the store holds a key, without reading it where it can be avoided.
@@ -68,6 +72,8 @@ type fileStore struct{ path string }
 func newFileStore(path string) *fileStore { return &fileStore{path: path} }
 
 func (f *fileStore) Name() string { return "file" }
+
+func (f *fileStore) Location() string { return "file " + f.path }
 
 func (f *fileStore) Describe() string {
 	return "a plain file (" + f.path + ", mode 0600). It keeps out other users of this laptop and nothing else: " +
@@ -196,6 +202,12 @@ func readRecord(keyFile string) (spec, publicHex string, recorded bool, err erro
 	return spec, publicHex, true, nil
 }
 
+// debugOut is where the debug log goes: standard error when --verbose (or SYNCTANG_DEBUG) asked for it,
+// and nowhere otherwise.
+var debugOut io.Writer = io.Discard
+
+func debugf(format string, args ...any) { ui.Debugf(debugOut, format, args...) }
+
 // errWrongKey is a key that a store holds and that is not the one this key holder was made with.
 var errWrongKey = errors.New("is not the key this key holder was made with")
 
@@ -203,8 +215,12 @@ var errWrongKey = errors.New("is not the key this key holder was made with")
 // recorded public key (a record without one) is nothing to check against, and passes.
 func verifyKey(keyFile string, st keyStore, s []byte) error {
 	_, recorded, _, err := readRecord(keyFile)
-	if err != nil || recorded == "" {
+	if err != nil {
 		return err
+	}
+	if recorded == "" {
+		debugf("no public key is recorded in %s, so the key cannot be compared with one\n", storeRecordPath(keyFile))
+		return nil
 	}
 	pub, err := mrcore.P256().ScalarBaseMult(s)
 	if err != nil {
@@ -215,6 +231,7 @@ func verifyKey(keyFile string, st keyStore, s []byte) error {
 		return fmt.Errorf("the key held by %s %w: its public key is %s, and %s says %s. Another program may have replaced it, "+
 			"or the item belongs to another key file", st.Name(), errWrongKey, short(got), storeRecordPath(keyFile), short(recorded))
 	}
+	debugf("its public key matches the one recorded in %s\n", storeRecordPath(keyFile))
 	return nil
 }
 
@@ -250,8 +267,10 @@ func openStore(keyFile string) (keyStore, error) {
 		return nil, err
 	}
 	if recorded {
+		debugf("%s names the store %q for the key file %s\n", storeRecordPath(keyFile), spec, keyFile)
 		return storeFromSpec(spec, keyFile)
 	}
+	debugf("there is no record %s, so the key is looked for in the plain file %s\n", storeRecordPath(keyFile), keyFile)
 	f := newFileStore(keyFile)
 	if ok, err := f.Exists(); err != nil {
 		return nil, err

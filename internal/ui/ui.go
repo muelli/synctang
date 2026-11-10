@@ -263,3 +263,39 @@ func CodeBox(s Style, indent, code string) string {
 	bar := strings.Repeat("─", VisibleWidth(code)+2)
 	return indent + "┌" + bar + "┐\n" + indent + "│ " + s.Bold(code) + " │\n" + indent + "└" + bar + "┘"
 }
+
+var verbose bool
+
+// SetVerbose says whether Debugf prints.
+func SetVerbose(v bool) { verbose = v }
+
+// VerboseFromEnv is whether SYNCTANG_DEBUG asks for the debug log: set, and not 0.
+func VerboseFromEnv() bool {
+	v := os.Getenv("SYNCTANG_DEBUG")
+	return v != "" && v != "0"
+}
+
+// ExtractVerboseFlag takes --verbose (and -verbose) out of a command line, wherever it stands before a "--".
+func ExtractVerboseFlag(args []string) (rest []string, verbose bool) {
+	for i, arg := range args {
+		if arg == "--" {
+			return append(rest, args[i:]...), verbose
+		}
+		if arg == "--verbose" || arg == "-verbose" {
+			verbose = true
+			continue
+		}
+		rest = append(rest, arg)
+	}
+	return rest, verbose
+}
+
+// Debugf prints one line of the debug log to w, as "program: debug: message", when --verbose (or
+// SYNCTANG_DEBUG) asked for it. It says what the program is doing and where, never a secret.
+func Debugf(w io.Writer, format string, args ...any) {
+	if !verbose {
+		return
+	}
+	s := For(w)
+	fmt.Fprint(w, s.Dim(program+": debug:")+" "+fmt.Sprintf(format, args...))
+}

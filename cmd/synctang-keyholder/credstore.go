@@ -95,6 +95,8 @@ func (c *credStore) Name() string {
 	return "systemd-creds"
 }
 
+func (c *credStore) Location() string { return "sealed credential " + c.blob }
+
 func (c *credStore) Describe() string {
 	d := "a systemd credential (" + c.blob + "), sealed by systemd-creds in your own scope with a key systemd keeps for your account on this machine; " +
 		"user-scope credentials need systemd 256 or later. A copy of the blob alone is useless anywhere else. " +

@@ -41,7 +41,7 @@ commands:
   status         say where the key is kept and whether it can be read
   completion     print a shell completion script (bash, zsh or fish)
 
---color=auto|always|never works anywhere on the line (NO_COLOR is honoured).
+--color=auto|always|never and --verbose work anywhere on the line.
 `
 
 func main() {
@@ -56,7 +56,13 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 	ui.SetMode(colour)
-	args = rest
+	args, verbose := ui.ExtractVerboseFlag(rest)
+	verbose = verbose || ui.VerboseFromEnv()
+	ui.SetVerbose(verbose)
+	debugOut = io.Discard
+	if verbose {
+		debugOut = stderr
+	}
 	if len(args) < 1 {
 		fmt.Fprint(stderr, completion.Reflow(usage, wrap.Width(stderr)))
 		return 2
@@ -218,6 +224,7 @@ func makeKey(keyFile, transportKeyFile, storeSpec string, force bool, stderr io.
 		ui.Errorf(stderr, "%v\n", err)
 		return nil, 1
 	}
+	debugf("saved the new key in %s (%s)\n", st.Name(), st.Location())
 	if err := writeStoreRecord(keyFile, st.Name(), hex.EncodeToString(pub)); err != nil {
 		ui.Errorf(stderr, "the key was saved, but its record could not be written: %v\n", err)
 		return nil, 1
