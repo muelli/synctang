@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.25"
+          go-version: "1.26.0"
       - run: go build ./...
       - name: Build the relay and discovery servers the integration tests run through
         # Without these the tests in integration/ skip, and the machine and the key holder
@@ -64,7 +64,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.25"
+          go-version: "1.26.0"
       - run: sudo apt-get update -qq && sudo apt-get install -y -qq cryptsetup
       - run: sudo go test -timeout 20m -tags privileged ./...
 
@@ -130,7 +130,7 @@ jobs:
       # that found this) is the actual fix, not a workaround.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.25"
+          go-version: "1.26.0"
       - name: Install the NDK
         # Two separate things needed fixing here, one at a time,
         # without log access to see which: sdkmanager blocks on an
@@ -474,7 +474,7 @@ jobs:
           java-version: "21"
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.25"
+          go-version: "1.26.0"
       - name: Install the NDK
         run: |
           SDKMANAGER=$(command -v sdkmanager || find "$ANDROID_HOME" -type f -name sdkmanager 2>/dev/null | head -1)
