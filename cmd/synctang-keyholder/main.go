@@ -40,6 +40,8 @@ commands:
   machines       list, add or remove the names of machines you can unlock
   status         say where the key is kept and whether it can be read
   completion     print a shell completion script (bash, zsh or fish)
+
+--color=auto|always|never works anywhere on the line (NO_COLOR is honoured).
 `
 
 func main() {
@@ -146,8 +148,10 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	// What happens next is enrolling this key on a machine, so say so, with the values that
 	// command needs (export-pubkey prints the same two lines again).
 	fmt.Fprintf(stdout, "%s %s\n%s %s\n\n", look.Bold("S:"), pubHex, look.Bold("transport-id:"), transportID)
-	fmt.Fprintf(stdout, "The easy way to let a machine be unlocked with this key is to pair: run %s on the machine,\n"+
-		"then give the link it shows to %s here.\n\n", look.Cyan("synctang-unlocker pair"), look.Cyan("synctang-keyholder pair '<link>'"))
+	fmt.Fprintf(stdout, "To let a machine be unlocked with this key, the easy way is to pair with it:\n"+
+		"  1. on the machine, as root:  %s\n"+
+		"  2. here:                     %s\n\n",
+		look.Cyan("synctang-unlocker pair --device /dev/<device>"), look.Cyan("synctang-keyholder pair '<link>'"))
 	fmt.Fprintf(stdout, "Or enrol it by hand: run this on the machine, as root\n"+
 		"(synctang-keyholder export-pubkey prints the two lines above again):\n\n%s\n", look.Cyan(fmt.Sprintf(
 		"  synctang-unlocker enrol --device /dev/<device> --name <a name for this laptop> \\\n"+

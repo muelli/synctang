@@ -51,6 +51,8 @@ commands:
   open        wait for a key holder, then open a LUKS volume (an external
               drive, say) that is not asking for a password at boot
   completion  print a shell completion script (bash, zsh or fish)
+
+--color=auto|always|never works anywhere on the line (NO_COLOR is honoured).
 `
 
 // defaultMachineKeyFile is where this machine's own persistent transport

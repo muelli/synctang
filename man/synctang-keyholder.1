@@ -59,6 +59,25 @@ as the only argument prints the program's name and version, and the licence, and
 In a package the version is the one
 .BR dpkg (1)
 shows; a program built any other way says that it is a development build.
+.PP
+.BR \-\-color =\fIwhen\fR
+(also spelled
+.BR \-color ),
+anywhere on the command line, chooses whether the output of a command is coloured and decorated for a person at a
+terminal:
+.B auto
+(the default) does it only when standard output or standard error is a terminal,
+.B always
+also when it is not (to a pager, say), and
+.B never
+not at all.
+What is added is colour (errors red, warnings yellow, what went well green), check marks and crosses, a few emoji,
+tables with a header, a frame around the code to compare, and a line that turns while the program waits.
+Each symbol has the words it stands for, which are what a locale that is not UTF-8, the Linux console and a
+terminal of type
+.B dumb
+get, and to anything that is not a terminal the output is the plain text it has always been, which scripts read.
+Prose is broken to the width of the terminal.
 .SH COMMANDS
 Every command accepts
 .B \-h
@@ -257,6 +276,9 @@ or its transport identity, as printed by
 or
 .BR "synctang\-unlocker status" .
 A name also brings the discovery server that was recorded with it.
+With no argument, the only machine known is unlocked; with several, the command asks which, and lists them.
+A name that is not known, but is close to one that is, is answered with
+.IR "did you mean" .
 .PP
 It prints the machine's name and identity and waits for Enter before
 answering; Ctrl-C aborts.
@@ -480,6 +502,26 @@ Optional settings; see
 Where the user config directory is.
 Default
 .BR ~/.config .
+.TP
+.B NO_COLOR
+If set and not empty, no colour (see
+.BR \-\-color ).
+.TP
+.B CLICOLOR_FORCE
+If set and not 0, colour even when the output is not a terminal, unless
+.B \-\-color=never
+or
+.B NO_COLOR
+says otherwise.
+.TP
+.BR LC_ALL ", " LC_CTYPE ", " LANG
+A UTF-8 locale lets the output use symbols and emoji; any other gets plain words.
+.TP
+.B TERM
+.B dumb
+gets no colour, symbols or spinner, and
+.B linux
+(the console) no symbols.
 .SH EXAMPLES
 Create the key and read off what the machine needs:
 .PP

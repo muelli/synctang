@@ -110,6 +110,14 @@ shows a code.
 
     read -rsp 'LUKS passphrase: ' PASS
 
+At a terminal both programs colour their output (errors red, warnings yellow, what went well green), mark
+lines with check marks and crosses, show tables with headers, frame the code you compare when pairing and turn
+a spinner while they wait. Prose is wrapped to the width of the terminal. `--color=never` (anywhere on the
+line) or `NO_COLOR=1` turns the colour off, `--color=always` keeps it in a pager, and a locale that is not
+UTF-8 gets plain words instead of symbols. To a pipe or a file the output is plain text, as scripts read it.
+`synctang-keyholder unlock` with no machine named unlocks the only one it knows, and a mistyped command or
+machine name is answered with "did you mean ...?".
+
 Shell completion for bash, zsh and fish comes with the Debian packages. Both programs
 write it themselves from their own commands and flags (`synctang-unlocker completion bash`,
 and likewise for `zsh` and `fish`), so it cannot name an option the program does not have;
