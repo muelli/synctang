@@ -109,9 +109,12 @@ operator enrols only if the two match. An attacker has to choose a key before th
 make a code that will match, and gets one try in a million; if they answered first, the laptop is refused
 and prints no code, which is also noticed. This is only as good as the comparison: an operator who
 answers yes without looking gets no protection from it. `[V]` The two programs show the same code in a
-test that runs both (`integration/`). A phone does not show a code yet, so for a phone the machine says
+test that runs both (`integration/`). The phone app shows the same code on its pairing screen while the operator decides (`[V]` on an emulator:
+the screen draws it, it is read out digit by digit, and it adds nothing to focus; `[V]` in a test that the
+code the library offers is what the machine works out; `[U]` not tried against a real machine from the app
+itself, since the pairing flow there is a scan on a phone). An app from before that shows none, and for it the machine says
 what the check is (that the operator has just scanned the code themselves) and the weaker guarantee
-stands until the app shows one. The machine's side of the link, its transport id, is checked by the
+stands. The machine's side of the link, its transport id, is checked by the
 key holder against the certificate it connects to, so a link cannot be used to make a laptop pair with
 a different machine.
 

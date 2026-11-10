@@ -210,7 +210,8 @@ one-time code, and sends its public key. **Both sides now show a six-digit code,
 machine is asked whether to enrol: say yes only if the code on the laptop is the same.** The one-time
 code only proves that whoever answered had it, and a link that was photographed, read over a shoulder
 or pasted somewhere is had by more than one party. If the codes differ, answer `n` on the machine and
-pair again for a new link. (A phone does not show a code yet.)
+pair again for a new link. (The phone app shows the same code while it waits, and says what to do if it differs; an app from
+before that does not, and then the check is that you scanned the code yourself just now.)
 
 The laptop remembers the machine under the name in the link, so unlocking is:
 

@@ -392,8 +392,8 @@ func pairConfirmer(assumeYes bool, stdout io.Writer, stdin io.Reader) func(strin
 		fmt.Fprintf(stdout, "  code:          %s\n\n", sas)
 		// The pairing code only proves that whoever answered had it, and a code that was photographed
 		// or pasted somewhere is had by more than one party: the comparison is what tells them apart.
-		fmt.Fprint(stdout, "If this is a laptop (synctang-keyholder pair), it shows the same code: enrol it only if they are the same.\n"+
-			"A phone does not show a code yet: enrol it only if you scanned this QR code just now and nobody else could have.\n\n")
+		fmt.Fprint(stdout, "A laptop (synctang-keyholder pair) and the phone app show the same code: enrol it only if they are the same.\n"+
+			"An older phone app shows none: enrol it only if you scanned this QR code just now and nobody else could have.\n\n")
 		fmt.Fprint(stdout, "enrol it on this volume? [y/N] ")
 
 		line, err := reader.ReadString('\n')

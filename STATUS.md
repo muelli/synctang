@@ -60,8 +60,8 @@ paired again, and nothing migrates an old file layout.
   (user scope, systemd 259) where they are installed. The TPM variant as first written could never work (user scope refuses a bare `tpm2` key; it now asks for `host+tpm2`); it has not been run on a TPM, as the test VM has none. The keyring is GNOME Keyring; no other
   Secret Service is supported or tried. `synctang-keyholder pair` enrols a laptop from the link
   `synctang-unlocker pair` shows, the same protocol as a phone, and both sides show a six-digit code to
-  compare (`mrcore.PairSAS`); the phone app does not show one yet, so for a phone the machine says what
-  the check is instead. `unlock` takes a machine's name, kept in `~/.config/synctang-keyholder/machines`.
+  compare (`mrcore.PairSAS`); the phone app shows it on its pairing screen while the operator decides
+  (an older app does not, and for it the machine says what the check is instead). `unlock` takes a machine's name, kept in `~/.config/synctang-keyholder/machines`.
   `synctang-unlocker enrol` remains, with `--recipient-transport-id` required.
 - **WP5** (Android app): `gomobile bind` plus a Kotlin and Compose UI.
   Unlock is one tap: it connects, and the fingerprint prompt comes up when the
