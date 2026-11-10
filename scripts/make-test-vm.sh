@@ -50,7 +50,10 @@ mkdir -p "$OUTDIR" "$MNT"
 
 if [ ! -f "$ROOTFS_TAR" ]; then
 	log "downloading the root filesystem"
-	curl -sSL -o "$ROOTFS_TAR" "$ROOTFS_URL"
+	# Bounded and retried: a download that stalls must not hold a whole run until it is cancelled, and
+	# --fail keeps an error page from being unpacked as a root filesystem.
+	curl -sSLf --connect-timeout 20 --max-time 900 --retry 5 --retry-delay 5 --retry-all-errors \
+		-o "$ROOTFS_TAR" "$ROOTFS_URL"
 fi
 
 LOOP=""
@@ -138,6 +141,9 @@ log "installing a kernel, dracut and GRUB inside the image"
 cat > "$MNT/tmp/setup.sh" <<CHROOT
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
+# A mirror that stalls must fail the build, not hold it: each connection is given 30 seconds, and a
+# failed fetch is tried again three times.
+echo 'Acquire::http::Timeout "30"; Acquire::https::Timeout "30"; Acquire::Retries "3";' > /etc/apt/apt.conf.d/99-synctang-test-network
 
 # dracut has to be present before the kernel, or the kernel's postinst builds an
 # initramfs-tools initrd and this project's dracut module is never consulted.

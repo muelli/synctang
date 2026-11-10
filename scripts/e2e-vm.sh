@@ -47,7 +47,7 @@ FIFO="$RUN/console.in"
 FAILED=0
 PIDS=()
 
-log() { printf '\n=== %s\n' "$*" >&2; }
+log() { printf '\n=== %s %s\n' "$(date +%T)" "$*" >&2; }
 fail() { printf 'e2e: %s\n' "$*" >&2; exit 1; }
 
 # check NAME COMMAND...: an assertion. The run goes on after a failed one, so that one
@@ -134,7 +134,10 @@ cp "$RUN/id.pub" "$VMDIR/authorized_keys"
 if [ -f "$WORK/cache/rootfs.tar.xz" ]; then
 	cp "$WORK/cache/rootfs.tar.xz" "$VMDIR/rootfs.tar.xz"
 fi
-OUTDIR="$VMDIR" VM_PASSPHRASE="$VM_PASSPHRASE" "$REPO/scripts/make-test-vm.sh" > "$LOGS/make-test-vm.log" 2>&1 \
+# Bounded, and its own progress lines ("=== ...") are shown as they come, so that a run that hangs here says
+# where; the whole log is in $LOGS/make-test-vm.log.
+OUTDIR="$VMDIR" VM_PASSPHRASE="$VM_PASSPHRASE" timeout 1500 "$REPO/scripts/make-test-vm.sh" 2>&1 \
+	| tee "$LOGS/make-test-vm.log" | { grep --line-buffered '^===' || true; } >&2 \
 	|| { tail -20 "$LOGS/make-test-vm.log" >&2; fail "could not build the VM image (see $LOGS/make-test-vm.log)"; }
 [ -f "$WORK/cache/rootfs.tar.xz" ] || cp "$VMDIR/rootfs.tar.xz" "$WORK/cache/rootfs.tar.xz"
 
@@ -167,10 +170,9 @@ wait_console() {
 	return 1
 }
 
-vm() {
-	ssh -i "$RUN/id" -p "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-		-o LogLevel=ERROR -o ConnectTimeout=5 -o BatchMode=yes ubuntu@127.0.0.1 "$@"
-}
+VM_SSH=(ssh -i "$RUN/id" -p "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+	-o LogLevel=ERROR -o ConnectTimeout=5 -o BatchMode=yes ubuntu@127.0.0.1)
+vm() { "${VM_SSH[@]}" "$@"; }
 
 wait_ssh() {
 	local i
@@ -193,7 +195,7 @@ echo "the VM is up"
 log "the packages"
 scp -i "$RUN/id" -P "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
 	"$UNLOCKER_DEB" "$DRACUT_DEB" ubuntu@127.0.0.1:/tmp/ > /dev/null
-vm "sudo DEBIAN_FRONTEND=noninteractive apt-get install -y /tmp/$(basename "$UNLOCKER_DEB") /tmp/$(basename "$DRACUT_DEB")" \
+timeout 900 "${VM_SSH[@]}" "sudo DEBIAN_FRONTEND=noninteractive apt-get install -y /tmp/$(basename "$UNLOCKER_DEB") /tmp/$(basename "$DRACUT_DEB")" \
 	> "$LOGS/apt.log" 2>&1 || { tail -20 "$LOGS/apt.log" >&2; fail "could not install the packages (see $LOGS/apt.log)"; }
 check "the machine program is installed" vm 'command -v synctang-unlocker > /dev/null'
 check "its manual page is installed" vm 'man -w synctang-unlocker > /dev/null'

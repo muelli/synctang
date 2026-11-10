@@ -112,13 +112,17 @@ jobs:
       - name: Build the relay and discovery servers
         run: ./scripts/build-syncthing-servers.sh "$RUNNER_TEMP/stbin"
 
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
+        id: rootfs
         with:
           path: ${{ runner.temp }}/e2e/cache
           # The root filesystem the VM is made from: about 260 MB from cloud-images.ubuntu.com.
           key: e2e-rootfs-ubuntu-26.04-v1
 
       - name: End to end
+        # Bounded below the job's limit, so that a run that hangs is stopped here, with time left for the
+        # steps that keep its logs and recordings, instead of by the job being cancelled.
+        timeout-minutes: 35
         run: |
           sudo env "PATH=$PATH" \
             STRELAYSRV="$RUNNER_TEMP/stbin/strelaysrv" \
@@ -126,6 +130,16 @@ jobs:
             DEBS="$PWD/dist" \
             WORK="$RUNNER_TEMP/e2e" \
             ./scripts/e2e-vm.sh
+
+      - name: Keep the root filesystem for the next run
+        # Saved even when the run fails or hangs: the download is the slow, unreliable part, and the
+        # cache is only otherwise saved by a run that passes.
+        if: always() && steps.rootfs.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/e2e/cache
+          key: e2e-rootfs-ubuntu-26.04-v1
 
       - name: The logs
         # The console and the journal are what a failure is found in.
