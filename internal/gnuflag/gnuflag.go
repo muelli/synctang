@@ -10,6 +10,7 @@ import (
 	"io"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	textwrap "github.com/muelli/synctang/internal/wrap"
 )
@@ -47,7 +48,7 @@ func wrap(description string, width int) string {
 	var lines []string
 	line := ""
 	for _, word := range strings.Fields(description) {
-		if line != "" && len(descriptionIndent)+len(line)+1+len(word) > width {
+		if line != "" && len(descriptionIndent)+utf8.RuneCountInString(line)+1+utf8.RuneCountInString(word) > width {
 			lines = append(lines, descriptionIndent+line)
 			line = ""
 		}

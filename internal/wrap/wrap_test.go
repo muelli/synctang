@@ -42,3 +42,11 @@ func TestParagraphOfNothingIsJustItsIndent(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+// Width is columns, not bytes: a symbol is several bytes and one column.
+func TestParagraphCountsCharactersNotBytes(t *testing.T) {
+	got := Paragraph("✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓", "", 10)
+	if got != "✓ ✓ ✓ ✓ ✓\n✓ ✓ ✓ ✓ ✓" {
+		t.Errorf("%q", got)
+	}
+}

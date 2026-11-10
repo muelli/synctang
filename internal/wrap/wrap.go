@@ -9,6 +9,7 @@ package wrap
 import (
 	"io"
 	"strings"
+	"unicode/utf8"
 
 	"golang.org/x/term"
 )
@@ -57,12 +58,12 @@ func Paragraph(text, indent string, width int) string {
 // HangingParagraph is Paragraph with a first line that starts with prefix and continuation lines that
 // are indented as far as the prefix is long.
 func HangingParagraph(prefix, text string, width int) string {
-	hang := strings.Repeat(" ", len(prefix))
+	hang := strings.Repeat(" ", utf8.RuneCountInString(prefix))
 	var lines []string
 	line := ""
 	start := prefix
 	for _, word := range strings.Fields(text) {
-		if line != "" && len(start)+len(line)+1+len(word) > width {
+		if line != "" && utf8.RuneCountInString(start)+utf8.RuneCountInString(line)+1+utf8.RuneCountInString(word) > width {
 			lines = append(lines, start+line)
 			start = hang
 			line = ""
