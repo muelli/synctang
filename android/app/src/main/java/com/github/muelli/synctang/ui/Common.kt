@@ -207,5 +207,5 @@ internal fun Identity.backingDescription(): String = when (backing) {
 
 internal fun Context.copyToClipboard(text: String) {
     val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    clipboard.setPrimaryClip(ClipData.newPlainText("synctang", text))
+    clipboard.setPrimaryClip(ClipData.newPlainText(getString(R.string.app_name), text))
 }
