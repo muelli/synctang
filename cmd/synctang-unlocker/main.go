@@ -110,7 +110,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "open":
 		return runOpen(args[1:], stdout, stderr)
 	default:
-		ui.Errorf(stderr, "unknown command %q\n%s", args[0], completion.Reflow(usage, wrap.Width(stderr)))
+		ui.Errorf(stderr, "unknown command %q%s\n%s", args[0], completion.DidYouMean(args[0], usage), completion.Reflow(usage, wrap.Width(stderr)))
 		return 2
 	}
 }

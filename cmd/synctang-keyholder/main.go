@@ -86,7 +86,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return out.String()
 		}, nil, args[1:], stdout, stderr)
 	default:
-		ui.Errorf(stderr, "unknown command %q\n%s", args[0], completion.Reflow(usage, wrap.Width(stderr)))
+		ui.Errorf(stderr, "unknown command %q%s\n%s", args[0], completion.DidYouMean(args[0], usage), completion.Reflow(usage, wrap.Width(stderr)))
 		return 2
 	}
 }
@@ -289,15 +289,39 @@ func runUnlock(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if fs.NArg() != 1 {
-		ui.Errorln(stderr, "unlock requires exactly one argument, the machine's name or transport id")
-		return 2
-	}
 	if *machinesFile == "" {
 		ui.Errorln(stderr, "--machines-file is required (could not determine a default)")
 		return 2
 	}
-	target, err := resolveMachine(*machinesFile, fs.Arg(0))
+	which := ""
+	switch fs.NArg() {
+	case 0:
+		// With one machine known there is nothing to choose.
+		known, err := loadMachines(*machinesFile)
+		switch {
+		case err != nil:
+			ui.Errorf(stderr, "%v\n", err)
+			return 2
+		case len(known) == 0:
+			ui.Errorln(stderr, "no machine is named yet, so there is nothing to unlock without naming it: pair with one (synctang-keyholder pair '<link>'), "+
+				"or give the machine's transport id")
+			return 2
+		case len(known) > 1:
+			names := make([]string, len(known))
+			for i, m := range known {
+				names[i] = m.Name
+			}
+			ui.Errorf(stderr, "which machine? %s: synctang-keyholder unlock <name>\n", strings.Join(names, ", "))
+			return 2
+		}
+		which = known[0].Name
+	case 1:
+		which = fs.Arg(0)
+	default:
+		ui.Errorln(stderr, "unlock takes one machine, by name or transport id")
+		return 2
+	}
+	target, err := resolveMachine(*machinesFile, which)
 	if err != nil {
 		ui.Errorf(stderr, "%v\n", err)
 		return 2

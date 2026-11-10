@@ -433,3 +433,10 @@ func TestTheUsageMentionsTheVersionFlag(t *testing.T) {
 		t.Errorf("usage does not mention --version:\n%s", usage)
 	}
 }
+
+func TestAMisspeltCommandSuggestsTheOneMeant(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"stauts"}, &stdout, &stderr); code != 2 || !strings.Contains(stderr.String(), `did you mean "status"?`) {
+		t.Errorf("exit %d: %s", code, stderr.String())
+	}
+}

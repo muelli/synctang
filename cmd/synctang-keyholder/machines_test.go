@@ -128,3 +128,53 @@ func TestUnlockByNameDialsTheMachineTheNameStandsFor(t *testing.T) {
 		t.Errorf("unknown name: exit %d: %s", code, e)
 	}
 }
+
+func TestAnUnknownMachineNameSuggestsTheOneMeant(t *testing.T) {
+	book := booksPath(t)
+	_, _, _ = runKH("machines", "add", "--machines-file", book, "luks-ubuntu2604", machineIDA)
+	_, _, _ = runKH("machines", "add", "--machines-file", book, "fedora", machineIDB)
+	_, err := resolveMachine(book, "luks-ubunt")
+	if err == nil || !strings.Contains(err.Error(), "did you mean luks-ubuntu2604?") {
+		t.Errorf("%v", err)
+	}
+	if _, err := resolveMachine(book, "zebra"); err == nil || strings.Contains(err.Error(), "did you mean") {
+		t.Errorf("a suggestion for nothing like it: %v", err)
+	}
+}
+
+// With one machine there is nothing to choose: "unlock" alone unlocks it.
+func TestUnlockWithNoArgumentUnlocksTheOnlyMachineKnown(t *testing.T) {
+	book := booksPath(t)
+	_, _, _ = runKH("machines", "add", "--machines-file", book, "box", machineIDA)
+	keyFile, transportFile := keyholderDir(t)
+	_, _, _ = runKH("init", "--store", "file", "--key-file", keyFile, "--transport-key-file", transportFile)
+	_, _, errOut := runKH("unlock", "--yes", "--timeout", "1s", "--direct-addr", "127.0.0.1:1", "--machines-file", book,
+		"--key-file", keyFile, "--transport-key-file", transportFile)
+	if !strings.Contains(errOut, machineIDA) {
+		t.Errorf("it did not go for the only machine:\n%s", errOut)
+	}
+}
+
+func TestUnlockWithNoArgumentAmongSeveralAsksWhichAndListsThem(t *testing.T) {
+	book := booksPath(t)
+	_, _, _ = runKH("machines", "add", "--machines-file", book, "box", machineIDA)
+	_, _, _ = runKH("machines", "add", "--machines-file", book, "fedora", machineIDB)
+	code, _, errOut := runKH("unlock", "--machines-file", book)
+	if code != 2 || !strings.Contains(errOut, "which machine") || !strings.Contains(errOut, "box") || !strings.Contains(errOut, "fedora") {
+		t.Errorf("exit %d: %s", code, errOut)
+	}
+}
+
+func TestUnlockWithNoArgumentAndNoMachinesSaysHowToGetOne(t *testing.T) {
+	code, _, errOut := runKH("unlock", "--machines-file", booksPath(t))
+	if code != 2 || !strings.Contains(errOut, "synctang-keyholder pair") {
+		t.Errorf("exit %d: %s", code, errOut)
+	}
+}
+
+func TestAMisspeltCommandSuggestsTheOneMeant(t *testing.T) {
+	code, _, errOut := runKH("unlok")
+	if code != 2 || !strings.Contains(errOut, "did you mean \"unlock\"?") {
+		t.Errorf("exit %d: %s", code, errOut)
+	}
+}

@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/muelli/synctang/internal/gnuflag"
+	"github.com/muelli/synctang/internal/ui"
 	"github.com/muelli/synctang/internal/wrap"
 	"io"
 	"regexp"
@@ -439,4 +440,17 @@ func Reflow(usage string, width int) string {
 		out.WriteString(block.String())
 	}
 	return out.String()
+}
+
+// DidYouMean is `, did you mean "unlock"?` for a word that is a typo of a command the usage lists, and
+// nothing otherwise; it ends a message that already says the command is unknown.
+func DidYouMean(word, usage string) string {
+	var names []string
+	for _, c := range ParseUsage(usage) {
+		names = append(names, c.Name)
+	}
+	if m, ok := ui.Closest(word, names); ok {
+		return fmt.Sprintf(", did you mean %q?", m)
+	}
+	return ""
 }

@@ -196,8 +196,12 @@ func resolveMachine(path, arg string) (machine, error) {
 	for i, m := range ms {
 		names[i] = m.Name
 	}
-	return machine{}, fmt.Errorf("%q is neither a transport id nor the name of a machine; the names are: %s; name another with: synctang-keyholder machines add <name> <transport id>",
-		arg, strings.Join(names, ", "))
+	maybe := ""
+	if m, ok := ui.Closest(arg, names); ok {
+		maybe = fmt.Sprintf("did you mean %s? ", m)
+	}
+	return machine{}, fmt.Errorf("%q is neither a transport id nor the name of a machine; %sthe names are: %s; name another with: synctang-keyholder machines add <name> <transport id>",
+		arg, maybe, strings.Join(names, ", "))
 }
 
 func runMachines(args []string, stdout, stderr io.Writer) int {
