@@ -480,3 +480,8 @@ jobs:
         if: steps.gate.outputs.ready == 'true'
         id: deployment
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        with:
+          # Pages queued the deployment and was still syncing its files after the action's default ten
+          # minutes (the run for b4a7ba5), with a site of about 150 MB, which the action then cancelled.
+          # Wait up to thirty: the deployment is not ours to hurry, and cancelling it throws the work away.
+          timeout: 1800000
