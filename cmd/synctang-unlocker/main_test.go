@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -476,5 +477,30 @@ func TestAMisspeltCommandSuggestsTheOneMeant(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := run([]string{"stauts"}, &stdout, &stderr); code != 2 || !strings.Contains(stderr.String(), `did you mean "status"?`) {
 		t.Errorf("exit %d: %s", code, stderr.String())
+	}
+}
+
+// An empty file is not a passphrase, and handed on it ends as cryptsetup's "Nothing to read on input", which
+// says nothing about which file. It is said here, with the name of the file.
+func TestReadPassphraseRefusesAnEmptyOne(t *testing.T) {
+	dir := t.TempDir()
+	for name, content := range map[string]string{"empty": "", "a newline": "\n", "a Windows newline": "\r\n"} {
+		path := filepath.Join(dir, strings.ReplaceAll(name, " ", "-"))
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, err := readPassphrase(path)
+		if err == nil || !strings.Contains(err.Error(), "is empty") || !strings.Contains(err.Error(), path) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+func TestReadPassphraseRefusesNothingOnStandardInput(t *testing.T) {
+	restore := stubStdin(t, strings.NewReader(""), io.Discard, false)
+	defer restore()
+	_, err := readPassphrase("-")
+	if err == nil || !strings.Contains(err.Error(), "is empty") {
+		t.Errorf("%v", err)
 	}
 }

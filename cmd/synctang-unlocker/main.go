@@ -434,5 +434,13 @@ func readPassphrase(path string) ([]byte, error) {
 	}
 	data = bytes.TrimSuffix(data, []byte("\n"))
 	data = bytes.TrimSuffix(data, []byte("\r"))
+	if len(data) == 0 {
+		// Not handed on: cryptsetup would answer "Nothing to read on input", which does not say what was empty.
+		what := "the passphrase read from standard input"
+		if path != "-" {
+			what = "the passphrase file " + path
+		}
+		return nil, fmt.Errorf("%s is empty", what)
+	}
 	return data, nil
 }
