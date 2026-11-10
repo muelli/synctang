@@ -20,7 +20,7 @@ jobs:
   go-test:
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
@@ -61,7 +61,7 @@ jobs:
   go-test-privileged:
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
@@ -71,7 +71,7 @@ jobs:
   lint:
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck groff asciinema expect
       - run: find dracut scripts -name '*.sh' -print0 | xargs -0 -r shellcheck
       - run: ./scripts/test-ci-boot-emulator.sh
@@ -88,13 +88,13 @@ jobs:
   em-dash-check:
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: ./scripts/check-em-dash.sh
 
   reuse:
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Pinned to the version REUSE.toml was written against, so a new
       # release of the tool cannot turn this job red by itself.
       - run: python3 -m venv /tmp/reuse && /tmp/reuse/bin/pip install --quiet reuse==6.2.0
@@ -106,7 +106,7 @@ jobs:
       run:
         working-directory: android
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # versionCode is the commit count, so a shallow clone would
           # build every APK as version 1.
@@ -192,7 +192,7 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The package version is 0.0.<commit count>-1, so a shallow
           # clone would build every package as version 0.0.1-1.
@@ -389,7 +389,7 @@ jobs:
       # Keyless signing: the signature names this workflow, not a key.
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The commit count below is the version the packages carry.
           fetch-depth: 0
@@ -462,7 +462,7 @@ jobs:
       run:
         working-directory: android
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # versionCode is the commit count, so a shallow clone would
           # build every APK as version 1 and silently break updates for
