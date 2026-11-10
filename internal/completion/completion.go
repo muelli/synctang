@@ -95,7 +95,8 @@ func ParseHelp(help string) []Flag {
 			flags = append(flags, Flag{Name: m[1], Value: m[2]})
 			continue
 		}
-		if strings.HasPrefix(line, "    \t") && len(flags) > 0 {
+		// A description under its option: as the flag package writes it, or wrapped by gnuflag.
+		if (strings.HasPrefix(line, "    \t") || strings.HasPrefix(line, "      ")) && len(flags) > 0 {
 			f := &flags[len(flags)-1]
 			if f.Usage != "" {
 				f.Usage += " "
@@ -360,4 +361,41 @@ func Run(name, usage string, helpOf func(command string) string, tweak func(*Pro
 	}
 	fmt.Fprint(stdout, script)
 	return 0
+}
+
+// UsageProblems says what is wrong with the layout of a program's usage text for a terminal that is
+// width columns wide: a line too long (which the terminal breaks, leaving the rest at the left margin),
+// descriptions of commands that do not all start in one column, and a continuation line that is not
+// under them. A usage that is right gives none.
+func UsageProblems(usage string, width int) []string {
+	var problems []string
+	column := -1
+	in := false
+	for _, line := range strings.Split(usage, "\n") {
+		if len(line) > width {
+			problems = append(problems, fmt.Sprintf("%d columns, want at most %d: %q", len(line), width, line))
+		}
+		switch {
+		case strings.HasPrefix(line, "commands:"):
+			in = true
+		case !in:
+		case strings.TrimSpace(line) == "":
+			in = false
+		default:
+			trimmed := strings.TrimLeft(line, " ")
+			indent := len(line) - len(trimmed)
+			if indent == 2 {
+				_, rest, _ := strings.Cut(trimmed, " ")
+				start := len(line) - len(strings.TrimLeft(rest, " ")) // where the description begins
+				if column == -1 {
+					column = start
+				} else if start != column {
+					problems = append(problems, fmt.Sprintf("the description starts in column %d here and %d above: %q", start, column, line))
+				}
+			} else if indent != column {
+				problems = append(problems, fmt.Sprintf("a continuation in column %d, under descriptions that start in column %d: %q", indent, column, line))
+			}
+		}
+	}
+	return problems
 }

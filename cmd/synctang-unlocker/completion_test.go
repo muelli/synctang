@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"github.com/muelli/synctang/internal/completion"
 	"strings"
 	"testing"
 
@@ -54,5 +55,26 @@ func TestCompletionNeedsAShell(t *testing.T) {
 	var out, errOut bytes.Buffer
 	if code := run([]string{"completion"}, &out, &errOut); code != 2 {
 		t.Fatalf("exit %d, want 2", code)
+	}
+}
+
+// The usage text is what a person sees first. In a terminal 80 columns wide, a longer line breaks and its
+// rest lands at the left margin, under the command names; so every line fits, the descriptions start in
+// one column, and a description that needs a second line continues under itself.
+func TestUsageFitsATerminalAndAlignsItsDescriptions(t *testing.T) {
+	for _, problem := range completion.UsageProblems(usage, 78) {
+		t.Error(problem)
+	}
+}
+
+func TestEveryCommandsHelpFitsATerminal(t *testing.T) {
+	for _, command := range []string{"enrol", "agent", "status", "devices", "rehearse", "pair", "open", "completion"} {
+		var out, errOut bytes.Buffer
+		run([]string{command, "-h"}, &out, &errOut)
+		for _, line := range strings.Split(out.String()+errOut.String(), "\n") {
+			if len(line) > 78 && strings.Contains(strings.TrimSpace(line), " ") {
+				t.Errorf("%s -h: %d columns: %q", command, len(line), line)
+			}
+		}
 	}
 }

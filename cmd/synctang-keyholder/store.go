@@ -17,6 +17,10 @@ import (
 // errNoKey says there is no key in the store yet, as opposed to a key that could not be read.
 var errNoKey = errors.New("there is no key")
 
+// textWidth is the widest line of prose the key holder prints: a line of 80 columns breaks in some
+// terminals, leaving the rest of it at the left margin.
+const textWidth = 78
+
 // keyStore is where the long-term scalar s lives. Which store holds it decides what a copy of the
 // key holder's files is worth to somebody who is not its owner, so each says, in its Describe,
 // what it protects against and what it does not, and none is ever called secure.

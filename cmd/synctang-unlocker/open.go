@@ -81,8 +81,8 @@ const openUsage = `usage: synctang-unlocker open [flags] <device> [name]
 
 Waits for a key holder to approve, then opens the LUKS volume on <device> as
 /dev/mapper/<name> and exits. Mount it afterwards, and close it with
-"cryptsetup close <name>". Needs root. The volume must already have a key holder
-enrolled (see "synctang-unlocker pair").
+"cryptsetup close <name>". Needs root. The volume must already have a key
+holder enrolled (see "synctang-unlocker pair").
 
 `
 

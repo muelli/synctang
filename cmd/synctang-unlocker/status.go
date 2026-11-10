@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/muelli/synctang/internal/wrap"
 	"github.com/muelli/synctang/mrcore/transport"
 	"github.com/syncthing/syncthing/lib/protocol"
 )
@@ -114,13 +115,14 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 	}
 	for _, i := range withoutID {
 		slot := keyslotOf(tok, i)
-		fmt.Fprintf(stdout, "WARNING: the key holder in keyslot %s has no transport id, so the agent cannot tell it from a stranger and will never answer it. "+
-			"Remove it with: synctang-unlocker enrol --device %s --remove-keyslot %s --existing-passphrase-file ... "+
-			"and enrol it again with --recipient-transport-id (\"synctang-keyholder export-pubkey\" prints it)\n", slot, activeDevice, slot)
+		fmt.Fprintln(stdout, warning(
+			fmt.Sprintf("the key holder in keyslot %s has no transport id, so the agent cannot tell it from a stranger and will never answer it. Remove it with:", slot),
+			[]string{fmt.Sprintf("synctang-unlocker enrol --device %s --remove-keyslot %s \\", activeDevice, slot), "  --existing-passphrase-file ..."},
+			"Then enrol it again with --recipient-transport-id (\"synctang-keyholder export-pubkey\" prints it)."))
 	}
 	if len(withoutID) == len(tok.Recipients) {
-		fmt.Fprintln(stdout, "WARNING: no enrolled key holder has a transport id, so the agent will not listen at all, at boot or for \"rehearse\"; "+
-			"enrol with --recipient-transport-id")
+		fmt.Fprintln(stdout, warning("no enrolled key holder has a transport id, so the agent will not listen at all, at boot or for \"rehearse\"; "+
+			"enrol with --recipient-transport-id.", nil, ""))
 	}
 
 	// A transport id enrolled more than once leaves the agent unable to tell
@@ -134,10 +136,11 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 		}
 		seen[canonicalOrRaw(id)] = true
 		if idxs := recipientsByTransportID(tok, id); len(idxs) > 1 {
-			fmt.Fprintf(stdout, "WARNING: transport id %s is enrolled %d times (%s), so the agent will refuse to answer for it. "+
-				"Keep the entry whose key is current and remove each of the others with: "+
-				"synctang-unlocker enrol --device %s --remove %s --keyslot <n> --existing-passphrase-file ...\n",
-				id, len(idxs), describeRecipients(tok, idxs), activeDevice, id)
+			fmt.Fprintln(stdout, warning(
+				fmt.Sprintf("transport id %s is enrolled %d times (%s), so the agent will refuse to answer for it. "+
+					"Keep the entry whose key is current and remove each of the others with:", id, len(idxs), describeRecipients(tok, idxs)),
+				[]string{fmt.Sprintf("synctang-unlocker enrol --device %s --remove %s \\", activeDevice, id), "  --keyslot <n> --existing-passphrase-file ..."},
+				""))
 		}
 	}
 
@@ -171,4 +174,18 @@ func shortKid(kid []byte) string {
 		return s
 	}
 	return s[:shown] + strings.Repeat(".", 3)
+}
+
+// warning is a WARNING paragraph as the status command prints it: the prose broken to fit a terminal, a
+// command (if any) on lines of its own so that it can be copied, and what follows it (if anything).
+func warning(text string, command []string, after string) string {
+	const prefix = "WARNING: "
+	out := wrap.HangingParagraph(prefix, text, 78)
+	for _, line := range command {
+		out += "\n" + strings.Repeat(" ", len(prefix)+2) + line
+	}
+	if after != "" {
+		out += "\n" + wrap.Paragraph(after, strings.Repeat(" ", len(prefix)), 78)
+	}
+	return out
 }

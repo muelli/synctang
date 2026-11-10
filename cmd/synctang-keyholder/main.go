@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"github.com/muelli/synctang/internal/completion"
 	"github.com/muelli/synctang/internal/gnuflag"
+	"github.com/muelli/synctang/internal/wrap"
 	"github.com/muelli/synctang/mrcore"
 	"io"
 	"os"
@@ -27,13 +28,14 @@ import (
 const usage = `usage: synctang-keyholder <command> [flags]
 
 commands:
-  pair            enrol this key holder on a machine from the link "synctang-unlocker pair" shows
-  init            generate a new long-term key and transport identity
-  export-pubkey   print the public key and transport id, for "synctang-unlocker enrol"
-  unlock          answer one machine's recovery attempt (by name or transport id)
-  machines        list, add or remove the names of the machines this key holder can unlock
-  status          say where the key is kept, what that protects, and whether it can be read
-  completion      print a shell completion script (bash, zsh or fish)
+  pair           enrol this key holder on a machine, from the link that
+                 "synctang-unlocker pair" shows
+  init           generate a new long-term key and transport identity
+  export-pubkey  print the public key and transport id, as "enrol" wants them
+  unlock         answer a machine's recovery attempt, by name or transport id
+  machines       list, add or remove the names of machines you can unlock
+  status         say where the key is kept and whether it can be read
+  completion     print a shell completion script (bash, zsh or fish)
 `
 
 func main() {
@@ -118,7 +120,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	}
 	st, note, pubHex, transportID := made.store, made.note, made.pubHex, made.transportID
 
-	fmt.Fprintf(stdout, "generated a new key, held by %s\n  %s\n", st.Name(), st.Describe())
+	fmt.Fprintf(stdout, "generated a new key, held by %s\n%s\n", st.Name(), wrap.Paragraph(st.Describe(), "  ", textWidth))
 	if note != "" {
 		fmt.Fprintf(stderr, "synctang-keyholder: %s\n", note)
 	}

@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"github.com/muelli/synctang/internal/completion"
 	"strings"
 	"testing"
 
@@ -64,6 +65,30 @@ func TestCompletionDoesNotEmbedTheHomeDirectoryOfWhoeverBuiltIt(t *testing.T) {
 		}
 		if strings.Contains(out.String(), "the-builder-marker") {
 			t.Errorf("%s: the script names the builder's home directory:\n%s", shell, out.String())
+		}
+	}
+}
+
+// The usage text is what a person sees first. In a terminal 80 columns wide, a longer line breaks and its
+// rest lands at the left margin, under the command names; so every line fits, the descriptions start in
+// one column, and a description that needs a second line continues under itself.
+func TestUsageFitsATerminalAndAlignsItsDescriptions(t *testing.T) {
+	for _, problem := range completion.UsageProblems(usage, 78) {
+		t.Error(problem)
+	}
+}
+
+// Every command's own help fits too, whatever flag gets added: gnuflag wraps the descriptions, and the
+// text each command prints before them is written to fit.
+func TestEveryCommandsHelpFitsATerminal(t *testing.T) {
+	for _, command := range []string{"pair", "init", "export-pubkey", "unlock", "machines", "status", "completion"} {
+		var out, errOut bytes.Buffer
+		run([]string{command, "-h"}, strings.NewReader(""), &out, &errOut)
+		for _, line := range strings.Split(out.String()+errOut.String(), "\n") {
+			// A word with no space in it (a path) cannot be wrapped.
+			if len(line) > 78 && strings.Contains(strings.TrimSpace(line), " ") {
+				t.Errorf("%s -h: %d columns: %q", command, len(line), line)
+			}
 		}
 	}
 }

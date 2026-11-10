@@ -49,11 +49,19 @@ func TestStatusWarnsAboutAnEntryWithoutATransportIDAndSaysHowToRemoveIt(t *testi
 		t.Fatalf("exit %d, %q", code, errOut.String())
 	}
 	var warning string
+	inWarning := false
 	for _, line := range strings.Split(out.String(), "\n") {
 		if strings.HasPrefix(line, "WARNING") {
+			inWarning = true
+		} else if !strings.HasPrefix(line, " ") {
+			inWarning = false
+		}
+		if inWarning {
 			warning += line + "\n"
 		}
 	}
+	// A warning is wrapped to fit a terminal, so a phrase may be broken across lines.
+	warning = strings.Join(strings.Fields(warning), " ")
 	for _, want := range []string{"no transport id", "keyslot " + slot, "--remove-keyslot " + slot} {
 		if !strings.Contains(warning, want) {
 			t.Errorf("the warning lacks %q:\n%s", want, out.String())
@@ -72,7 +80,7 @@ func TestStatusSaysTheAgentWillNotRunWhenNoEntryHasATransportID(t *testing.T) {
 	if code := run([]string{"status", "--device", device, "--machine-key-file", machineKey}, &out, &errOut); code != 0 {
 		t.Fatalf("exit %d, %q", code, errOut.String())
 	}
-	if !strings.Contains(out.String(), "will not listen") || !strings.Contains(out.String(), "--recipient-transport-id") {
+	if flat := strings.Join(strings.Fields(out.String()), " "); !strings.Contains(flat, "will not listen") || !strings.Contains(flat, "--recipient-transport-id") {
 		t.Errorf("nothing said about the agent refusing to run:\n%s", out.String())
 	}
 }

@@ -231,11 +231,19 @@ func TestStatusWarnsAboutASharedTransportIDAndNamesTheFix(t *testing.T) {
 		t.Fatalf("exit %d, %q", code, errOut.String())
 	}
 	var warning string
+	inWarning := false
 	for _, line := range strings.Split(out.String(), "\n") {
 		if strings.HasPrefix(line, "WARNING") {
+			inWarning = true
+		} else if !strings.HasPrefix(line, " ") {
+			inWarning = false
+		}
+		if inWarning {
 			warning += line + "\n"
 		}
 	}
+	// A warning is wrapped to fit a terminal, so a phrase may be broken across lines.
+	warning = strings.Join(strings.Fields(warning), " ")
 	if warning == "" {
 		t.Fatalf("no WARNING line in:\n%s", out.String())
 	}

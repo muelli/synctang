@@ -21,7 +21,7 @@ func TestMessagesAndUsageUseTheProgramName(t *testing.T) {
 	if !strings.Contains(stderr.String(), "usage: synctang-keyholder <command>") {
 		t.Errorf("usage %q", stderr.String())
 	}
-	if !strings.Contains(usage, `"synctang-unlocker enrol"`) {
+	if !strings.Contains(usage, `"synctang-unlocker pair"`) {
 		t.Errorf("usage should name the other program by its real name: %q", usage)
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"os"
 
 	"github.com/muelli/synctang/internal/gnuflag"
+	"github.com/muelli/synctang/internal/wrap"
 	"github.com/muelli/synctang/mrcore"
 	"github.com/muelli/synctang/mrcore/transport"
 	"github.com/syncthing/syncthing/lib/protocol"
@@ -39,7 +40,7 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 		}
 		return 1
 	}
-	fmt.Fprintf(stdout, "key: held by %s\n  %s\n", st.Name(), st.Describe())
+	fmt.Fprintf(stdout, "key: held by %s\n%s\n", st.Name(), wrap.Paragraph(st.Describe(), "  ", textWidth))
 
 	// Loaded to say whether it can be, and wiped at once. For a keyring this may ask for the
 	// login password, which is the information: it is what an unlock will ask too.

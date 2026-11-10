@@ -34,15 +34,17 @@ import (
 const usage = `usage: synctang-unlocker <command> [flags]
 
 commands:
-  enrol   add a key holder's public key to a LUKS volume (or --remove
-          or --replace one that is already enrolled)
-  agent   run the systemd password agent, answering recovery attempts
-  status  show which key holders are enrolled and this machine's identity
-  devices list the LUKS devices on this machine and what is enrolled on each
-  rehearse  check the initrd, then rehearse the boot unlock with a key holder, without rebooting
-  pair    show a QR code and enrol the key holder that scans it
-  open    wait for a key holder, then open a LUKS volume (an external drive,
-          say) that is not asking for a password at boot
+  enrol       add a key holder's public key to a LUKS volume (or --remove or
+              --replace one that is already enrolled)
+  agent       run the systemd password agent, answering recovery attempts
+  status      show which key holders are enrolled and this machine's identity
+  devices     list LUKS devices, and what is enrolled on each
+  rehearse    check the initrd, then rehearse the boot unlock with a key
+              holder, without rebooting
+  pair        show a QR code and a link, and enrol the key holder (a phone or
+              a laptop) that answers
+  open        wait for a key holder, then open a LUKS volume (an external
+              drive, say) that is not asking for a password at boot
   completion  print a shell completion script (bash, zsh or fish)
 `
 

@@ -84,3 +84,43 @@ func TestWriterReportsTheLengthItWasGiven(t *testing.T) {
 		t.Fatalf("n=%d err=%v, want %d", n, err, len(in))
 	}
 }
+
+// A description longer than a terminal is wide must wrap under its option, not back to the left margin,
+// where it reads as if it were another option.
+func TestLongHelpWrapsUnderTheOption(t *testing.T) {
+	var out bytes.Buffer
+	fs := flag.NewFlagSet("pair", flag.ContinueOnError)
+	fs.SetOutput(Writer(&out))
+	fs.String("store", "auto", "if there is no key yet, where to keep the one made: auto, file, secret-service, systemd-creds, systemd-creds:tpm2")
+	fs.Duration("wait", 5*time.Minute, "how long to wait")
+	fs.PrintDefaults()
+	var continuation int
+	for _, line := range strings.Split(strings.TrimRight(out.String(), "\n"), "\n") {
+		if len(line) > 78 {
+			t.Errorf("a line of %d columns:\n%s", len(line), out.String())
+		}
+		if strings.HasPrefix(line, "      ") {
+			continuation++
+		} else if !strings.HasPrefix(line, "  --") {
+			t.Errorf("a line at neither the option's nor the description's indent: %q\n%s", line, out.String())
+		}
+	}
+	if continuation < 3 {
+		t.Errorf("the description was not wrapped into lines of its own:\n%s", out.String())
+	}
+	// Nothing is lost by wrapping.
+	if got := strings.Join(strings.Fields(out.String()), " "); !strings.Contains(got, "where to keep the one made: auto, file, secret-service, systemd-creds, systemd-creds:tpm2 (default \"auto\")") {
+		t.Errorf("words were lost or reordered:\n%s", out.String())
+	}
+}
+
+func TestShortHelpIsStillOneLineUnderItsOption(t *testing.T) {
+	var out bytes.Buffer
+	fs := flag.NewFlagSet("x", flag.ContinueOnError)
+	fs.SetOutput(Writer(&out))
+	fs.Bool("yes", false, "answer yes")
+	fs.PrintDefaults()
+	if want := "  --yes\n      answer yes\n"; out.String() != want {
+		t.Errorf("got %q, want %q", out.String(), want)
+	}
+}

@@ -347,3 +347,38 @@ func TestOnlyGoesDefaultNoteIsDroppedFromTheDescription(t *testing.T) {
 		t.Errorf("Go's own default note is dropped: %q", got[1].Usage)
 	}
 }
+
+// A help text whose descriptions were wrapped (gnuflag does that) gives the same descriptions as one
+// that was not.
+func TestParseHelpJoinsWrappedDescriptions(t *testing.T) {
+	flat := "  --store string\n    \tif there is no key yet, where to keep the one made: auto, file (default \"auto\")\n  --yes\n    \tanswer yes\n"
+	wrapped := "  --store string\n      if there is no key yet, where to keep the one made: auto, file\n      (default \"auto\")\n  --yes\n      answer yes\n"
+	a, b := ParseHelp(flat), ParseHelp(wrapped)
+	if len(a) != 2 || len(b) != 2 {
+		t.Fatalf("%+v %+v", a, b)
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			t.Errorf("flag %d: %+v from the flat text, %+v from the wrapped", i, a[i], b[i])
+		}
+	}
+}
+
+func TestUsageProblemsFindsWhatBreaksInATerminal(t *testing.T) {
+	good := "usage: x\n\ncommands:\n  pair  enrol this key holder on a machine\n  init  generate a key and an identity\n        for it\n"
+	if p := UsageProblems(good, 78); len(p) != 0 {
+		t.Errorf("a good usage was faulted: %v", p)
+	}
+	long := "usage: x\n\ncommands:\n  pair  " + strings.Repeat("word ", 20) + "\n"
+	if p := UsageProblems(long, 78); len(p) == 0 {
+		t.Error("a line of more than 78 columns was not noticed")
+	}
+	crooked := "usage: x\n\ncommands:\n  pair  one\n  devices list\n"
+	if p := UsageProblems(crooked, 78); len(p) == 0 {
+		t.Error("descriptions that do not start in one column were not noticed")
+	}
+	continued := "usage: x\n\ncommands:\n  pair  one\n    two\n"
+	if p := UsageProblems(continued, 78); len(p) == 0 {
+		t.Error("a continuation that is not under the descriptions was not noticed")
+	}
+}

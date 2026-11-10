@@ -9,12 +9,24 @@ package gnuflag
 import (
 	"io"
 	"regexp"
+	"strings"
+)
+
+const (
+	// descriptionIndent is where the description of an option starts, under the option.
+	descriptionIndent = "      "
+	// width is the widest line written: a line of 80 columns breaks in some terminals, which then
+	// leave the rest of it at the left margin.
+	width = 78
 )
 
 var (
 	// "  -name string" at the start of a line of PrintDefaults output: an option with a name
 	// of two or more characters. The text of the usage that follows is left alone.
 	optionLine = regexp.MustCompile(`(?m)^( {2})-([A-Za-z][A-Za-z0-9-]+)`)
+
+	// "    \ttext": how the flag package indents a description under its option.
+	descriptionLine = regexp.MustCompile(`(?m)^    \t(.*)$`)
 
 	unknown       = regexp.MustCompile(`flag provided but not defined: -{1,2}(\S+)`)
 	needsArgument = regexp.MustCompile(`flag needs an argument: -{1,2}(\S+)`)
@@ -26,7 +38,29 @@ func rewrite(text string) string {
 	text = unknown.ReplaceAllString(text, "unrecognised option '--$1'")
 	text = needsArgument.ReplaceAllString(text, "option '--$1' requires an argument")
 	text = badValue.ReplaceAllString(text, "$1 for option '--$2'")
-	return optionLine.ReplaceAllString(text, "$1--$2")
+	text = optionLine.ReplaceAllString(text, "$1--$2")
+	return descriptionLine.ReplaceAllStringFunc(text, func(line string) string {
+		return wrap(strings.TrimPrefix(line, "    \t"))
+	})
+}
+
+// wrap breaks a description into lines that fit, each indented under its option. A word longer than the
+// line (a path, say) stays whole on a line of its own.
+func wrap(description string) string {
+	var lines []string
+	line := ""
+	for _, word := range strings.Fields(description) {
+		if line != "" && len(descriptionIndent)+len(line)+1+len(word) > width {
+			lines = append(lines, descriptionIndent+line)
+			line = ""
+		}
+		if line != "" {
+			line += " "
+		}
+		line += word
+	}
+	lines = append(lines, descriptionIndent+line)
+	return strings.Join(lines, "\n")
 }
 
 type writer struct{ w io.Writer }

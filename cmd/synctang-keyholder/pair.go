@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/muelli/synctang/internal/gnuflag"
+	"github.com/muelli/synctang/internal/wrap"
 	"github.com/muelli/synctang/mrcore"
 	"github.com/muelli/synctang/mrcore/transport"
 	"github.com/syncthing/syncthing/lib/protocol"
@@ -191,7 +192,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		if made == nil {
 			return code
 		}
-		fmt.Fprintf(stdout, "made a new key, held by %s\n  %s\n\n", made.store.Name(), made.store.Describe())
+		fmt.Fprintf(stdout, "made a new key, held by %s\n%s\n\n", made.store.Name(), wrap.Paragraph(made.store.Describe(), "  ", textWidth))
 		if made.note != "" {
 			fmt.Fprintf(stderr, "synctang-keyholder: %s\n", made.note)
 		}
