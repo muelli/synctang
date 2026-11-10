@@ -166,3 +166,68 @@ func TestPairRejectsAMalformedCodeWithoutDialling(t *testing.T) {
 		t.Errorf("error %q does not point at the pairing code", err)
 	}
 }
+
+// A phone shows the person the short code while the machine's operator decides, so the code has to
+// be there as soon as the request is sent and not only when Pair returns, and has to be the one the
+// machine works out from the same connection (mrcore.PairSAS).
+func TestPairerOffersTheShortCodeWhileTheOperatorDecides(t *testing.T) {
+	const (
+		phoneSeed   = "test phone seed for the short code"
+		machineSeed = "test machine seed for the short code"
+	)
+	secret, code, err := mrcore.NewPairingSecret()
+	if err != nil {
+		t.Fatal(err)
+	}
+	machineID, _ := DeviceIDForSeed(machineSeed)
+	phoneID, _ := DeviceIDForSeed(phoneSeed)
+	machineCert, _ := identity.GenerateDeterministicCert(machineSeed)
+	addr := freePort(t)
+	release := make(chan struct{})
+	nonce := []byte("a nonce that is thirty two bytes")
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		conn, err := transport.NewSyncthingRelay(machineCert).Listen(ctx, transport.ListenOptions{DirectAddr: addr})
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		_ = mrcore.WriteMessage(conn, mrcore.PairChallenge{Nonce: nonce, Name: "test machine"})
+		var req mrcore.PairRequest
+		if mrcore.ReadMessage(conn, &req) != nil {
+			return
+		}
+		<-release // the operator is still deciding
+		_ = mrcore.WriteMessage(conn, mrcore.PairResult{OK: string(mrcore.PairProof(secret, machineID, conn.PeerID(), req.PubKey, nonce)) == string(req.Proof)})
+		time.Sleep(500 * time.Millisecond)
+	}()
+
+	pubKey := []byte("a public key stands in for a point")
+	p := NewPairer()
+	if p.ShortCode() != "" {
+		t.Errorf("a code before anything was sent: %q", p.ShortCode())
+	}
+	done := make(chan error, 1)
+	go func() { done <- p.Pair(machineID, code, phoneSeed, hex.EncodeToString(pubKey), "my phone", addr, 25) }()
+
+	want := mrcore.PairSAS(machineID, phoneID, pubKey, nonce)
+	deadline := time.Now().Add(20 * time.Second)
+	for p.ShortCode() == "" && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if got := p.ShortCode(); got != want {
+		t.Errorf("ShortCode = %q while the operator decides, the machine shows %q", got, want)
+	}
+	if p.Stage() != StageWaitingForOperator {
+		t.Errorf("stage %d, want waiting for the operator", p.Stage())
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatalf("Pair: %v", err)
+	}
+	if p.ShortCode() != want {
+		t.Errorf("the code was dropped when Pair returned: %q", p.ShortCode())
+	}
+}

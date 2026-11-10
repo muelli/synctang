@@ -77,6 +77,10 @@ type Pairer struct {
 
 	failure lastFailure
 
+	// shortCode is mrcore.PairSAS for this pairing, once the request has been sent.
+	codeMu    sync.Mutex
+	shortCode string
+
 	// progress is read by Stage, Attempt and Route; see Session.
 	progress progress
 
@@ -97,6 +101,24 @@ func (p *Pairer) LastFailure() int {
 func (p *Pairer) LastFailureDetail() string {
 	_, detail := p.failure.get()
 	return detail
+}
+
+// ShortCode is the six-digit code, such as "483 291", that the machine shows its operator with the
+// question whether to enrol this phone, and that the phone shows too, for the person to compare. The pairing
+// code only proves that whoever answered had it, and a code that was photographed or pasted is had by more
+// than one party; the comparison is what tells them apart. It is empty until the request has been sent
+// (that is, until the stage is waiting for the operator), and stays after Pair returns. It is a plain
+// getter, safe to read from another thread while Pair runs.
+func (p *Pairer) ShortCode() string {
+	p.codeMu.Lock()
+	defer p.codeMu.Unlock()
+	return p.shortCode
+}
+
+func (p *Pairer) setShortCode(code string) {
+	p.codeMu.Lock()
+	defer p.codeMu.Unlock()
+	p.shortCode = code
 }
 
 // SetDiscovery is Session.SetDiscovery for a pairing: look the machine up
@@ -202,7 +224,8 @@ func (p *Pairer) Pair(machineID, pairingCode, seed, publicKeyHex, name, directAd
 
 	var lastErr error
 	for {
-		lastErr = pairOnce(ctx, dialCtx, &p.progress, cert, machineID, selfID, secret, publicKey, name, directAddr, network)
+		p.setShortCode("") // a new attempt is a new connection, and a new nonce
+		lastErr = pairOnce(ctx, dialCtx, &p.progress, cert, machineID, selfID, secret, publicKey, name, directAddr, network, p.setShortCode)
 		if lastErr == nil {
 			logEvent(slog.LevelDebug, "pairing succeeded", "machine", machineID, "attempts", p.Attempt(), "route", routeName(p.Route()))
 			return nil
@@ -235,7 +258,7 @@ func (p *Pairer) Pair(machineID, pairingCode, seed, publicKeyHex, name, directAd
 	}
 }
 
-func pairOnce(ctx, dialCtx context.Context, prog *progress, cert tls.Certificate, machineID, selfID string, secret, publicKey []byte, name, directAddr string, network transport.NetworkConfig) error {
+func pairOnce(ctx, dialCtx context.Context, prog *progress, cert tls.Certificate, machineID, selfID string, secret, publicKey []byte, name, directAddr string, network transport.NetworkConfig, onCode func(string)) error {
 	prog.beginAttempt(firstStage(directAddr))
 	tr := newProgressDialTransport(cert, directAddr, network, prog)
 	conn, err := tr.Dial(dialCtx, transport.DialOptions{PeerID: machineID, DirectAddr: directAddr})
@@ -264,6 +287,8 @@ func pairOnce(ctx, dialCtx context.Context, prog *progress, cert tls.Certificate
 		return fmt.Errorf("mobile: sending the pairing request: %w", err)
 	}
 	stop()
+	// Both sides can work out the code from what they hold, with nothing sent for it.
+	onCode(mrcore.PairSAS(machineID, selfID, publicKey, challenge.Nonce))
 	waitCtx, cancelWait := context.WithTimeout(ctx, pairOperatorWait)
 	defer cancelWait()
 	stop = context.AfterFunc(waitCtx, func() { conn.Close() })
