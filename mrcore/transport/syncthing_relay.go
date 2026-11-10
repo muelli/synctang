@@ -214,15 +214,22 @@ type conn struct {
 	// once the caller is done. See listenRelay's own comment for why
 	// that timing matters.
 	onClose func()
+
+	// closeOnce makes onClose run once however often, and from however many goroutines, the
+	// connection is closed: a timer that gives up on a silent peer, the end of a window and the
+	// holder's own deferred Close all do it, and what onClose undoes cannot be undone twice.
+	closeOnce sync.Once
 }
 
 func (c *conn) PeerID() string { return c.peerID }
 
 func (c *conn) Close() error {
 	err := c.Conn.Close()
-	if c.onClose != nil {
-		c.onClose()
-	}
+	c.closeOnce.Do(func() {
+		if c.onClose != nil {
+			c.onClose()
+		}
+	})
 	return err
 }
 
@@ -958,8 +965,9 @@ func (t *SyncthingRelay) announceLoop(ctx context.Context, addresses func() []st
 		}
 	}()
 
+	var once sync.Once
 	return func() {
-		close(stop)
+		once.Do(func() { close(stop) })
 		<-done
 	}
 }
