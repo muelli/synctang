@@ -425,9 +425,8 @@ func pairConfirmer(assumeYes bool, stdout io.Writer, stdin io.Reader) func(strin
 		// The pairing code only proves that whoever answered had it, and a code that was photographed
 		// or pasted somewhere is had by more than one party: the comparison is what tells them apart.
 		width := wrap.Width(stdout)
-		fmt.Fprintf(stdout, "%s\n%s\n\n",
-			wrap.Paragraph("A laptop (synctang-keyholder pair) and the phone app show the same code: enrol it only if they are the same.", "", width),
-			wrap.Paragraph("An older phone app shows none: enrol it only if you scanned this QR code just now and nobody else could have.", "", width))
+		fmt.Fprintf(stdout, "%s\n\n",
+			wrap.Paragraph("A laptop (synctang-keyholder pair) and the phone app show the same code: enrol it only if they are the same.", "", width))
 		fmt.Fprint(stdout, "enrol it on this volume? [y/N] ")
 
 		line, err := reader.ReadString('\n')
@@ -473,8 +472,7 @@ func pairReplaceConfirmer(assumeYes bool, stdout io.Writer, stdin io.Reader) fun
 //
 // A machine that uses its own discovery server says so with
 // discovery=, so the phone looks it up where it announces. Nothing is
-// added for the public defaults, which keeps the link what older apps
-// read. Neither the relay nor the announce endpoint is carried: only
+// added for the public defaults. Neither the relay nor the announce endpoint is carried: only
 // the machine joins a relay or posts an announcement, and a phone
 // learns the relay from discovery.
 func pairingURL(machineID, name, encodedSecret string, network transport.NetworkConfig) string {

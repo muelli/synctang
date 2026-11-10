@@ -100,9 +100,8 @@ On the machine:
       --existing-passphrase-file <(printf %s "$PASS")
 
 The command shows a QR code. Scan it with the app. The machine shows the key holder that answered.
-A new app shows a code. Compare it with the code on the machine. If the codes are the same, enter `y`.
+The app shows a code. Compare it with the code on the machine. If the codes are the same, enter `y`.
 If the codes are different, enter `n`. Another person used the link first.
-An old app shows no code. Then enter `y` only if you scanned the QR code yourself, just now.
 
 The code is valid for 5 minutes. It enrols one key holder.
 

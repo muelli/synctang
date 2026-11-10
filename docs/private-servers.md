@@ -175,17 +175,13 @@ tests); `[U]` on the phone itself, which was not touched.
 
 **A link with a parameter the app does not know is refused**, with a message
 naming it, and nothing is paired. Ignoring it could pair the phone against
-servers the owner chose not to use. That includes an old link that carries
+servers the owner chose not to use. That includes a link that carries
 `relay=`: the message names `relay` `[V]` (`aLinkWithARelaySettingIsRefusedAsAnUnknownParameter`,
 `aLinkWithARelaySettingIsRefusedAndSaysWhich`, JVM tests). A `discovery` value
 that is not a server URL is refused too `[V]`, and so is one over plain
 `http` without `?insecure`, with its own message `[V]`
 (`aDiscoveryServerOverPlainHttpNeedsInsecure`, `aLinkWithAnHttpDiscoveryServerWithoutInsecureIsRefusedAndSaysSo`;
-the Go side still refuses it too, at unlock time). The reverse does not hold: a
-phone running an app from before this change ignores `discovery=`, looks the
-machine up on the public servers, and does not find it `[I]` (read from the
-old parser). Update the app first.
-
+the Go side still refuses it too, at unlock time).
 The link is longer, so the QR code is denser. `[U]` whether a Pixel's camera
 reads it at the usual screen size; the plan was to measure that before
 settling the field names. If it does not, the printed link can be pasted.

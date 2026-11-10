@@ -112,9 +112,7 @@ answers yes without looking gets no protection from it. `[V]` The two programs s
 test that runs both (`integration/`). The phone app shows the same code on its pairing screen while the operator decides (`[V]` on an emulator:
 the screen draws it, it is read out digit by digit, and it adds nothing to focus; `[V]` in a test that the
 code the library offers is what the machine works out; `[U]` not tried against a real machine from the app
-itself, since the pairing flow there is a scan on a phone). An app from before that shows none, and for it the machine says
-what the check is (that the operator has just scanned the code themselves) and the weaker guarantee
-stands. The machine's side of the link, its transport id, is checked by the
+itself, since the pairing flow there is a scan on a phone). The machine's side of the link, its transport id, is checked by the
 key holder against the certificate it connects to, so a link cannot be used to make a laptop pair with
 a different machine.
 

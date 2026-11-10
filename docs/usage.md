@@ -132,8 +132,7 @@ one-time code, and sends its public key. **Both sides now show a six-digit code,
 machine is asked whether to enrol: say yes only if the code on the laptop is the same.** The one-time
 code only proves that whoever answered had it, and a link that was photographed, read over a shoulder
 or pasted somewhere is had by more than one party. If the codes differ, answer `n` on the machine and
-pair again for a new link. (The phone app shows the same code while it waits, and says what to do if it differs; an app from
-before that does not, and then the check is that you scanned the code yourself just now.)
+pair again for a new link. (The phone app shows the same code while it waits, and says what to do if it differs.)
 
 The laptop remembers the machine under the name in the link, so unlocking is:
 
@@ -276,8 +275,7 @@ the initrd (for example `sudo dracut --force`):
 URL than lookups. Only the machine needs a relay setting: a key holder learns the relay from
 discovery. `synctang-unlocker pair` then puts the discovery server in the pairing
 link, so a phone paired by QR code follows the machine's choice and nobody
-types a URL on it (update the app first: an older one ignores it and looks
-on the public servers). On a laptop, give the discovery server with
+types a URL on it. On a laptop, give the discovery server with
 `synctang-keyholder unlock --discovery URL`, or in `~/.config/synctang-keyholder/config`. Both
 sides must use the same discovery server. A private discovery server with a
 self-signed certificate is trusted by its Device ID, written in the URL as
