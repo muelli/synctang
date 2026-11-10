@@ -232,7 +232,7 @@ func runDevices(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if !isRoot() {
-		ui.Errorln(stderr, "devices reads LUKS headers, which takes root; run it as root")
+		ui.Errorf(stderr, "devices reads LUKS headers, which takes root; %s\n", rootHint())
 		return 1
 	}
 	devs, err := listDevices()
@@ -253,7 +253,7 @@ func runDevices(args []string, stdout, stderr io.Writer) int {
 func deviceHint() string {
 	hint := `run "synctang-unlocker devices" to list the LUKS devices on this machine`
 	if !isRoot() {
-		return hint + " (as root)"
+		return hint + " (as root: " + asRoot() + ")"
 	}
 	devs, err := listDevices()
 	if err != nil || len(devs) == 0 {

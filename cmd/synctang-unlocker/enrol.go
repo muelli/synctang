@@ -37,7 +37,7 @@ const mrTokenType = "mr-1"
 func enrolRecipient(device string, existingPassphrase, recipientPublicKey []byte, machineName, transportID, recipientTransportID string) error {
 	dump, err := runCommand(nil, "cryptsetup", "luksDump", device)
 	if err != nil {
-		return fmt.Errorf("reading LUKS header: %w", err)
+		return fmt.Errorf("reading LUKS header: %w%s", err, permissionHint(err))
 	}
 
 	tok, existingTokenID, err := loadToken(string(dump), device, machineName, transportID)
@@ -216,7 +216,7 @@ type enrolPlan struct {
 func planEnrolment(device string, publicKey []byte, transportID string) (enrolPlan, error) {
 	dump, err := runCommand(nil, "cryptsetup", "luksDump", device)
 	if err != nil {
-		return enrolPlan{}, fmt.Errorf("reading LUKS header: %w", err)
+		return enrolPlan{}, fmt.Errorf("reading LUKS header: %w%s", err, permissionHint(err))
 	}
 	tok, tokenID, err := loadToken(string(dump), device, "", "")
 	if err != nil {
@@ -292,7 +292,7 @@ func removeRecipientByKeyslot(device string, existingPassphrase []byte, keyslot 
 func loadEnrolledToken(device string) (mrcore.Token, int, error) {
 	dump, err := runCommand(nil, "cryptsetup", "luksDump", device)
 	if err != nil {
-		return mrcore.Token{}, -1, fmt.Errorf("reading LUKS header: %w", err)
+		return mrcore.Token{}, -1, fmt.Errorf("reading LUKS header: %w%s", err, permissionHint(err))
 	}
 
 	tok, existingTokenID, err := loadToken(string(dump), device, "", "")

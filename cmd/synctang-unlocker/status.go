@@ -71,7 +71,7 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 
 	dump, err := runCommand(nil, "cryptsetup", "luksDump", activeDevice)
 	if err != nil {
-		ui.Errorf(stderr, "reading the LUKS2 header: %v\n", err)
+		ui.Errorf(stderr, "reading the LUKS2 header: %v%s\n", err, permissionHint(err))
 		return 1
 	}
 

@@ -132,13 +132,13 @@ func runOpen(args []string, stdout, stderr io.Writer) int {
 	// Before anything waits: approving on a phone and then finding out that
 	// nothing could be opened is the worst way to learn this.
 	if geteuid() != 0 {
-		ui.Errorln(stderr, "opening a volume needs root (try sudo)")
+		ui.Errorf(stderr, "opening a volume needs root; %s\n", rootHint())
 		return 1
 	}
 
 	dump, err := runCommand(nil, "cryptsetup", "luksDump", device)
 	if err != nil {
-		ui.Errorf(stderr, "reading the LUKS header of %s: %v\n", device, err)
+		ui.Errorf(stderr, "reading the LUKS header of %s: %v%s\n", device, err, permissionHint(err))
 		return 1
 	}
 	if _, id, err := loadToken(string(dump), device, "", ""); err != nil {

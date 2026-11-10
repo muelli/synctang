@@ -286,7 +286,7 @@ func runRehearse(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if geteuid() != 0 {
-		ui.Errorln(stderr, "rehearse reads the initrd and the LUKS header, which takes root (try sudo)")
+		ui.Errorf(stderr, "rehearse reads the initrd and the LUKS header, which takes root; %s\n", rootHint())
 		return 1
 	}
 
@@ -324,7 +324,7 @@ func runRehearse(args []string, stdout, stderr io.Writer) int {
 	}
 	dump, err := runCommand(nil, "cryptsetup", "luksDump", dev)
 	if err != nil {
-		ui.Errorf(stderr, "reading the LUKS header of %s: %v\n", dev, err)
+		ui.Errorf(stderr, "reading the LUKS header of %s: %v%s\n", dev, err, permissionHint(err))
 		return 1
 	}
 	if _, id, err := loadToken(string(dump), dev, "", ""); err != nil {

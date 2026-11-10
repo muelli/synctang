@@ -53,7 +53,7 @@ func findMr1Devices() ([]string, error) {
 		}
 	}
 	if len(found) == 0 {
-		return nil, fmt.Errorf("no block device carries an %s token", mrTokenType)
+		return nil, noDeviceError(isRoot())
 	}
 	return found, nil
 }
