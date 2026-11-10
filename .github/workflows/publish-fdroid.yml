@@ -29,7 +29,7 @@ jobs:
     # environment rather than pushing a branch.
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment_retry.outputs.page_url || steps.deployment.outputs.page_url }}
     # Pinned to the image this has been developed against, not moved to
     # ubuntu-26.04 with ci.yml: the real publishing path has never run to
     # completion, so it changes one variable at a time. Move it once a
@@ -476,12 +476,22 @@ jobs:
         with:
           path: site
 
+      # The action waits at most ten minutes however high its timeout is set (it says so in its log:
+      # "timeout set to the maximum of 600000 milliseconds"), so a deployment that Pages leaves in
+      # "syncing_files" for that long is cancelled, as for 4a0bf06, with a site of about 150 MB. Pages
+      # being slow is not ours to fix, and a second deployment of the same artifact usually goes through,
+      # so the step is tried twice before the job fails.
       - name: Deploy to Pages
         if: steps.gate.outputs.ready == 'true'
         id: deployment
+        continue-on-error: true
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
         with:
-          # Pages queued the deployment and was still syncing its files after the action's default ten
-          # minutes (the run for b4a7ba5), with a site of about 150 MB, which the action then cancelled.
-          # Wait up to thirty: the deployment is not ours to hurry, and cancelling it throws the work away.
-          timeout: 1800000
+          timeout: 600000
+
+      - name: Deploy to Pages, second try
+        if: steps.gate.outputs.ready == 'true' && steps.deployment.outcome == 'failure'
+        id: deployment_retry
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        with:
+          timeout: 600000
