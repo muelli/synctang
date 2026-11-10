@@ -132,7 +132,7 @@ func TestSecretServiceStoreDescribesItselfWithoutOverclaiming(t *testing.T) {
 
 func TestARecordCanNameTheSecretServiceStore(t *testing.T) {
 	keyFile := filepath.Join(t.TempDir(), "key")
-	if err := writeStoreRecord(keyFile, "secret-service"); err != nil {
+	if err := writeStoreRecord(keyFile, "secret-service", ""); err != nil {
 		t.Fatal(err)
 	}
 	st, err := openStore(keyFile)

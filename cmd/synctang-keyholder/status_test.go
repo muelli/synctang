@@ -42,7 +42,7 @@ func TestNoRecordAndNoKeyIsNoKey(t *testing.T) {
 
 func TestARecordNamesTheStoreThatHoldsTheKey(t *testing.T) {
 	keyFile, _ := keyholderDir(t)
-	if err := writeStoreRecord(keyFile, "file"); err != nil {
+	if err := writeStoreRecord(keyFile, "file", ""); err != nil {
 		t.Fatal(err)
 	}
 	spec, ok, err := readStoreRecord(keyFile)

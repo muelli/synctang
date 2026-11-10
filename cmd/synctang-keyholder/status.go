@@ -49,8 +49,18 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 	if s, err := st.Load(); err != nil {
 		fmt.Fprintln(stdout, look.Line(look.Fail(""), look.Red(fmt.Sprintf("readable: no (%v)", err))))
 	} else {
+		verr := verifyKey(*keyFile, st, s)
 		mrcore.Wipe(s)
-		fmt.Fprintln(stdout, look.Line(look.OK(""), "readable: yes"))
+		if verr != nil {
+			fmt.Fprintln(stdout, look.Line(look.Fail(""), look.Red(fmt.Sprintf("readable: no (%v)", verr))))
+		} else {
+			fmt.Fprintln(stdout, look.Line(look.OK(""), "readable: yes"))
+			if _, recorded, _, _ := readRecord(*keyFile); recorded != "" {
+				fmt.Fprintln(stdout, look.Dim("  it matches the public key recorded when it was made"))
+			} else {
+				fmt.Fprintln(stdout, look.Dim("  no public key was recorded, so a replaced key would not be noticed"))
+			}
+		}
 	}
 
 	if _, err := os.Stat(*transportKeyFile); err != nil {

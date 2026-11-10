@@ -228,7 +228,7 @@ func TestCredStoreDescribesWhatItDoesAndDoesNotProtect(t *testing.T) {
 func TestARecordCanNameTheCredStores(t *testing.T) {
 	keyFile := filepath.Join(t.TempDir(), "key")
 	for spec, want := range map[string]string{"systemd-creds": "systemd-creds", "systemd-creds:tpm2": "systemd-creds:tpm2"} {
-		_ = writeStoreRecord(keyFile, spec)
+		_ = writeStoreRecord(keyFile, spec, "")
 		st, err := openStore(keyFile)
 		if err != nil || st.Name() != want {
 			t.Errorf("%s: %v, %v", spec, st, err)

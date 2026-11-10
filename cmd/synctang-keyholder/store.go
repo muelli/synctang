@@ -149,28 +149,73 @@ func (f *fileStore) Delete() error {
 	return nil
 }
 
-// A key that is not in a plain file at keyFile has a record beside it, keyFile + ".store",
-// naming the store that holds it. The record holds no secret: it only says where to look.
+// Every key has a record beside it, keyFile + ".store": the name of the store that holds it, and the public
+// key it was made with ("public <hex>"). The record holds no secret. The store name says where to look. The
+// public key is what a key that a store hands back is checked against: a key that is well formed and is not
+// this key holder's own (another program wrote the item, a backup was restored over it) is refused, instead of
+// being used until a machine says no. It guards against mix-ups, not against a program that can also edit
+// the record, which can do anything that the user can.
 
 func storeRecordPath(keyFile string) string { return keyFile + ".store" }
 
-func writeStoreRecord(keyFile, spec string) error {
+func writeStoreRecord(keyFile, spec, publicHex string) error {
 	if err := os.MkdirAll(filepath.Dir(keyFile), 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(storeRecordPath(keyFile), []byte(spec+"\n"), 0o600)
+	text := spec + "\n"
+	if publicHex != "" {
+		text += "public " + publicHex + "\n"
+	}
+	return os.WriteFile(storeRecordPath(keyFile), []byte(text), 0o600)
 }
 
 // readStoreRecord returns the store recorded for keyFile; false when there is no record.
 func readStoreRecord(keyFile string) (string, bool, error) {
+	spec, _, recorded, err := readRecord(keyFile)
+	return spec, recorded, err
+}
+
+// readRecord is the record: the store, the public key hex (empty when none was recorded), and whether
+// there is a record at all.
+func readRecord(keyFile string) (spec, publicHex string, recorded bool, err error) {
 	raw, err := os.ReadFile(storeRecordPath(keyFile))
 	if os.IsNotExist(err) {
-		return "", false, nil
+		return "", "", false, nil
 	}
 	if err != nil {
-		return "", false, err
+		return "", "", false, err
 	}
-	return strings.TrimSpace(string(raw)), true, nil
+	for i, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		line = strings.TrimSpace(line)
+		if i == 0 {
+			spec = line
+		} else if v, ok := strings.CutPrefix(line, "public "); ok {
+			publicHex = strings.TrimSpace(v)
+		}
+	}
+	return spec, publicHex, true, nil
+}
+
+// errWrongKey is a key that a store holds and that is not the one this key holder was made with.
+var errWrongKey = errors.New("is not the key this key holder was made with")
+
+// verifyKey checks the scalar s that st returned against the public key recorded when the key was made. No
+// recorded public key (a record without one) is nothing to check against, and passes.
+func verifyKey(keyFile string, st keyStore, s []byte) error {
+	_, recorded, _, err := readRecord(keyFile)
+	if err != nil || recorded == "" {
+		return err
+	}
+	pub, err := mrcore.P256().ScalarBaseMult(s)
+	if err != nil {
+		return fmt.Errorf("computing the public key of the key %s holds: %w", st.Name(), err)
+	}
+	if got := hex.EncodeToString(pub); got != recorded {
+		short := func(h string) string { return h[:min(len(h), 12)] + "..." }
+		return fmt.Errorf("the key held by %s %w: its public key is %s, and %s says %s. Another program may have replaced it, "+
+			"or the item belongs to another key file", st.Name(), errWrongKey, short(got), storeRecordPath(keyFile), short(recorded))
+	}
+	return nil
 }
 
 // storeFromSpec makes the store a --store value or a record names, for the key at keyFile.

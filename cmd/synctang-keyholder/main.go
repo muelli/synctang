@@ -209,11 +209,16 @@ func makeKey(keyFile, transportKeyFile, storeSpec string, force bool, stderr io.
 		return nil, 1
 	}
 	defer mrcore.Wipe(s)
+	pub, err := mrcore.P256().ScalarBaseMult(s)
+	if err != nil {
+		ui.Errorf(stderr, "computing public key: %v\n", err)
+		return nil, 1
+	}
 	if err := st.Save(s, force); err != nil {
 		ui.Errorf(stderr, "%v\n", err)
 		return nil, 1
 	}
-	if err := writeStoreRecord(keyFile, st.Name()); err != nil {
+	if err := writeStoreRecord(keyFile, st.Name(), hex.EncodeToString(pub)); err != nil {
 		ui.Errorf(stderr, "the key was saved, but its record could not be written: %v\n", err)
 		return nil, 1
 	}
@@ -231,11 +236,6 @@ func makeKey(keyFile, transportKeyFile, storeSpec string, force bool, stderr io.
 	cert, err := transport.LoadOrCreateCert(transportKeyFile)
 	if err != nil {
 		ui.Errorf(stderr, "%v\n", err)
-		return nil, 1
-	}
-	pub, err := mrcore.P256().ScalarBaseMult(s)
-	if err != nil {
-		ui.Errorf(stderr, "computing public key: %v\n", err)
 		return nil, 1
 	}
 	pubHex := hex.EncodeToString(pub)

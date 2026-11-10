@@ -71,7 +71,15 @@ func loadPrivateKey(keyFile string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return st.Load()
+	s, err := st.Load()
+	if err != nil {
+		return nil, err
+	}
+	if err := verifyKey(keyFile, st, s); err != nil {
+		mrcore.Wipe(s)
+		return nil, err
+	}
+	return s, nil
 }
 
 // publicKeyHex loads s from keyFile and returns S = s.G, hex-encoded,
