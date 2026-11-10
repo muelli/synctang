@@ -135,3 +135,29 @@ func TestEnrolRecordsTheHostnameInANewToken(t *testing.T) {
 		t.Errorf("the token's machine name = %q, want study-box", got)
 	}
 }
+
+// A volume enrolled before names were recorded has a token without one, and "an existing token keeps its
+// own" left it nameless for ever: the key holder was told the machine's name was "". The next enrolment
+// that has a name gives it one; a name that is there is not changed.
+func TestAnUnnamedTokenGetsTheNameOfTheNextEnrolment(t *testing.T) {
+	pass := []byte("existing-test-passphrase")
+	device := formatLoopbackImage(t, pass)
+	if err := enrolRecipient(device, pass, newPublicKey(t), "", "MACHINE-ID", testKH1); err != nil {
+		t.Fatal(err)
+	}
+	if got := existingMachineName(device); got != "" {
+		t.Fatalf("the first token should have no name, has %q", got)
+	}
+	if err := enrolRecipient(device, pass, newPublicKey(t), "study-box", "MACHINE-ID", testKH2); err != nil {
+		t.Fatal(err)
+	}
+	if got := existingMachineName(device); got != "study-box" {
+		t.Errorf("the token's name = %q, want study-box", got)
+	}
+	if err := enrolRecipient(device, pass, newPublicKey(t), "another-name", "MACHINE-ID", testKeyholderID); err != nil {
+		t.Fatal(err)
+	}
+	if got := existingMachineName(device); got != "study-box" {
+		t.Errorf("a name that was there was changed to %q", got)
+	}
+}

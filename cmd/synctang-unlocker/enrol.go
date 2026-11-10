@@ -44,6 +44,11 @@ func enrolRecipient(device string, existingPassphrase, recipientPublicKey []byte
 	if err != nil {
 		return err
 	}
+	// An existing token keeps the name it has, but one that has none (a volume enrolled before names were
+	// recorded) takes the name of this enrolment: otherwise key holders are told the machine's name is "".
+	if existingTokenID >= 0 && tok.Machine.Name == "" {
+		tok.Machine.Name = machineName
+	}
 
 	slot, err := lowestFreeKeyslot(string(dump))
 	if err != nil {
