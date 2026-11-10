@@ -205,3 +205,51 @@ func Table(header []string, rows [][]string, s Style) string {
 	}
 	return out.String()
 }
+
+var program string
+
+// SetProgram names the program in the messages Errorf and Notef print.
+func SetProgram(name string) { program = name }
+
+// Errorf prints an error message to w as "program: message": at a terminal the prefix is red, with a cross.
+// A message that ends in a newline is a line; to anything but a terminal it is the same text as always.
+func Errorf(w io.Writer, format string, args ...any) {
+	s := For(w)
+	fmt.Fprint(w, s.Red(s.symbolPrefix("✗", program+":"))+" "+fmt.Sprintf(format, args...))
+}
+
+// Errorln is Errorf for a message that is not a format, and ends a line.
+func Errorln(w io.Writer, msg string) { Errorf(w, "%s\n", msg) }
+
+// Notef is Errorf for what is not an error but a person should read: yellow, with a warning sign.
+func Notef(w io.Writer, format string, args ...any) {
+	s := For(w)
+	fmt.Fprint(w, s.Yellow(s.symbolPrefix("⚠", program+":"))+" "+fmt.Sprintf(format, args...))
+}
+
+// symbolPrefix is the symbol and a space before text where symbols work, and text alone where they do not.
+func (s Style) symbolPrefix(sym, text string) string {
+	if s.Unicode {
+		return sym + " " + text
+	}
+	return text
+}
+
+// Line is mark, a space and text, or just text when there is no mark (the plain style has none).
+func (s Style) Line(mark, text string) string {
+	if mark == "" {
+		return text
+	}
+	return mark + " " + text
+}
+
+// Infof is a line of ordinary output that carries the program's name: no colour, the same text as always.
+func Infof(w io.Writer, format string, args ...any) {
+	fmt.Fprint(w, program+": "+fmt.Sprintf(format, args...))
+}
+
+// Successln prints "program: message" as a line that went well: a check mark and green at a terminal.
+func Successln(w io.Writer, msg string) {
+	s := For(w)
+	fmt.Fprint(w, s.Green(s.symbolPrefix("✓", program+":"))+" "+msg+"\n")
+}

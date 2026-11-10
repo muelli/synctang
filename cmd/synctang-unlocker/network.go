@@ -5,6 +5,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/muelli/synctang/internal/ui"
 	"io"
 	"io/fs"
 	"os"
@@ -106,11 +107,11 @@ func parseCmdlineNetwork(cmdline string) (transport.NetworkConfig, error) {
 func resolveNetwork(confPath string, stdout, stderr io.Writer) (transport.NetworkConfig, bool) {
 	c, err := loadNetworkConfig(confPath, procCmdline)
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-unlocker: network settings: %v\n", err)
+		ui.Errorf(stderr, "network settings: %v\n", err)
 		return transport.NetworkConfig{}, false
 	}
 	if s := c.Summary(); s != "" {
-		fmt.Fprintf(stdout, "synctang-unlocker: %s\n", s)
+		ui.Infof(stdout, "%s\n", s)
 	}
 	return c, true
 }

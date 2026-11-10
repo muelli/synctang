@@ -13,6 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/muelli/synctang/internal/gnuflag"
+	"github.com/muelli/synctang/internal/ui"
 	"io"
 	"log/slog"
 	"net/url"
@@ -238,23 +239,23 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if !validQRMode(*qrMode) {
-		fmt.Fprintf(stderr, "synctang-unlocker: --qr: unknown mode %q, want one of %s\n", *qrMode, strings.Join(qrModes, ", "))
+		ui.Errorf(stderr, "--qr: unknown mode %q, want one of %s\n", *qrMode, strings.Join(qrModes, ", "))
 		return 2
 	}
 
 	if *device == "" {
-		fmt.Fprintf(stderr, "synctang-unlocker: --device is required: %s\n", deviceHint())
+		ui.Errorf(stderr, "--device is required: %s\n", deviceHint())
 		return 2
 	}
 	if *passphraseFile == "" {
-		fmt.Fprintln(stderr, "synctang-unlocker: --existing-passphrase-file is required")
+		ui.Errorln(stderr, "--existing-passphrase-file is required")
 		return 2
 	}
 	// Found out now, before the passphrase is read and the window opens, not when a key
 	// holder has already answered.
 	answers, closeAnswers, err := confirmationInput(*passphraseFile, *yes, os.Stdin)
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
+		ui.Errorf(stderr, "%v\n", err)
 		return 2
 	}
 	defer closeAnswers.Close()
@@ -266,7 +267,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 
 	passphrase, err := readPassphrase(*passphraseFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
+		ui.Errorf(stderr, "%v\n", err)
 		return 1
 	}
 	defer mrcore.Wipe(passphrase)
@@ -276,13 +277,13 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 	// person had confirmed it. Before the identity is made, too, so a
 	// refused run leaves nothing behind.
 	if err := verifyPassphrase(*device, passphrase); err != nil {
-		fmt.Fprintf(stderr, "synctang-unlocker: that passphrase does not open %s (%v); nothing was changed\n", *device, err)
+		ui.Errorf(stderr, "that passphrase does not open %s (%v); nothing was changed\n", *device, err)
 		return 1
 	}
 
 	cert, err := transport.LoadOrCreateCert(*machineKeyFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
+		ui.Errorf(stderr, "%v\n", err)
 		return 1
 	}
 	machineID := protocol.NewDeviceID(cert.Certificate[0]).String()
@@ -290,7 +291,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 
 	secret, encoded, err := mrcore.NewPairingSecret()
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
+		ui.Errorf(stderr, "%v\n", err)
 		return 1
 	}
 	defer mrcore.Wipe(secret)
@@ -299,7 +300,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		// Not fatal: the printed values below are enough to pair by
 		// hand, and a machine whose terminal cannot show a QR code is
 		// exactly the case they exist for.
-		fmt.Fprintf(stderr, "synctang-unlocker: could not draw the QR code (%v); use the link below\n", err)
+		ui.Errorf(stderr, "could not draw the QR code (%v); use the link below\n", err)
 	} else {
 		fmt.Fprintln(stdout)
 		fmt.Fprint(stdout, qrCode)
@@ -340,10 +341,10 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 			return afterEnrolmentFor(stdout, stderr, *machineKeyFile, *networkConf, *rebuild)
 		}
 		if ctx.Err() != nil {
-			fmt.Fprintf(stderr, "synctang-unlocker: nobody paired within %s\n", *window)
+			ui.Errorf(stderr, "nobody paired within %s\n", *window)
 			return 1
 		}
-		fmt.Fprintf(stderr, "synctang-unlocker: %v (still waiting)\n", err)
+		ui.Notef(stderr, "%v (still waiting)\n", err)
 	}
 }
 

@@ -182,3 +182,32 @@ func TestTableAlignsColumnsByWhatIsVisible(t *testing.T) {
 		t.Errorf("plain: %q", plain)
 	}
 }
+
+func TestErrorsAndNotesCarryTheProgramName(t *testing.T) {
+	SetProgram("synctang-x")
+	defer SetProgram("")
+	var buf bytes.Buffer
+	Errorf(&buf, "no key at %s\n", "/k")
+	Notef(&buf, "using a file\n")
+	Errorln(&buf, "bad thing")
+	want := "synctang-x: no key at /k\nsynctang-x: using a file\nsynctang-x: bad thing\n"
+	if buf.String() != want {
+		t.Errorf("plain:\n%q\nwant\n%q", buf.String(), want)
+	}
+}
+
+func TestErrorsAreRedAndNotesYellowAtATerminal(t *testing.T) {
+	SetProgram("synctang-x")
+	defer SetProgram("")
+	SetMode(Always)
+	defer SetMode(Auto)
+	t.Setenv("LANG", "en_GB.UTF-8")
+	t.Setenv("LC_ALL", "")
+	t.Setenv("TERM", "xterm")
+	var buf bytes.Buffer
+	Errorf(&buf, "no key\n")
+	Notef(&buf, "a note\n")
+	if want := "\x1b[31m✗ synctang-x:\x1b[0m no key\n\x1b[33m⚠ synctang-x:\x1b[0m a note\n"; buf.String() != want {
+		t.Errorf("%q\nwant %q", buf.String(), want)
+	}
+}

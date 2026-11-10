@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"github.com/muelli/synctang/internal/completion"
 	"github.com/muelli/synctang/internal/gnuflag"
+	"github.com/muelli/synctang/internal/ui"
 	"github.com/muelli/synctang/internal/version"
 	"github.com/muelli/synctang/internal/wrap"
 	"github.com/muelli/synctang/mrcore"
@@ -45,6 +46,14 @@ func main() {
 }
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	ui.SetProgram("synctang-keyholder")
+	rest, colour, err := ui.ExtractColorFlag(args)
+	if err != nil {
+		ui.Errorln(stderr, err.Error())
+		return 2
+	}
+	ui.SetMode(colour)
+	args = rest
 	if len(args) < 1 {
 		fmt.Fprint(stderr, completion.Reflow(usage, wrap.Width(stderr)))
 		return 2
@@ -76,7 +85,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return out.String()
 		}, nil, args[1:], stdout, stderr)
 	default:
-		fmt.Fprintf(stderr, "synctang-keyholder: unknown command %q\n%s", args[0], completion.Reflow(usage, wrap.Width(stderr)))
+		ui.Errorf(stderr, "unknown command %q\n%s", args[0], completion.Reflow(usage, wrap.Width(stderr)))
 		return 2
 	}
 }
@@ -111,11 +120,11 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if *keyFile == "" {
-		fmt.Fprintln(stderr, "synctang-keyholder: --key-file is required (could not determine a default)")
+		ui.Errorln(stderr, "--key-file is required (could not determine a default)")
 		return 2
 	}
 	if *transportKeyFile == "" {
-		fmt.Fprintln(stderr, "synctang-keyholder: --transport-key-file is required (could not determine a default)")
+		ui.Errorln(stderr, "--transport-key-file is required (could not determine a default)")
 		return 2
 	}
 
@@ -127,7 +136,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 
 	fmt.Fprintf(stdout, "generated a new key, held by %s\n%s\n", st.Name(), wrap.Paragraph(st.Describe(), "  ", wrap.Width(stdout)))
 	if note != "" {
-		fmt.Fprintf(stderr, "synctang-keyholder: %s\n", note)
+		ui.Notef(stderr, "%s\n", note)
 	}
 	fmt.Fprintf(stdout, "transport identity at %s\n\n", *transportKeyFile)
 
@@ -156,7 +165,7 @@ type madeKey struct {
 func makeKey(keyFile, transportKeyFile, storeSpec string, force bool, stderr io.Writer) (*madeKey, int) {
 	st, note, err := chooseStore(storeSpec, keyFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+		ui.Errorf(stderr, "%v\n", err)
 		if strings.Contains(err.Error(), "unknown store") {
 			return nil, 2
 		}
@@ -169,39 +178,39 @@ func makeKey(keyFile, transportKeyFile, storeSpec string, force bool, stderr io.
 	var old keyStore
 	if existing, err := openStore(keyFile); err == nil {
 		if ok, err := existing.Exists(); err != nil && !force {
-			fmt.Fprintf(stderr, "synctang-keyholder: cannot tell whether a key is already held by %s (%v); use --force to make a new one anyway\n", existing.Name(), err)
+			ui.Errorf(stderr, "cannot tell whether a key is already held by %s (%v); use --force to make a new one anyway\n", existing.Name(), err)
 			return nil, 1
 		} else if err != nil {
-			fmt.Fprintf(stderr, "synctang-keyholder: could not check whether %s still holds the old key (%v): if it does, remove it yourself once it is reachable, because a replaced key left behind is one nobody remembers\n", existing.Name(), err)
+			ui.Errorf(stderr, "could not check whether %s still holds the old key (%v): if it does, remove it yourself once it is reachable, because a replaced key left behind is one nobody remembers\n", existing.Name(), err)
 		} else if ok {
 			if !force {
-				fmt.Fprintf(stderr, "synctang-keyholder: a key is already held by %s, use --force to replace it\n", existing.Name())
+				ui.Errorf(stderr, "a key is already held by %s, use --force to replace it\n", existing.Name())
 				return nil, 1
 			}
 			old = existing
 		}
 	} else if !errors.Is(err, errNoKey) && !force {
-		fmt.Fprintf(stderr, "synctang-keyholder: %v; use --force to make a new key anyway\n", err)
+		ui.Errorf(stderr, "%v; use --force to make a new key anyway\n", err)
 		return nil, 1
 	}
 
 	s, err := mrcore.P256().RandomScalar()
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-keyholder: generating key: %v\n", err)
+		ui.Errorf(stderr, "generating key: %v\n", err)
 		return nil, 1
 	}
 	defer mrcore.Wipe(s)
 	if err := st.Save(s, force); err != nil {
-		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+		ui.Errorf(stderr, "%v\n", err)
 		return nil, 1
 	}
 	if err := writeStoreRecord(keyFile, st.Name()); err != nil {
-		fmt.Fprintf(stderr, "synctang-keyholder: the key was saved, but its record could not be written: %v\n", err)
+		ui.Errorf(stderr, "the key was saved, but its record could not be written: %v\n", err)
 		return nil, 1
 	}
 	if old != nil && old.Name() != st.Name() {
 		if err := old.Delete(); err != nil {
-			fmt.Fprintf(stderr, "synctang-keyholder: the old key could not be removed from %s: %v\n", old.Name(), err)
+			ui.Errorf(stderr, "the old key could not be removed from %s: %v\n", old.Name(), err)
 		}
 	}
 
@@ -212,12 +221,12 @@ func makeKey(keyFile, transportKeyFile, storeSpec string, force bool, stderr io.
 	// breaking every AuthorizedPeers list it was already enrolled into.
 	cert, err := transport.LoadOrCreateCert(transportKeyFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+		ui.Errorf(stderr, "%v\n", err)
 		return nil, 1
 	}
 	pub, err := mrcore.P256().ScalarBaseMult(s)
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-keyholder: computing public key: %v\n", err)
+		ui.Errorf(stderr, "computing public key: %v\n", err)
 		return nil, 1
 	}
 	pubHex := hex.EncodeToString(pub)
@@ -235,23 +244,23 @@ func runExportPubkey(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if *keyFile == "" {
-		fmt.Fprintln(stderr, "synctang-keyholder: --key-file is required (could not determine a default)")
+		ui.Errorln(stderr, "--key-file is required (could not determine a default)")
 		return 2
 	}
 	if *transportKeyFile == "" {
-		fmt.Fprintln(stderr, "synctang-keyholder: --transport-key-file is required (could not determine a default)")
+		ui.Errorln(stderr, "--transport-key-file is required (could not determine a default)")
 		return 2
 	}
 
 	pubHex, err := publicKeyHex(*keyFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+		ui.Errorf(stderr, "%v\n", err)
 		return 1
 	}
 
 	cert, err := transport.LoadOrCreateCert(*transportKeyFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+		ui.Errorf(stderr, "%v\n", err)
 		return 1
 	}
 
@@ -276,16 +285,16 @@ func runUnlock(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "synctang-keyholder: unlock requires exactly one argument, the machine's name or transport id")
+		ui.Errorln(stderr, "unlock requires exactly one argument, the machine's name or transport id")
 		return 2
 	}
 	if *machinesFile == "" {
-		fmt.Fprintln(stderr, "synctang-keyholder: --machines-file is required (could not determine a default)")
+		ui.Errorln(stderr, "--machines-file is required (could not determine a default)")
 		return 2
 	}
 	target, err := resolveMachine(*machinesFile, fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+		ui.Errorf(stderr, "%v\n", err)
 		return 2
 	}
 	machineID := target.ID
@@ -300,32 +309,32 @@ func runUnlock(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	network, err := loadNetworkConfig(configPath, explicitConfig, *discovery, *discoveryAnnounce)
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-keyholder: network settings: %v\n", err)
+		ui.Errorf(stderr, "network settings: %v\n", err)
 		return 2
 	}
 	if s := network.Summary(); s != "" {
-		fmt.Fprintf(stderr, "synctang-keyholder: %s\n", s)
+		ui.Notef(stderr, "%s\n", s)
 	}
 
 	if *keyFile == "" {
-		fmt.Fprintln(stderr, "synctang-keyholder: --key-file is required (could not determine a default)")
+		ui.Errorln(stderr, "--key-file is required (could not determine a default)")
 		return 2
 	}
 	if *transportKeyFile == "" {
-		fmt.Fprintln(stderr, "synctang-keyholder: --transport-key-file is required (could not determine a default)")
+		ui.Errorln(stderr, "--transport-key-file is required (could not determine a default)")
 		return 2
 	}
 
 	s, err := loadPrivateKey(*keyFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+		ui.Errorf(stderr, "%v\n", err)
 		return 1
 	}
 	defer mrcore.Wipe(s)
 
 	cert, err := transport.LoadOrCreateCert(*transportKeyFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+		ui.Errorf(stderr, "%v\n", err)
 		return 1
 	}
 
@@ -350,11 +359,11 @@ func runUnlock(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		select {
 		case <-ctx.Done():
-			fmt.Fprintf(stderr, "synctang-keyholder: %v (last attempt: %v)\n", ctx.Err(), lastErr)
+			ui.Errorf(stderr, "%v (last attempt: %v)\n", ctx.Err(), lastErr)
 			var dial *dialError
 			if *directAddr == "" && errors.As(lastErr, &dial) {
 				if hint := dialFailureHint(machineID, network.Discovery, time.Now); hint != "" {
-					fmt.Fprintf(stderr, "synctang-keyholder: %s\n", hint)
+					ui.Notef(stderr, "%s\n", hint)
 				}
 			}
 			return 1

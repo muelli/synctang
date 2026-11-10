@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/muelli/synctang/internal/ui"
 	"io"
 	"log/slog"
 	"os"
@@ -113,11 +114,11 @@ func newLogger(level slog.Level, mode journalMode, socket string, console io.Wri
 	}
 	conn, err := journal.Dial(socket, journalIdentifier)
 	if err != nil {
-		fmt.Fprintf(console, "synctang-unlocker: the journal is unavailable (%v); logging to the console only\n", err)
+		ui.Errorf(console, "the journal is unavailable (%v); logging to the console only\n", err)
 		return newLoggerTo(level, nil, console)
 	}
 	return newLoggerWithJournal(level, conn, console, func(err error) {
-		fmt.Fprintf(console, "synctang-unlocker: the journal is unavailable (%v); logging to the console only\n", err)
+		ui.Errorf(console, "the journal is unavailable (%v); logging to the console only\n", err)
 	})
 }
 
@@ -141,7 +142,7 @@ const consoleLevel = slog.LevelWarn
 // both choices can be tested without a systemd.
 func newLoggerTo(level slog.Level, conn *journal.Conn, console io.Writer) *slog.Logger {
 	return newLoggerWithJournal(level, conn, console, func(err error) {
-		fmt.Fprintf(console, "synctang-unlocker: the journal is unavailable (%v); logging to the console only\n", err)
+		ui.Errorf(console, "the journal is unavailable (%v); logging to the console only\n", err)
 	})
 }
 

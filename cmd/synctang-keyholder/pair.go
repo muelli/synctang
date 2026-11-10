@@ -10,6 +10,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/muelli/synctang/internal/ui"
 	"io"
 	"net/url"
 	"os"
@@ -154,22 +155,22 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "synctang-keyholder: pair wants one argument, the pairing link that \"synctang-unlocker pair\" prints under its QR code (in quotes)")
+		ui.Errorln(stderr, "pair wants one argument, the pairing link that \"synctang-unlocker pair\" prints under its QR code (in quotes)")
 		return 2
 	}
 	link, err := parsePairingLink(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+		ui.Errorf(stderr, "%v\n", err)
 		return 2
 	}
 	if *keyFile == "" || *transportKeyFile == "" || *machinesFile == "" {
-		fmt.Fprintln(stderr, "synctang-keyholder: --key-file, --transport-key-file and --machines-file are required (no default could be determined)")
+		ui.Errorln(stderr, "--key-file, --transport-key-file and --machines-file are required (no default could be determined)")
 		return 2
 	}
 	alias := cmp.Or(*as, link.Name)
 	if alias != "" {
 		if err := validMachineName(alias); err != nil {
-			fmt.Fprintf(stderr, "synctang-keyholder: %v (name it yourself with --as)\n", err)
+			ui.Errorf(stderr, "%v (name it yourself with --as)\n", err)
 			return 2
 		}
 	}
@@ -181,7 +182,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 	chosenDiscovery := cmp.Or(*discovery, link.Discovery)
 	network, err := loadNetworkConfig(configPath, explicitConfig, chosenDiscovery, "")
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-keyholder: network settings: %v\n", err)
+		ui.Errorf(stderr, "network settings: %v\n", err)
 		return 2
 	}
 
@@ -194,25 +195,25 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stdout, "made a new key, held by %s\n%s\n\n", made.store.Name(), wrap.Paragraph(made.store.Describe(), "  ", wrap.Width(stdout)))
 		if made.note != "" {
-			fmt.Fprintf(stderr, "synctang-keyholder: %s\n", made.note)
+			ui.Notef(stderr, "%s\n", made.note)
 		}
 	} else if err != nil {
-		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+		ui.Errorf(stderr, "%v\n", err)
 		return 1
 	}
 	pubHex, err := publicKeyHex(*keyFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+		ui.Errorf(stderr, "%v\n", err)
 		return 1
 	}
 	pub, err := hex.DecodeString(pubHex)
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+		ui.Errorf(stderr, "%v\n", err)
 		return 1
 	}
 	cert, err := transport.LoadOrCreateCert(*transportKeyFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+		ui.Errorf(stderr, "%v\n", err)
 		return 1
 	}
 	selfName := *name
@@ -236,12 +237,12 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		}
 		var final *pairFinal
 		if errors.As(err, &final) {
-			fmt.Fprintf(stderr, "synctang-keyholder: %v\n", final.error)
+			ui.Errorf(stderr, "%v\n", final.error)
 			return 1
 		}
 		select {
 		case <-ctx.Done():
-			fmt.Fprintf(stderr, "synctang-keyholder: could not reach the machine to pair: %v (last attempt: %v)\n", ctx.Err(), err)
+			ui.Errorf(stderr, "could not reach the machine to pair: %v (last attempt: %v)\n", ctx.Err(), err)
 			return 1
 		case <-time.After(unlockRetryInterval):
 		}
@@ -256,7 +257,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 	previous, replaced, err := putMachine(*machinesFile, machine{Name: alias, ID: link.Machine, Discovery: chosenDiscovery}, true)
 	if err != nil {
 		fmt.Fprintf(stdout, "Unlock it with: synctang-keyholder unlock %s\n", link.Machine)
-		fmt.Fprintf(stderr, "synctang-keyholder: paired, but the name %q could not be saved: %v\n", alias, err)
+		ui.Errorf(stderr, "paired, but the name %q could not be saved: %v\n", alias, err)
 		return 1
 	}
 	if replaced && previous.ID != link.Machine {

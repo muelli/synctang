@@ -17,6 +17,7 @@ import (
 	"github.com/muelli/synctang/internal/completion"
 	"github.com/muelli/synctang/internal/gnuflag"
 	"github.com/muelli/synctang/internal/journal"
+	"github.com/muelli/synctang/internal/ui"
 	"github.com/muelli/synctang/internal/version"
 	"github.com/muelli/synctang/internal/wrap"
 	"github.com/muelli/synctang/mrcore"
@@ -75,6 +76,14 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
+	ui.SetProgram("synctang-unlocker")
+	rest, colour, err := ui.ExtractColorFlag(args)
+	if err != nil {
+		ui.Errorln(stderr, err.Error())
+		return 2
+	}
+	ui.SetMode(colour)
+	args = rest
 	if len(args) < 1 {
 		fmt.Fprint(stderr, completion.Reflow(usage, wrap.Width(stderr)))
 		return 2
@@ -101,7 +110,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "open":
 		return runOpen(args[1:], stdout, stderr)
 	default:
-		fmt.Fprintf(stderr, "synctang-unlocker: unknown command %q\n%s", args[0], completion.Reflow(usage, wrap.Width(stderr)))
+		ui.Errorf(stderr, "unknown command %q\n%s", args[0], completion.Reflow(usage, wrap.Width(stderr)))
 		return 2
 	}
 }
@@ -146,33 +155,33 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 	}
 
 	if *keyslot != "" && *remove == "" && *replace == "" {
-		fmt.Fprintln(stderr, "synctang-unlocker: --keyslot goes with --remove or --replace")
+		ui.Errorln(stderr, "--keyslot goes with --remove or --replace")
 		return 2
 	}
 
 	if *device == "" {
-		fmt.Fprintf(stderr, "synctang-unlocker: --device is required: %s\n", deviceHint())
+		ui.Errorf(stderr, "--device is required: %s\n", deviceHint())
 		return 2
 	}
 
 	if *remove != "" && *replace != "" {
-		fmt.Fprintln(stderr, "synctang-unlocker: --remove and --replace are alternatives; use one or the other")
+		ui.Errorln(stderr, "--remove and --replace are alternatives; use one or the other")
 		return 2
 	}
 
 	if *replace != "" {
 		if *device == "" || *pubkeyHex == "" || *passphraseFile == "" {
-			fmt.Fprintln(stderr, "synctang-unlocker: --device, --pubkey and --existing-passphrase-file are all required with --replace")
+			ui.Errorln(stderr, "--device, --pubkey and --existing-passphrase-file are all required with --replace")
 			return 2
 		}
 		pubkey, err := hex.DecodeString(*pubkeyHex)
 		if err != nil {
-			fmt.Fprintf(stderr, "synctang-unlocker: --pubkey: %v\n", err)
+			ui.Errorf(stderr, "--pubkey: %v\n", err)
 			return 2
 		}
 		passphrase, err := readPassphrase(*passphraseFile)
 		if err != nil {
-			fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
+			ui.Errorf(stderr, "%v\n", err)
 			return 1
 		}
 		defer mrcore.Wipe(passphrase)
@@ -184,7 +193,7 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 		newTransportID := cmp.Or(*recipientTransportID, *replace)
 
 		if err := replaceRecipient(*device, passphrase, pubkey, *replace, newTransportID, *keyslot); err != nil {
-			fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
+			ui.Errorf(stderr, "%v\n", err)
 			return 1
 		}
 		fmt.Fprintf(stdout, "rotated recipient %s on %s; its previous key no longer opens the device\n", *replace, *device)
@@ -193,21 +202,21 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 
 	if *removeKeyslot != "" {
 		if *remove != "" || *replace != "" {
-			fmt.Fprintln(stderr, "synctang-unlocker: --remove-keyslot cannot be combined with --remove or --replace")
+			ui.Errorln(stderr, "--remove-keyslot cannot be combined with --remove or --replace")
 			return 2
 		}
 		if *device == "" || *passphraseFile == "" {
-			fmt.Fprintln(stderr, "synctang-unlocker: --device and --existing-passphrase-file are required with --remove-keyslot")
+			ui.Errorln(stderr, "--device and --existing-passphrase-file are required with --remove-keyslot")
 			return 2
 		}
 		passphrase, err := readPassphrase(*passphraseFile)
 		if err != nil {
-			fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
+			ui.Errorf(stderr, "%v\n", err)
 			return 1
 		}
 		defer mrcore.Wipe(passphrase)
 		if err := removeRecipientByKeyslot(*device, passphrase, *removeKeyslot); err != nil {
-			fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
+			ui.Errorf(stderr, "%v\n", err)
 			return 1
 		}
 		fmt.Fprintf(stdout, "revoked the key holder in keyslot %s on %s\n", *removeKeyslot, *device)
@@ -216,18 +225,18 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 
 	if *remove != "" {
 		if *device == "" || *passphraseFile == "" {
-			fmt.Fprintln(stderr, "synctang-unlocker: --device and --existing-passphrase-file are required with --remove")
+			ui.Errorln(stderr, "--device and --existing-passphrase-file are required with --remove")
 			return 2
 		}
 		passphrase, err := readPassphrase(*passphraseFile)
 		if err != nil {
-			fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
+			ui.Errorf(stderr, "%v\n", err)
 			return 1
 		}
 		defer mrcore.Wipe(passphrase)
 
 		if err := removeRecipient(*device, passphrase, *remove, *keyslot); err != nil {
-			fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
+			ui.Errorf(stderr, "%v\n", err)
 			return 1
 		}
 		fmt.Fprintf(stdout, "revoked recipient %s on %s\n", *remove, *device)
@@ -235,20 +244,20 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 	}
 
 	if *device == "" || *pubkeyHex == "" || *passphraseFile == "" {
-		fmt.Fprintln(stderr, "synctang-unlocker: --device, --pubkey and --existing-passphrase-file are all required")
+		ui.Errorln(stderr, "--device, --pubkey and --existing-passphrase-file are all required")
 		return 2
 	}
 
 	pubkey, err := hex.DecodeString(*pubkeyHex)
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-unlocker: --pubkey: %v\n", err)
+		ui.Errorf(stderr, "--pubkey: %v\n", err)
 		return 2
 	}
 
 	// An entry without the key holder's transport id can never be used: the agent tells key
 	// holders from strangers by it and refuses to listen when none has one.
 	if *recipientTransportID == "" {
-		fmt.Fprintln(stderr, "synctang-unlocker: --recipient-transport-id is required: the key holder's transport id, "+
+		ui.Errorln(stderr, "--recipient-transport-id is required: the key holder's transport id, "+
 			"which \"synctang-keyholder export-pubkey\" prints as \"transport-id:\" next to the public key. "+
 			"Without it the machine cannot tell this key holder from a stranger, so nothing was enrolled")
 		return 2
@@ -256,7 +265,7 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 
 	passphrase, err := readPassphrase(*passphraseFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
+		ui.Errorf(stderr, "%v\n", err)
 		return 1
 	}
 	defer mrcore.Wipe(passphrase)
@@ -265,7 +274,7 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 	*name = resolveMachineName(*name, "")
 	outcome, err := enrolOnce(*device, passphrase, pubkey, *name, *transportID, *recipientTransportID)
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
+		ui.Errorf(stderr, "%v\n", err)
 		return 1
 	}
 
@@ -294,7 +303,7 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 
 	cert, err := transport.LoadOrCreateCert(*machineKeyFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-unlocker: loading this machine's transport identity: %v\n", err)
+		ui.Errorf(stderr, "loading this machine's transport identity: %v\n", err)
 		return 1
 	}
 	fmt.Fprintf(stdout, "this machine's transport id: %s\n", protocol.NewDeviceID(cert.Certificate[0]))
@@ -351,12 +360,12 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 
 	logLevel, err := parseLogLevel(*logLevelFlag)
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
+		ui.Errorf(stderr, "%v\n", err)
 		return 2
 	}
 	journalChoice, err := parseJournalMode(*journalFlag)
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-unlocker: --journal: %v\n", err)
+		ui.Errorf(stderr, "--journal: %v\n", err)
 		return 2
 	}
 	logger := newLogger(logLevel, journalChoice, journal.DefaultSocket, os.Stderr)
@@ -364,11 +373,11 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 
 	cert, err := transport.LoadOrCreateCert(*machineKeyFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
+		ui.Errorf(stderr, "%v\n", err)
 		return 1
 	}
 
-	fmt.Fprintf(stdout, "synctang-unlocker: waiting for a key holder, transport id %s\n", protocol.NewDeviceID(cert.Certificate[0]))
+	ui.Infof(stdout, "waiting for a key holder, transport id %s\n", protocol.NewDeviceID(cert.Certificate[0]))
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer cancel()
@@ -418,12 +427,12 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 			transport.ListenOptions{DirectAddr: *directAddr}, tr)
 		switch {
 		case err == nil:
-			fmt.Fprintln(stdout, "synctang-unlocker: unlocked")
+			ui.Successln(stdout, "unlocked")
 			logger.Info("recovery attempt succeeded")
 		case ctx.Err() != nil:
 			// Shutting down; the error is just ctx being cancelled mid-attempt.
 		default:
-			fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
+			ui.Errorf(stderr, "%v\n", err)
 			logger.Error("recovery attempt failed", "error", err)
 		}
 
@@ -489,7 +498,7 @@ func readPassphrase(path string) ([]byte, error) {
 			data, err = readTerminalPassword()
 			fmt.Fprintln(passphraseNotice)
 		} else {
-			fmt.Fprintln(passphraseNotice, "synctang-unlocker: reading the passphrase from standard input")
+			ui.Errorln(passphraseNotice, "reading the passphrase from standard input")
 			data, err = io.ReadAll(passphraseStdin)
 		}
 	} else {

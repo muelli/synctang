@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"fmt"
+	"github.com/muelli/synctang/internal/ui"
 	"io"
 	"os"
 	"os/exec"
@@ -183,23 +184,23 @@ func afterEnrolment(stdout, stderr io.Writer, o initrdOptions) int {
 		return 0
 	}
 	if !st.Checked && !o.Rebuild {
-		fmt.Fprintf(stderr, "synctang-unlocker: could not check whether the initrd carries this machine's identity (%s); "+
+		ui.Errorf(stderr, "could not check whether the initrd carries this machine's identity (%s); "+
 			"after the first pairing run dracut --force, or this machine may not be found at boot\n", st.Reason)
 		return 0
 	}
 	if st.Checked {
 		for _, p := range st.Problems {
-			fmt.Fprintf(stderr, "synctang-unlocker: warning: the initrd %s\n", p)
+			ui.Notef(stderr, "warning: the initrd %s\n", p)
 		}
 		if !o.Rebuild {
-			fmt.Fprintln(stderr, "synctang-unlocker: fix it with: dracut --force (as root), or repeat this command with --rebuild-initrd")
+			ui.Errorln(stderr, "fix it with: dracut --force (as root), or repeat this command with --rebuild-initrd")
 			return 0
 		}
 	}
 
 	fmt.Fprintln(stdout, "rebuilding the initrd: dracut --force")
 	if err := rebuildInitrd(stdout, stderr); err != nil {
-		fmt.Fprintf(stderr, "synctang-unlocker: the key holder was enrolled, but the initrd could not be rebuilt: %v; run dracut --force yourself\n", err)
+		ui.Errorf(stderr, "the key holder was enrolled, but the initrd could not be rebuilt: %v; run dracut --force yourself\n", err)
 		return 1
 	}
 	after := checkInitrd(o.Identity, o.NetworkConf)
@@ -211,6 +212,6 @@ func afterEnrolment(stdout, stderr io.Writer, o initrdOptions) int {
 	if after.Checked {
 		reason = strings.Join(after.Problems, "; ")
 	}
-	fmt.Fprintf(stderr, "synctang-unlocker: the key holder was enrolled and dracut ran, but the initrd still does not match: %s\n", reason)
+	ui.Errorf(stderr, "the key holder was enrolled and dracut ran, but the initrd still does not match: %s\n", reason)
 	return 1
 }

@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/muelli/synctang/internal/gnuflag"
+	"github.com/muelli/synctang/internal/ui"
 	"io"
 	"os"
 	"regexp"
@@ -123,7 +124,7 @@ func runOpen(args []string, stdout, stderr io.Writer) int {
 	if len(positional) == 2 {
 		name = positional[1]
 		if !validMapperName(name) {
-			fmt.Fprintf(stderr, "synctang-unlocker: %q is not a usable name (letters, digits, '_', '.' and '-', starting with a letter or digit, at most 63 characters)\n", name)
+			ui.Errorf(stderr, "%q is not a usable name (letters, digits, '_', '.' and '-', starting with a letter or digit, at most 63 characters)\n", name)
 			return 2
 		}
 	}
@@ -131,33 +132,33 @@ func runOpen(args []string, stdout, stderr io.Writer) int {
 	// Before anything waits: approving on a phone and then finding out that
 	// nothing could be opened is the worst way to learn this.
 	if geteuid() != 0 {
-		fmt.Fprintln(stderr, "synctang-unlocker: opening a volume needs root (try sudo)")
+		ui.Errorln(stderr, "opening a volume needs root (try sudo)")
 		return 1
 	}
 
 	dump, err := runCommand(nil, "cryptsetup", "luksDump", device)
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-unlocker: reading the LUKS header of %s: %v\n", device, err)
+		ui.Errorf(stderr, "reading the LUKS header of %s: %v\n", device, err)
 		return 1
 	}
 	if _, id, err := loadToken(string(dump), device, "", ""); err != nil {
-		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
+		ui.Errorf(stderr, "%v\n", err)
 		return 1
 	} else if id < 0 {
-		fmt.Fprintf(stderr, "synctang-unlocker: %s has no key holder enrolled, so nobody could approve opening it; enrol one first with: synctang-unlocker pair --device %s --existing-passphrase-file ...\n", device, device)
+		ui.Errorf(stderr, "%s has no key holder enrolled, so nobody could approve opening it; enrol one first with: synctang-unlocker pair --device %s --existing-passphrase-file ...\n", device, device)
 		return 1
 	}
 	if name == "" {
 		name = defaultMapperName(string(dump))
 	}
 	if mapperExists(name) {
-		fmt.Fprintf(stderr, "synctang-unlocker: /dev/mapper/%s already exists; close it first or choose another name\n", name)
+		ui.Errorf(stderr, "/dev/mapper/%s already exists; close it first or choose another name\n", name)
 		return 1
 	}
 
 	cert, err := transport.LoadOrCreateCert(*machineKeyFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
+		ui.Errorf(stderr, "%v\n", err)
 		return 1
 	}
 	network, ok := resolveNetwork(*networkConf, stdout, stderr)
@@ -200,10 +201,10 @@ func waitForApproval(device, machineName string, cert tls.Certificate, timeout t
 			return true
 		}
 		if ctx.Err() != nil {
-			fmt.Fprintf(stderr, "synctang-unlocker: nobody approved within %s\n", timeout)
+			ui.Errorf(stderr, "nobody approved within %s\n", timeout)
 			return false
 		}
-		fmt.Fprintf(stderr, "synctang-unlocker: %v (still waiting)\n", err)
+		ui.Notef(stderr, "%v (still waiting)\n", err)
 		select {
 		case <-ctx.Done():
 		case <-time.After(agentRetryInterval):

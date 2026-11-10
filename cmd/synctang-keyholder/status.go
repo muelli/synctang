@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/muelli/synctang/internal/ui"
 	"io"
 	"os"
 
@@ -27,16 +28,16 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if *keyFile == "" || *transportKeyFile == "" {
-		fmt.Fprintln(stderr, "synctang-keyholder: --key-file and --transport-key-file are required (could not determine a default)")
+		ui.Errorln(stderr, "--key-file and --transport-key-file are required (could not determine a default)")
 		return 2
 	}
 
 	st, err := openStore(*keyFile)
 	if err != nil {
 		if errors.Is(err, errNoKey) {
-			fmt.Fprintf(stderr, "synctang-keyholder: %v; make one with: synctang-keyholder init\n", err)
+			ui.Errorf(stderr, "%v; make one with: synctang-keyholder init\n", err)
 		} else {
-			fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+			ui.Errorf(stderr, "%v\n", err)
 		}
 		return 1
 	}
@@ -57,7 +58,7 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 	}
 	cert, err := transport.LoadOrCreateCert(*transportKeyFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+		ui.Errorf(stderr, "%v\n", err)
 		return 1
 	}
 	fmt.Fprintf(stdout, "transport identity: %s\n", protocol.NewDeviceID(cert.Certificate[0]))

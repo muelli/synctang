@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/muelli/synctang/internal/gnuflag"
+	"github.com/muelli/synctang/internal/ui"
 	"io"
 	"os"
 	"path/filepath"
@@ -217,20 +218,20 @@ func runDevices(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintf(stderr, "synctang-unlocker: devices takes no arguments, got %q\n", fs.Arg(0))
+		ui.Errorf(stderr, "devices takes no arguments, got %q\n", fs.Arg(0))
 		return 2
 	}
 	if !isRoot() {
-		fmt.Fprintln(stderr, "synctang-unlocker: devices reads LUKS headers, which takes root; run it as root")
+		ui.Errorln(stderr, "devices reads LUKS headers, which takes root; run it as root")
 		return 1
 	}
 	devs, err := listDevices()
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
+		ui.Errorf(stderr, "%v\n", err)
 		return 1
 	}
 	if len(devs) == 0 {
-		fmt.Fprintln(stderr, "synctang-unlocker: no LUKS device found")
+		ui.Errorln(stderr, "no LUKS device found")
 		return 1
 	}
 	fmt.Fprint(stdout, formatDevices(devs))

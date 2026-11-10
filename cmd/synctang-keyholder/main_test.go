@@ -136,3 +136,36 @@ func TestTheUsageMentionsTheVersionFlag(t *testing.T) {
 		t.Errorf("usage does not mention --version:\n%s", usage)
 	}
 }
+
+func TestColourFollowsTheColorFlagAnywhereOnTheCommandLine(t *testing.T) {
+	t.Setenv("LANG", "en_GB.UTF-8")
+	t.Setenv("LC_ALL", "")
+	t.Setenv("TERM", "xterm")
+	missing := filepath.Join(t.TempDir(), "nokey")
+	for _, args := range [][]string{
+		{"--color=always", "export-pubkey", "--key-file", missing},
+		{"export-pubkey", "--key-file", missing, "--color", "always"},
+	} {
+		var stdout, stderr bytes.Buffer
+		if code := run(args, strings.NewReader(""), &stdout, &stderr); code != 1 {
+			t.Fatalf("%v: exit %d", args, code)
+		}
+		if !strings.Contains(stderr.String(), "\x1b[31m✗ synctang-keyholder:\x1b[0m") {
+			t.Errorf("%v: the error is not red:\n%q", args, stderr.String())
+		}
+	}
+	var stdout, stderr bytes.Buffer
+	run([]string{"--color=never", "export-pubkey", "--key-file", missing}, strings.NewReader(""), &stdout, &stderr)
+	if strings.Contains(stderr.String(), "\x1b") || !strings.HasPrefix(stderr.String(), "synctang-keyholder: ") {
+		t.Errorf("--color=never:\n%q", stderr.String())
+	}
+	// The default is a terminal's business: a buffer is plain.
+	stderr.Reset()
+	run([]string{"export-pubkey", "--key-file", missing}, strings.NewReader(""), &stdout, &stderr)
+	if strings.Contains(stderr.String(), "\x1b") {
+		t.Errorf("colour to a buffer:\n%q", stderr.String())
+	}
+	if code := run([]string{"--color=sometimes", "status"}, strings.NewReader(""), &stdout, &stderr); code != 2 {
+		t.Errorf("a bad --color: exit %d", code)
+	}
+}

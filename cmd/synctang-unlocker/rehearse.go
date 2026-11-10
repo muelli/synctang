@@ -11,6 +11,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/muelli/synctang/internal/ui"
 	"io"
 	"os"
 	"slices"
@@ -265,11 +266,11 @@ func runRehearse(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintf(stderr, "synctang-unlocker: rehearse takes no arguments, got %q\n", fs.Arg(0))
+		ui.Errorf(stderr, "rehearse takes no arguments, got %q\n", fs.Arg(0))
 		return 2
 	}
 	if geteuid() != 0 {
-		fmt.Fprintln(stderr, "synctang-unlocker: rehearse reads the initrd and the LUKS header, which takes root (try sudo)")
+		ui.Errorln(stderr, "rehearse reads the initrd and the LUKS header, which takes root (try sudo)")
 		return 1
 	}
 
@@ -284,7 +285,7 @@ func runRehearse(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	if problems := printChecks(stdout, checks); problems > 0 {
-		fmt.Fprintf(stderr, "synctang-unlocker: %d problem(s) above: fix them first, and nobody was asked to approve a rehearsal that cannot pass\n", problems)
+		ui.Errorf(stderr, "%d problem(s) above: fix them first, and nobody was asked to approve a rehearsal that cannot pass\n", problems)
 		return 1
 	}
 	if *initrdOnly {
@@ -297,29 +298,29 @@ func runRehearse(args []string, stdout, stderr io.Writer) int {
 		found, err := findMr1Devices()
 		switch {
 		case err != nil:
-			fmt.Fprintf(stderr, "synctang-unlocker: %v; pair a key holder first, or name the device with --device (%s)\n", err, `"synctang-unlocker devices" lists them`)
+			ui.Errorf(stderr, "%v; pair a key holder first, or name the device with --device (%s)\n", err, `"synctang-unlocker devices" lists them`)
 			return 1
 		case len(found) > 1:
-			fmt.Fprintf(stderr, "synctang-unlocker: several devices carry a token (%s): name one with --device\n", strings.Join(found, ", "))
+			ui.Errorf(stderr, "several devices carry a token (%s): name one with --device\n", strings.Join(found, ", "))
 			return 1
 		}
 		dev = found[0]
 	}
 	dump, err := runCommand(nil, "cryptsetup", "luksDump", dev)
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-unlocker: reading the LUKS header of %s: %v\n", dev, err)
+		ui.Errorf(stderr, "reading the LUKS header of %s: %v\n", dev, err)
 		return 1
 	}
 	if _, id, err := loadToken(string(dump), dev, "", ""); err != nil {
-		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
+		ui.Errorf(stderr, "%v\n", err)
 		return 1
 	} else if id < 0 {
-		fmt.Fprintf(stderr, "synctang-unlocker: %s has no key holder enrolled, so nobody could approve a rehearsal; pair one first: synctang-unlocker pair --device %s\n", dev, dev)
+		ui.Errorf(stderr, "%s has no key holder enrolled, so nobody could approve a rehearsal; pair one first: synctang-unlocker pair --device %s\n", dev, dev)
 		return 1
 	}
 	cert, err := transport.LoadOrCreateCert(*machineKeyFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "synctang-unlocker: %v\n", err)
+		ui.Errorf(stderr, "%v\n", err)
 		return 1
 	}
 	network, ok := resolveNetwork(*networkConf, stdout, stderr)

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/muelli/synctang/internal/ui"
 	"io"
 	"os"
 	"path/filepath"
@@ -214,14 +215,14 @@ func runMachines(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if *file == "" {
-		fmt.Fprintln(stderr, "synctang-keyholder: --machines-file is required (could not determine a default)")
+		ui.Errorln(stderr, "--machines-file is required (could not determine a default)")
 		return 2
 	}
 	switch sub {
 	case "list":
 		ms, err := loadMachines(*file)
 		if err != nil {
-			fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+			ui.Errorf(stderr, "%v\n", err)
 			return 1
 		}
 		if len(ms) == 0 {
@@ -238,48 +239,48 @@ func runMachines(args []string, stdout, stderr io.Writer) int {
 		return 0
 	case "add":
 		if fs.NArg() != 2 {
-			fmt.Fprintln(stderr, "synctang-keyholder: machines add wants a name and a transport id")
+			ui.Errorln(stderr, "machines add wants a name and a transport id")
 			return 2
 		}
 		name := fs.Arg(0)
 		if err := validMachineName(name); err != nil {
-			fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+			ui.Errorf(stderr, "%v\n", err)
 			return 2
 		}
 		id, err := canonicalMachineID(fs.Arg(1))
 		if err != nil {
-			fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+			ui.Errorf(stderr, "%v\n", err)
 			return 2
 		}
 		if _, _, err := putMachine(*file, machine{Name: name, ID: id, Discovery: *discovery}, *force); err != nil {
-			fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+			ui.Errorf(stderr, "%v\n", err)
 			return 1
 		}
 		fmt.Fprintf(stdout, "%s is %s; unlock it with: synctang-keyholder unlock %s\n", name, id, name)
 		return 0
 	case "remove":
 		if fs.NArg() != 1 {
-			fmt.Fprintln(stderr, "synctang-keyholder: machines remove wants a name")
+			ui.Errorln(stderr, "machines remove wants a name")
 			return 2
 		}
 		ms, err := loadMachines(*file)
 		if err != nil {
-			fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+			ui.Errorf(stderr, "%v\n", err)
 			return 1
 		}
 		for i, m := range ms {
 			if m.Name == fs.Arg(0) {
 				if err := saveMachines(*file, append(ms[:i], ms[i+1:]...)); err != nil {
-					fmt.Fprintf(stderr, "synctang-keyholder: %v\n", err)
+					ui.Errorf(stderr, "%v\n", err)
 					return 1
 				}
 				fmt.Fprintf(stdout, "removed %s (the machine still lets this key holder unlock it: this only forgets the name)\n", m.Name)
 				return 0
 			}
 		}
-		fmt.Fprintf(stderr, "synctang-keyholder: no machine named %q\n", fs.Arg(0))
+		ui.Errorf(stderr, "no machine named %q\n", fs.Arg(0))
 		return 1
 	}
-	fmt.Fprintf(stderr, "synctang-keyholder: unknown machines command %q: want list, add or remove\n", sub)
+	ui.Errorf(stderr, "unknown machines command %q: want list, add or remove\n", sub)
 	return 2
 }
