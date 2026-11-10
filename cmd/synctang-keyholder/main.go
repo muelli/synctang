@@ -44,7 +44,7 @@ func main() {
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) < 1 {
-		fmt.Fprint(stderr, usage)
+		fmt.Fprint(stderr, completion.Reflow(usage, wrap.Width(stderr)))
 		return 2
 	}
 
@@ -71,7 +71,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return out.String()
 		}, nil, args[1:], stdout, stderr)
 	default:
-		fmt.Fprintf(stderr, "synctang-keyholder: unknown command %q\n%s", args[0], usage)
+		fmt.Fprintf(stderr, "synctang-keyholder: unknown command %q\n%s", args[0], completion.Reflow(usage, wrap.Width(stderr)))
 		return 2
 	}
 }
@@ -120,7 +120,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	}
 	st, note, pubHex, transportID := made.store, made.note, made.pubHex, made.transportID
 
-	fmt.Fprintf(stdout, "generated a new key, held by %s\n%s\n", st.Name(), wrap.Paragraph(st.Describe(), "  ", textWidth))
+	fmt.Fprintf(stdout, "generated a new key, held by %s\n%s\n", st.Name(), wrap.Paragraph(st.Describe(), "  ", wrap.Width(stdout)))
 	if note != "" {
 		fmt.Fprintf(stderr, "synctang-keyholder: %s\n", note)
 	}

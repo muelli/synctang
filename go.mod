@@ -12,6 +12,9 @@ require (
 	github.com/mdp/qrterminal/v3 v3.2.1
 	github.com/muelli/syncthing-socket v0.1.1-alpha.0.20261018051137-204ecb48b52c
 	github.com/syncthing/syncthing v1.30.0
+	github.com/zalando/go-keyring v0.2.8
+	golang.org/x/sys v0.48.0
+	golang.org/x/term v0.46.0
 	rsc.io/qr v0.2.0
 )
 
@@ -33,18 +36,14 @@ require (
 	github.com/prometheus/common v0.62.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/shirou/gopsutil/v4 v4.25.4 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/syncthing/notify v0.0.0-20250528144937-c7027d4f7465 // indirect
 	github.com/thejerf/suture/v4 v4.0.6 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	github.com/zalando/go-keyring v0.2.8 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/mobile v0.0.0-20260908204917-8b95e45f8d3e // indirect
 	golang.org/x/mod v0.41.0 // indirect
 	golang.org/x/net v0.59.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
-	golang.org/x/term v0.46.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/tools v0.50.0 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect

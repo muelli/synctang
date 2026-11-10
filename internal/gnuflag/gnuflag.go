@@ -10,15 +10,12 @@ import (
 	"io"
 	"regexp"
 	"strings"
+
+	textwrap "github.com/muelli/synctang/internal/wrap"
 )
 
-const (
-	// descriptionIndent is where the description of an option starts, under the option.
-	descriptionIndent = "      "
-	// width is the widest line written: a line of 80 columns breaks in some terminals, which then
-	// leave the rest of it at the left margin.
-	width = 78
-)
+// descriptionIndent is where the description of an option starts, under the option.
+const descriptionIndent = "      "
 
 var (
 	// "  -name string" at the start of a line of PrintDefaults output: an option with a name
@@ -34,19 +31,19 @@ var (
 )
 
 // rewrite spells the options in text the way GNU tools do.
-func rewrite(text string) string {
+func rewrite(text string, width int) string {
 	text = unknown.ReplaceAllString(text, "unrecognised option '--$1'")
 	text = needsArgument.ReplaceAllString(text, "option '--$1' requires an argument")
 	text = badValue.ReplaceAllString(text, "$1 for option '--$2'")
 	text = optionLine.ReplaceAllString(text, "$1--$2")
 	return descriptionLine.ReplaceAllStringFunc(text, func(line string) string {
-		return wrap(strings.TrimPrefix(line, "    \t"))
+		return wrap(strings.TrimPrefix(line, "    \t"), width)
 	})
 }
 
 // wrap breaks a description into lines that fit, each indented under its option. A word longer than the
 // line (a path, say) stays whole on a line of its own.
-func wrap(description string) string {
+func wrap(description string, width int) string {
 	var lines []string
 	line := ""
 	for _, word := range strings.Fields(description) {
@@ -71,7 +68,7 @@ type writer struct{ w io.Writer }
 func Writer(w io.Writer) io.Writer { return writer{w} }
 
 func (g writer) Write(p []byte) (int, error) {
-	if _, err := g.w.Write([]byte(rewrite(string(p)))); err != nil {
+	if _, err := g.w.Write([]byte(rewrite(string(p), textwrap.Width(g.w)))); err != nil {
 		return 0, err
 	}
 	return len(p), nil

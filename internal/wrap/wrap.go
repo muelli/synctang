@@ -6,7 +6,48 @@
 // What cannot be broken (a path, a key, a Device ID) stays whole on a line of its own.
 package wrap
 
-import "strings"
+import (
+	"io"
+	"strings"
+
+	"golang.org/x/term"
+)
+
+const (
+	// DefaultWidth is used when the output is not a terminal (a pipe, a file, a test) or its size
+	// cannot be read: it fits an 80-column terminal.
+	DefaultWidth = 78
+	minWidth     = 40
+	// maxWidth keeps lines readable on a very wide terminal.
+	maxWidth = 100
+)
+
+// Width is how wide a line of prose may be for the terminal w writes to: two columns less than the
+// terminal (a line that fills the last column breaks in some terminals), at least 40 and at most 100.
+// For anything that is not a terminal, DefaultWidth.
+func Width(w io.Writer) int {
+	f, ok := w.(interface{ Fd() uintptr })
+	if !ok {
+		return DefaultWidth
+	}
+	fd := int(f.Fd())
+	if !term.IsTerminal(fd) {
+		return DefaultWidth
+	}
+	columns, _, err := term.GetSize(fd)
+	if err != nil {
+		return DefaultWidth
+	}
+	return forColumns(columns)
+}
+
+// forColumns is the width of prose for a terminal of that many columns.
+func forColumns(columns int) int {
+	if columns <= 0 {
+		return DefaultWidth
+	}
+	return min(max(columns-2, minWidth), maxWidth)
+}
 
 // Paragraph breaks text into lines of at most width columns, each starting with indent.
 func Paragraph(text, indent string, width int) string {

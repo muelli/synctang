@@ -40,7 +40,7 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 		}
 		return 1
 	}
-	fmt.Fprintf(stdout, "key: held by %s\n%s\n", st.Name(), wrap.Paragraph(st.Describe(), "  ", textWidth))
+	fmt.Fprintf(stdout, "key: held by %s\n%s\n", st.Name(), wrap.Paragraph(st.Describe(), "  ", wrap.Width(stdout)))
 
 	// Loaded to say whether it can be, and wiped at once. For a keyring this may ask for the
 	// login password, which is the information: it is what an unlock will ask too.

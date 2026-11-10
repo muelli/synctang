@@ -382,3 +382,43 @@ func TestUsageProblemsFindsWhatBreaksInATerminal(t *testing.T) {
 		t.Error("a continuation that is not under the descriptions was not noticed")
 	}
 }
+
+const reflowUsage = "usage: x <command>\n\ncommands:\n  pair           enrol this key holder on a machine, from the link that\n                 \"x pair\" shows\n  init           generate a key\n  export-pubkey  print the public key and transport id, as \"enrol\" wants them\n\nflags are per command.\n"
+
+// The usage is written once, laid out for 78 columns, and laid out again for the terminal it is printed in.
+func TestReflowFitsTheWidthAndKeepsTheContent(t *testing.T) {
+	want := ParseUsage(reflowUsage)
+	for _, width := range []int{40, 60, 78, 100} {
+		got := Reflow(reflowUsage, width)
+		for _, line := range strings.Split(got, "\n") {
+			if len(line) > width && strings.Contains(strings.TrimSpace(line), " ") {
+				t.Errorf("width %d: a line of %d columns: %q", width, len(line), line)
+			}
+		}
+		if problems := UsageProblems(got, width); len(problems) != 0 {
+			t.Errorf("width %d: %v\n%s", width, problems, got)
+		}
+		parsed := ParseUsage(got)
+		if len(parsed) != len(want) {
+			t.Fatalf("width %d: %d commands, want %d", width, len(parsed), len(want))
+		}
+		for i := range want {
+			if parsed[i].Name != want[i].Name || parsed[i].Summary != want[i].Summary {
+				t.Errorf("width %d: %+v, want %+v", width, parsed[i], want[i])
+			}
+		}
+		if !strings.HasPrefix(got, "usage: x <command>\n\ncommands:\n") || !strings.HasSuffix(got, "\nflags are per command.\n") {
+			t.Errorf("width %d: what is not a command was touched:\n%s", width, got)
+		}
+		if again := Reflow(got, width); again != got {
+			t.Errorf("width %d: not stable:\n%s\n--\n%s", width, got, again)
+		}
+	}
+}
+
+func TestReflowUsesAWideTerminalForOneLineEach(t *testing.T) {
+	got := Reflow(reflowUsage, 100)
+	if strings.Contains(got, "\n                 \"x pair\"") {
+		t.Errorf("a description that fits was still broken:\n%s", got)
+	}
+}

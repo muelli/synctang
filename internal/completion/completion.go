@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/muelli/synctang/internal/gnuflag"
+	"github.com/muelli/synctang/internal/wrap"
 	"io"
 	"regexp"
 	"strings"
@@ -398,4 +399,44 @@ func UsageProblems(usage string, width int) []string {
 		}
 	}
 	return problems
+}
+
+// Reflow lays the commands block of a usage text out again for a terminal width columns wide: the
+// descriptions start in one column, and each is broken at words with its continuation lines under it. The
+// rest of the text is left as it is. It is the program's usage, written once, shown at the width the person
+// has.
+func Reflow(usage string, width int) string {
+	cmds := ParseUsage(usage)
+	if len(cmds) == 0 {
+		return usage
+	}
+	column := 2
+	for _, c := range cmds {
+		column = max(column, 2+len(c.Name)+2)
+	}
+	var block strings.Builder
+	for _, c := range cmds {
+		lines := wrap.Paragraph(c.Summary, strings.Repeat(" ", column), width)
+		block.WriteString("  " + c.Name + strings.Repeat(" ", column-2-len(c.Name)) + strings.TrimLeft(lines, " ") + "\n")
+	}
+	var out strings.Builder
+	in, done := false, false
+	for _, line := range strings.SplitAfter(usage, "\n") {
+		switch {
+		case !done && strings.HasPrefix(line, "commands:"):
+			in = true
+			out.WriteString(line)
+		case in && strings.TrimSpace(line) == "":
+			in, done = false, true
+			out.WriteString(block.String())
+			out.WriteString(line)
+		case in:
+		default:
+			out.WriteString(line)
+		}
+	}
+	if in { // the block runs to the end of the text
+		out.WriteString(block.String())
+	}
+	return out.String()
 }

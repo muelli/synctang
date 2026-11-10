@@ -192,7 +192,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		if made == nil {
 			return code
 		}
-		fmt.Fprintf(stdout, "made a new key, held by %s\n%s\n\n", made.store.Name(), wrap.Paragraph(made.store.Describe(), "  ", textWidth))
+		fmt.Fprintf(stdout, "made a new key, held by %s\n%s\n\n", made.store.Name(), wrap.Paragraph(made.store.Describe(), "  ", wrap.Width(stdout)))
 		if made.note != "" {
 			fmt.Fprintf(stderr, "synctang-keyholder: %s\n", made.note)
 		}

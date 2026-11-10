@@ -17,6 +17,7 @@ import (
 	"github.com/muelli/synctang/internal/completion"
 	"github.com/muelli/synctang/internal/gnuflag"
 	"github.com/muelli/synctang/internal/journal"
+	"github.com/muelli/synctang/internal/wrap"
 	"github.com/muelli/synctang/mrcore"
 	"io"
 	"io/fs"
@@ -72,7 +73,7 @@ func main() {
 
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) < 1 {
-		fmt.Fprint(stderr, usage)
+		fmt.Fprint(stderr, completion.Reflow(usage, wrap.Width(stderr)))
 		return 2
 	}
 
@@ -94,7 +95,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "open":
 		return runOpen(args[1:], stdout, stderr)
 	default:
-		fmt.Fprintf(stderr, "synctang-unlocker: unknown command %q\n%s", args[0], usage)
+		fmt.Fprintf(stderr, "synctang-unlocker: unknown command %q\n%s", args[0], completion.Reflow(usage, wrap.Width(stderr)))
 		return 2
 	}
 }
