@@ -16,6 +16,7 @@
     <string name="pair_manual_action">Pair</string>
     <string name="pair_invalid">That is not a pairing link or a machine device ID.</string>
     <string name="pair_unknown_parameters">This pairing link asks for something this version of the app does not understand (%1$s), so nothing was paired. Update the app, or pair with a link made without it.</string>
+    <string name="pair_repeated_parameters">This pairing link gives a setting more than once (%1$s), so nothing was paired. Make the link again on the machine.</string>
     <string name="pair_plain_http_discovery">This pairing link names a discovery server over plain http without \"?insecure\", which this app does not use, so nothing was paired. Use an https address, or add ?insecure to it on the machine.</string>
     <string name="pair_bad_setting">This pairing link names a server in its \"%1$s\" setting that is not a web address, so nothing was paired.</string>
     <string name="enrol_manual_title">Enrol by hand</string>

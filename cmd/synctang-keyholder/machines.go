@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/muelli/synctang/internal/gnuflag"
 	"github.com/syncthing/syncthing/lib/protocol"
@@ -57,6 +58,15 @@ func validMachineName(name string) error {
 	}
 	if _, err := protocol.DeviceIDFromString(name); err == nil {
 		return fmt.Errorf("%q is not a usable machine name: it is a transport id", name)
+	}
+	return nil
+}
+
+// checkDiscoveryURL refuses a discovery server that could not be one line of the address book: whitespace in it
+// would split the line into more fields than there are, and the book would not read any more.
+func checkDiscoveryURL(u string) error {
+	if strings.ContainsFunc(u, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) {
+		return errors.New("the discovery server in it has a space or a control character")
 	}
 	return nil
 }
@@ -145,6 +155,9 @@ func saveMachines(path string, ms []machine) error {
 // id is not a change. It says whether it changed anything and what the name meant before.
 func putMachine(path string, m machine, replace bool) (previous machine, replaced bool, err error) {
 	if err := validMachineName(m.Name); err != nil {
+		return machine{}, false, err
+	}
+	if err := checkDiscoveryURL(m.Discovery); err != nil {
 		return machine{}, false, err
 	}
 	ms, err := loadMachines(path)

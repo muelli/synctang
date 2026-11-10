@@ -75,6 +75,8 @@ func TestParseNetworkConfigRejects(t *testing.T) {
 		{"discovery relay scheme", "", "relay://disco.example.net:1/", "", "discovery"},
 		{"discovery bare host", "", "disco.example.net", "", "discovery"},
 		{"discovery with credentials", "", "https://user:pw@disco.example.net/v2/", "", "credentials"},
+		{"discovery with a space", "", "https://disco.example.net/a b", "", "discovery"},
+		{"discovery with a newline", "", "https://disco.example.net/\nrelay-pool=x", "", "discovery"},
 		{"announce ftp", "", "", "ftp://disco.example.net/v2/", "discovery-announce"},
 		{"pool with credentials", "https://user:pw@pool.example.net/", "", "", "credentials"},
 	}

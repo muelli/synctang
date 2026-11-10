@@ -190,6 +190,19 @@ object PairingPayload {
     }
 
     /**
+     * The names of the settings a scanned link gives more than once, made safe to show as in
+     * [unknownParameters]. Not decided by which of them "wins": the command line tool refuses such a
+     * link, and so does the app. Empty when there are none, or for a bare Device ID.
+     */
+    fun repeatedParameters(scanned: String): List<String> {
+        val text = scanned.trim()
+        if (!text.startsWith(SCHEME, ignoreCase = true)) return emptyList()
+        return allFields(text).groupBy({ it.first }, { it.second }).filterValues { it.size > 1 }.keys.map { name ->
+            name.filter { it.isLetterOrDigit() || it in "_.-" }.take(MAX_NAME).ifEmpty { "?" }
+        }
+    }
+
+    /**
      * "discovery" if that setting in a scanned link cannot be a server
      * URL, or null if it is fine or absent. A light check: the Go side validates for real when the
      * value is used, but a link that can never work is better refused
@@ -231,12 +244,14 @@ object PairingPayload {
         return compact.chunked(GROUP).joinToString("-")
     }
 
-    private fun fields(text: String): Map<String, String> =
+    private fun allFields(text: String): List<Pair<String, String>> =
         text.substringAfter('?', "").split('&').mapNotNull { field ->
             val name = field.substringBefore('=', "")
             val value = field.substringAfter('=', "")
             if (name.isEmpty()) null else name to urlDecode(value)
-        }.toMap()
+        }
+
+    private fun fields(text: String): Map<String, String> = allFields(text).toMap()
 
     private fun urlDecode(value: String): String =
         try {

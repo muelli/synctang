@@ -41,6 +41,18 @@ func parsePairingLink(text string) (pairLink, error) {
 		return bad("it does not start with synctang://pair")
 	}
 	q := u.Query()
+	// A link is somebody's word: a setting this program does not know, or one given twice, could mean one thing
+	// here and another to the app, so both are refused.
+	for key, values := range q {
+		switch key {
+		case "machine", "name", "discovery", "psk":
+		default:
+			return bad("it has a setting this program does not know: " + mrcore.SafeLabel(key, 32))
+		}
+		if len(values) != 1 {
+			return bad("it gives " + key + " more than once")
+		}
+	}
 	l := pairLink{Machine: q.Get("machine"), Name: q.Get("name"), Discovery: q.Get("discovery"), Code: q.Get("psk")}
 	if l.Machine == "" || l.Code == "" {
 		return bad("it has no machine or no code")
@@ -50,6 +62,9 @@ func parsePairingLink(text string) (pairLink, error) {
 		return bad("the machine in it is not a transport id")
 	}
 	l.Machine = id.String()
+	if err := checkDiscoveryURL(l.Discovery); err != nil {
+		return bad(err.Error())
+	}
 	secret, err := mrcore.DecodePairingSecret(l.Code)
 	if err != nil {
 		return bad("the code in it is not valid")
@@ -85,13 +100,20 @@ func pairOnce(ctx context.Context, wait time.Duration, cert tls.Certificate, lin
 	stop := context.AfterFunc(ctx, func() { conn.Close() })
 	defer func() { stop() }()
 
+	// The key holder speaks first: it says which key it wants enrolled, and the machine chooses the nonce after
+	// that, which is what keeps anyone from fitting a key to the short code (see mrcore.PairSAS).
+	if err := mrcore.WriteMessage(conn, mrcore.PairRequest{PubKey: pub, Name: name}); err != nil {
+		return fmt.Errorf("sending the pairing request: %w", err)
+	}
 	var challenge mrcore.PairChallenge
 	if err := mrcore.ReadMessage(conn, &challenge); err != nil {
 		return fmt.Errorf("reading the pairing challenge: %w", err)
 	}
-	req := mrcore.PairRequest{PubKey: pub, Name: name, Proof: mrcore.PairProof(secret, link.Machine, selfID, pub, challenge.Nonce)}
-	if err := mrcore.WriteMessage(conn, req); err != nil {
-		return fmt.Errorf("sending the pairing request: %w", err)
+	if len(challenge.Nonce) < mrcore.PairMinNonceLen {
+		return &pairFinal{fmt.Errorf("the machine sent a nonce of %d bytes, which is too short to bind anything to (it should be %d)", len(challenge.Nonce), mrcore.PairNonceLen)}
+	}
+	if err := mrcore.WriteMessage(conn, mrcore.PairResponse{Proof: mrcore.PairProof(secret, link.Machine, selfID, pub, challenge.Nonce)}); err != nil {
+		return fmt.Errorf("sending the proof of the pairing code: %w", err)
 	}
 	stop()
 
@@ -127,7 +149,8 @@ func pairRefusal(reason string) error {
 	case "":
 		return errors.New("the machine refused the pairing")
 	}
-	return fmt.Errorf("the machine refused the pairing: %s", reason)
+	// What the machine says is whatever the machine says, and the machine is whoever the link names.
+	return fmt.Errorf("the machine refused the pairing: %s", mrcore.SafeLabel(reason, 200))
 }
 
 const (
@@ -145,6 +168,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 	machinesFile := machinesFileFlag(fs)
 	storeSpec := fs.String("store", "auto", "if there is no key yet, where to keep the one made: "+storeNames)
 	name := fs.String("name", "", "the name this key holder gives itself, shown on the machine (default: this computer's host name)")
+	force := fs.Bool("force", false, "let the name stand for this machine even if it names another one now")
 	as := fs.String("as", "", "the name to unlock this machine by (default: the name in the link)")
 	directAddr := fs.String("direct-addr", "", "dial this address directly, bypassing relay and discovery (testing only)")
 	timeout := fs.Duration("timeout", defaultPairTimeout, "give up reaching the machine after this long")
@@ -167,11 +191,34 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		ui.Errorln(stderr, "--key-file, --transport-key-file and --machines-file are required (no default could be determined)")
 		return 2
 	}
-	alias := cmp.Or(*as, link.Name)
+	// Only a name the person gave is an error when it cannot be used. The name in a link is the machine's word, and a
+	// link with a name that cannot be one still pairs: there is just no name to save.
+	alias, unusableLinkName := *as, ""
 	if alias != "" {
 		if err := validMachineName(alias); err != nil {
-			ui.Errorf(stderr, "%v (name it yourself with --as)\n", err)
+			ui.Errorf(stderr, "%v\n", err)
 			return 2
+		}
+	} else if link.Name != "" {
+		if validMachineName(link.Name) == nil {
+			alias = link.Name
+		} else {
+			unusableLinkName = link.Name
+		}
+	}
+	// A name that already means another machine is not taken over on the strength of a link: that is said before
+	// anything is sent.
+	if alias != "" && !*force {
+		ms, err := loadMachines(*machinesFile)
+		if err != nil {
+			ui.Errorf(stderr, "%v\n", err)
+			return 1
+		}
+		for _, m := range ms {
+			if m.Name == alias && m.ID != link.Machine {
+				ui.Errorf(stderr, "%s already names %s, and this link is for %s: use --force to make it name this machine instead, or --as to give this one another name\n", alias, m.ID, link.Machine)
+				return 1
+			}
 		}
 	}
 
@@ -222,7 +269,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 	}
 
 	look := ui.For(stdout)
-	machineName := cmp.Or(link.Name, link.Machine)
+	machineName := cmp.Or(mrcore.SafeLabel(link.Name, 64), link.Machine)
 	status := ui.NewStatus(stderr)
 	defer status.Stop()
 	started := time.Now()
@@ -265,8 +312,13 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 	status.Stop()
 	fmt.Fprintf(stdout, "\n%s\n", look.Line(look.OK(""), look.Emoji("🤝", "")+"paired: "+look.Bold(machineName)+" has enrolled this key holder."))
 	if alias == "" {
-		fmt.Fprintf(stdout, "Unlock it with: %s\n"+
-			"(give it a name with: synctang-keyholder machines add <name> %s)\n", look.Cyan("synctang-keyholder unlock "+link.Machine), link.Machine)
+		fmt.Fprintf(stdout, "Unlock it with: %s\n", look.Cyan("synctang-keyholder unlock "+link.Machine))
+		if unusableLinkName != "" {
+			fmt.Fprintf(stdout, "(the name it gave, %s, cannot be used as a name here; name it with: synctang-keyholder machines add <name> %s, or pair again with --as <name>)\n",
+				mrcore.SafeLabel(unusableLinkName, 64), link.Machine)
+		} else {
+			fmt.Fprintf(stdout, "(give it a name with: synctang-keyholder machines add <name> %s)\n", link.Machine)
+		}
 		return 0
 	}
 	previous, replaced, err := putMachine(*machinesFile, machine{Name: alias, ID: link.Machine, Discovery: chosenDiscovery}, true)

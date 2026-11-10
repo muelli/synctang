@@ -99,6 +99,14 @@ class PairingPayloadTest {
     }
 
     @Test
+    fun aSettingGivenTwiceIsRefusedWhicheverComesFirst() {
+        val link = "synctang://pair?machine=$id&name=study&psk=ABC&name=other&psk=DEF"
+        val plan = planPairing(link)
+        assertTrue("got $plan", plan is PairingPlan.RepeatedParameters)
+        assertEquals(listOf("name", "psk"), (plan as PairingPlan.RepeatedParameters).names)
+    }
+
+    @Test
     fun theParametersTheAppKnowAreNotUnknown() {
         val link = "synctang://pair?machine=$id&name=study&psk=ABC&discovery=https%3A%2F%2Fd.example.net%2Fv2%2F"
         assertTrue(planPairing(link) is PairingPlan.Enrol)

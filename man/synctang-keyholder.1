@@ -107,8 +107,9 @@ If there is no key yet, one is made first, as
 would, in the store
 .B \-\-store
 names.
-The key holder then dials the machine, proves it holds the code, sends its public key and
-transport identity, and prints a six-digit code, for example
+The key holder then dials the machine and sends its public key; the machine answers with a random challenge,
+which it chooses only after it has the key, and the key holder proves it holds the code.
+It then prints a six-digit code, for example
 .BR "483 291" .
 The machine shows its operator the same code with the question whether to enrol this key holder.
 .B Compare them.
@@ -125,7 +126,10 @@ manages, so that
 .B synctang\-keyholder unlock
 .I name
 works.
-A name that already meant another machine is taken over, and the command says so.
+A name that already means another machine is not taken over unless
+.B \-\-force
+is given, and that is checked before anything is sent.
+A name in the link that cannot be used as a name here does not stop the pairing; there is then just no name to save.
 The passphrase never leaves the machine.
 .B synctang\-unlocker enrol
 remains for the cases pairing cannot reach.
@@ -142,6 +146,10 @@ Default: this computer's host name.
 The name to unlock this machine by.
 Default: the name in the link; with neither, no name is saved and the command gives the transport
 identity to unlock by.
+.TP
+\fB\-\-force\fR
+Let the name stand for this machine even if it names another one now.
+Without it, that is refused before the machine is dialled.
 .TP
 \fB\-\-timeout\fR \fIduration\fR
 Give up reaching the machine after this long.

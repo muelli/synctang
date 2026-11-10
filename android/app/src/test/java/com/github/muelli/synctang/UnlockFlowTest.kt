@@ -297,6 +297,20 @@ class UnlockFlowTest {
         assertTrue(pairings.isEmpty())
     }
 
+    // A setting given twice could mean one thing to one reader of the link and another to the next
+    // (the command line tool refuses it too), so it is refused, and nothing is saved or dialled.
+    @Test
+    fun aLinkWithASettingGivenTwiceIsRefusedAndSaysWhich() {
+        onMain { flow.refresh() }
+        await<UnlockUiState.NeedsPairing>()
+        onMain { flow.pair(payload(machineB) + "&name=other") }
+        val failed = await<UnlockUiState.Failed>()
+        assertEquals(Retry.SCAN_AGAIN, failed.retry)
+        assertEquals("res:${R.string.pair_repeated_parameters}(name)", failed.message)
+        assertNull(store.saved)
+        assertTrue(pairings.isEmpty())
+    }
+
     @Test
     fun aLinkWithARelaySettingIsRefusedAndSaysWhich() {
         onMain { flow.refresh() }

@@ -29,6 +29,9 @@ type fakeMachine struct {
 	// verdict decides the answer once the proof has checked out.
 	verdict func() mrcore.PairResult
 
+	// nonce is what the machine sends (a fixed one when nil).
+	nonce []byte
+
 	got chan fakePairing
 }
 
@@ -68,18 +71,27 @@ func newFakeMachine(t *testing.T, verdict func() mrcore.PairResult) *fakeMachine
 			return
 		}
 		defer conn.Close()
-		nonce := []byte("a-nonce-for-this-connection-0123")
-		if err := mrcore.WriteMessage(conn, mrcore.PairChallenge{Nonce: nonce, Name: "fake-machine"}); err != nil {
-			m.got <- fakePairing{err: err}
-			return
-		}
+		// The key holder speaks first; the nonce is chosen after the key is known.
 		var req mrcore.PairRequest
 		if err := mrcore.ReadMessage(conn, &req); err != nil {
 			m.got <- fakePairing{err: err}
 			return
 		}
+		nonce := m.nonce
+		if nonce == nil {
+			nonce = []byte("a-nonce-for-this-connection-0123")
+		}
+		if err := mrcore.WriteMessage(conn, mrcore.PairChallenge{Nonce: nonce, Name: "fake-machine"}); err != nil {
+			m.got <- fakePairing{err: err}
+			return
+		}
+		var resp mrcore.PairResponse
+		if err := mrcore.ReadMessage(conn, &resp); err != nil {
+			m.got <- fakePairing{err: err}
+			return
+		}
 		p := fakePairing{peerID: conn.PeerID(), pubKey: req.PubKey, name: req.Name}
-		p.proof = string(mrcore.PairProof(secret, m.id, p.peerID, req.PubKey, nonce)) == string(req.Proof)
+		p.proof = string(mrcore.PairProof(secret, m.id, p.peerID, req.PubKey, nonce)) == string(resp.Proof)
 		p.sas = mrcore.PairSAS(m.id, p.peerID, req.PubKey, nonce)
 		result := mrcore.PairResult{Error: mrcore.PairRefusedCodeMismatch}
 		if p.proof {
@@ -236,12 +248,12 @@ func TestPairNameFromTheCommandLineWinsAndNoNameMeansNoAlias(t *testing.T) {
 	}
 }
 
-func TestPairTakesOverANameThatMeantAnotherMachineAndSaysSo(t *testing.T) {
+func TestPairTakesOverANameThatMeantAnotherMachineWithForceAndSaysSo(t *testing.T) {
 	m := newFakeMachine(t, accept)
 	keyFile, transportFile := keyholderDir(t)
 	book := booksPath(t)
 	_, _, _ = runKH("machines", "add", "--machines-file", book, "box", machineIDB)
-	code, out, e := runKH(append(pairArgs(m, book, keyFile, transportFile, "--store", "file"), m.link("box"))...)
+	code, out, e := runKH(append(pairArgs(m, book, keyFile, transportFile, "--store", "file", "--force"), m.link("box"))...)
 	if code != 0 {
 		t.Fatalf("exit %d: %s%s", code, out, e)
 	}
@@ -269,5 +281,112 @@ func TestPairRefusesWhatIsNotAPairingLink(t *testing.T) {
 	}
 	if _, err := os.Stat(keyFile); !os.IsNotExist(err) {
 		t.Error("a key was made for a link that was refused")
+	}
+}
+
+// --- what a review of the pairing code found ---
+
+func TestPairRefusesANonceTooShortToBindAnythingTo(t *testing.T) {
+	m := newFakeMachine(t, accept)
+	m.nonce = []byte("1234")
+	keyFile, transportFile := keyholderDir(t)
+	code, _, errOut := runKH(append(pairArgs(m, booksPath(t), keyFile, transportFile, "--store", "file"), m.link("box"))...)
+	if code != 1 || !strings.Contains(errOut, "too short") {
+		t.Errorf("exit %d: %s", code, errOut)
+	}
+}
+
+func TestWhatTheMachineSaysWhenItRefusesCannotActOnTheTerminal(t *testing.T) {
+	m := newFakeMachine(t, func() mrcore.PairResult {
+		return mrcore.PairResult{Error: "nope\x1b]0;owned\x07\nsynctang-keyholder: forged line"}
+	})
+	keyFile, transportFile := keyholderDir(t)
+	code, out, errOut := runKH(append(pairArgs(m, booksPath(t), keyFile, transportFile, "--store", "file"), m.link("box"))...)
+	if code != 1 {
+		t.Fatalf("exit %d: %s%s", code, out, errOut)
+	}
+	if strings.ContainsAny(errOut, "\x1b\x07") || strings.Contains(errOut, "\nsynctang-keyholder: forged line") {
+		t.Errorf("the machine's words reached the terminal as they were:\n%q", errOut)
+	}
+}
+
+// A link is whoever made it: a name in it that would clear the screen is shown as what it is, and a name that
+// cannot be a name here does not stop the pairing, it only means there is no name to save.
+func TestAHostileOrUnusableNameInTheLinkIsShownSafelyAndDoesNotStopPairing(t *testing.T) {
+	m := newFakeMachine(t, accept)
+	keyFile, transportFile := keyholderDir(t)
+	book := booksPath(t)
+	code, out, errOut := runKH(append(pairArgs(m, book, keyFile, transportFile, "--store", "file"), m.link("my\x1b[2Jmachine with spaces"))...)
+	if code != 0 {
+		t.Fatalf("exit %d:\n%s%s", code, out, errOut)
+	}
+	if strings.ContainsAny(out+errOut, "\x1b") {
+		t.Errorf("an escape reached the terminal:\n%q", out+errOut)
+	}
+	if _, err := os.Stat(book); !os.IsNotExist(err) {
+		t.Error("a name that is not a usable name was saved")
+	}
+	if !strings.Contains(out, "synctang-keyholder unlock "+m.id) || !strings.Contains(out, "--as") {
+		t.Errorf("without a name it should give the id to unlock with, and say how to name it:\n%s", out)
+	}
+}
+
+// A link is somebody's word, and a name in it is theirs: it does not quietly take over a name the person already
+// uses for another machine.
+func TestAPairingDoesNotTakeOverANameForAnotherMachineWithoutForce(t *testing.T) {
+	m := newFakeMachine(t, accept)
+	keyFile, transportFile := keyholderDir(t)
+	book := booksPath(t)
+	_, _, _ = runKH("machines", "add", "--machines-file", book, "my-server", machineIDB)
+	code, _, errOut := runKH(append(pairArgs(m, book, keyFile, transportFile, "--store", "file"), m.link("my-server"))...)
+	if code != 1 || !strings.Contains(errOut, machineIDB) || !strings.Contains(errOut, "--force") {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	if ms, _ := loadMachines(book); len(ms) != 1 || ms[0].ID != machineIDB {
+		t.Errorf("the name was changed: %+v", ms)
+	}
+	// Nothing was sent anywhere before that was said.
+	select {
+	case p := <-m.got:
+		t.Errorf("the machine was dialled: %+v", p)
+	case <-time.After(200 * time.Millisecond):
+	}
+	code, out, e := runKH(append(pairArgs(m, book, keyFile, transportFile, "--store", "file", "--force"), m.link("my-server"))...)
+	if code != 0 || !strings.Contains(out+e, machineIDB) {
+		t.Fatalf("with --force: exit %d: %s%s", code, out, e)
+	}
+	if ms, _ := loadMachines(book); len(ms) != 1 || ms[0].ID != m.id {
+		t.Errorf("--force did not take the name: %+v", ms)
+	}
+}
+
+func TestALinkWithASettingThisProgramDoesNotKnowOrOneTwiceIsRefused(t *testing.T) {
+	m := newFakeMachine(t, accept)
+	good := m.link("box")
+	for name, link := range map[string]string{
+		"an unknown setting": good + "&relay=relay%3A%2F%2Fevil.example",
+		"a name twice":       good + "&name=other",
+		"a machine twice":    good + "&machine=" + machineIDB,
+		"a code twice":       good + "&psk=" + m.code,
+	} {
+		if _, err := parsePairingLink(link); err == nil || !strings.Contains(err.Error(), "pairing link") {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if _, err := parsePairingLink(good); err != nil {
+		t.Errorf("a good link: %v", err)
+	}
+}
+
+// A discovery server in a link that has a space in it would be written into the address book as a line of four
+// fields, and the book would then not read at all.
+func TestADiscoveryServerWithWhitespaceIsRefusedBeforeItIsSavedAnywhere(t *testing.T) {
+	m := newFakeMachine(t, accept)
+	link := m.link("box") + "&discovery=" + url.QueryEscape("https://disco.example/a b?id="+machineIDA)
+	if _, err := parsePairingLink(link); err == nil || !strings.Contains(err.Error(), "discovery") {
+		t.Errorf("%v", err)
+	}
+	if _, _, err := putMachine(booksPath(t), machine{Name: "box", ID: machineIDA, Discovery: "https://d.example/a b"}, true); err == nil {
+		t.Error("a discovery URL with a space was saved")
 	}
 }

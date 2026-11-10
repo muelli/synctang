@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/url"
 	"strings"
+	"unicode"
 
 	"github.com/syncthing/syncthing/lib/protocol"
 )
@@ -91,6 +92,11 @@ func parseNetworkConfig(relayPool, discovery, announce string, announces bool) (
 // its query may say). announced is whether the URL is also announced to,
 // which plain http may not be.
 func validateDiscovery(s string, announced bool) error {
+	// Whitespace would split it in the files and lines it is written into (a pairing link carries one from
+	// whoever made the link).
+	if strings.ContainsFunc(s, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) {
+		return errors.New("discovery URL has whitespace or a control character in it")
+	}
 	_, opts, err := parseDiscoveryURL(s)
 	if err != nil {
 		return err

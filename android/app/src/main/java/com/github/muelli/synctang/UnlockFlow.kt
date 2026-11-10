@@ -275,6 +275,9 @@ sealed interface PairingPlan {
     /** The link asks for something this app does not know: refuse, saying what. */
     data class UnknownParameters(val names: List<String>) : PairingPlan
 
+    /** The link gives a setting more than once: refuse, saying which. */
+    data class RepeatedParameters(val names: List<String>) : PairingPlan
+
     /** The link's [name] setting (discovery) is not a server URL. */
     data class BadSetting(val name: String) : PairingPlan
 
@@ -286,6 +289,8 @@ fun planPairing(scanned: String): PairingPlan {
     val machine = PairingPayload.parse(scanned) ?: return PairingPlan.Invalid
     PairingPayload.unknownParameters(scanned).takeIf { it.isNotEmpty() }
         ?.let { return PairingPlan.UnknownParameters(it) }
+    PairingPayload.repeatedParameters(scanned).takeIf { it.isNotEmpty() }
+        ?.let { return PairingPlan.RepeatedParameters(it) }
     PairingPayload.badSetting(scanned)?.let { return PairingPlan.BadSetting(it) }
     if (PairingPayload.plainHttpDiscoveryWithoutInsecure(scanned)) return PairingPlan.PlainHttpDiscovery
     val code = PairingPayload.pairingCode(scanned) ?: return PairingPlan.Remember(machine)
@@ -720,6 +725,11 @@ class UnlockFlow(
             is PairingPlan.UnknownParameters -> _state.value = UnlockUiState.Failed(
                 null,
                 strings.get(R.string.pair_unknown_parameters, plan.names.take(MAX_NAMES_SHOWN).joinToString(", ")),
+                Retry.SCAN_AGAIN,
+            )
+            is PairingPlan.RepeatedParameters -> _state.value = UnlockUiState.Failed(
+                null,
+                strings.get(R.string.pair_repeated_parameters, plan.names.take(MAX_NAMES_SHOWN).joinToString(", ")),
                 Retry.SCAN_AGAIN,
             )
             is PairingPlan.BadSetting -> _state.value = UnlockUiState.Failed(
