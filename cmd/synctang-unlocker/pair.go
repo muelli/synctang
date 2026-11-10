@@ -20,6 +20,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/muelli/synctang/mrcore"
@@ -116,12 +117,17 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 	// The key holder speaks first: it says which key it wants enrolled, and only then does the machine choose
 	// the nonce that the proof and the short code are made from. Were the nonce sent first, a peer could pick
 	// its key after seeing it and make the short code anything it liked (see mrcore.PairSAS).
-	requestTimer := time.AfterFunc(pairRequestTimeout, func() { conn.Close() })
+	var requestTimedOut atomic.Bool
+	requestTimer := time.AfterFunc(pairRequestTimeout, func() { requestTimedOut.Store(true); conn.Close() })
 	var req mrcore.PairRequest
 	err = mrcore.ReadMessage(conn, &req)
 	requestTimer.Stop()
 	if err != nil {
 		stopOnWindowEnd()
+		if requestTimedOut.Load() {
+			return fmt.Errorf("synctang-unlocker: the peer %s did not send its pairing request within %s (is it a phone that was started to unlock, not to pair?)",
+				conn.PeerID(), pairRequestTimeout)
+		}
 		return fmt.Errorf("synctang-unlocker: reading the pairing request: %w", err)
 	}
 
@@ -140,13 +146,17 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 		return fmt.Errorf("synctang-unlocker: sending the pairing challenge: %w", err)
 	}
 
-	responseTimer := time.AfterFunc(pairRequestTimeout, func() { conn.Close() })
+	var responseTimedOut atomic.Bool
+	responseTimer := time.AfterFunc(pairRequestTimeout, func() { responseTimedOut.Store(true); conn.Close() })
 	var resp mrcore.PairResponse
 	err = mrcore.ReadMessage(conn, &resp)
 	responseTimer.Stop()
 	// From here the operator decides, and the end of the window does not close the connection under the question.
 	stopOnWindowEnd()
 	if err != nil {
+		if responseTimedOut.Load() {
+			return fmt.Errorf("synctang-unlocker: the peer %s did not send the proof of the pairing code within %s", conn.PeerID(), pairRequestTimeout)
+		}
 		return fmt.Errorf("synctang-unlocker: reading the proof of the pairing code: %w", err)
 	}
 

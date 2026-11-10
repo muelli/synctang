@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -73,6 +74,11 @@ func TestPairGivesUpOnAPeerThatNeverSendsItsRequest(t *testing.T) {
 	case err := <-errCh:
 		if err == nil {
 			t.Fatal("pairing reported success for a peer that never sent a request")
+		}
+		// What the operator reads while the machine carries on waiting: that a peer said nothing (a phone
+		// that was started to unlock, say, while the machine was waiting to pair), not a socket error.
+		if !strings.Contains(err.Error(), "did not send its pairing request") || strings.Contains(err.Error(), "closed network connection") {
+			t.Errorf("the message is not one a person can act on: %v", err)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("pairing kept waiting for a request that was never going to arrive")
