@@ -86,7 +86,7 @@ jobs:
           sudo apt-get install -y -qq --no-install-recommends \
             qemu-system-x86 dnsmasq-base cryptsetup gdisk e2fsprogs xz-utils \
             openssh-client debhelper dpkg-dev fakeroot just \
-            dbus-daemon gnome-keyring libsecret-tools
+            dbus-daemon gnome-keyring libsecret-tools asciinema expect
 
       - name: The packages built by this run
         if: inputs.use-built-packages
@@ -138,7 +138,7 @@ jobs:
 
       - name: What the programs look like
         # The pairing and the unlock run again at a terminal, on both ends, and recorded as asciicasts
-        # (scripts/record-session.py): index.html shows what each ended up looking like, and each .cast
+        # (asciinema, driven by scripts/record.sh): index.html shows what each ended up looking like, and each .cast
         # plays with "asciinema play". Uploaded even when the run fails, for whatever was recorded.
         if: always()
         uses: actions/upload-artifact@v4

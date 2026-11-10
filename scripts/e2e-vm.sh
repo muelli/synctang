@@ -507,17 +507,17 @@ log "recording the programs at a terminal, on both ends"
 CASTS="$RUN/casts"
 rm -rf -- "$CASTS" "$RUN/kh-demo"
 mkdir -p "$CASTS" "$RUN/kh-demo"
-RECORD="$REPO/scripts/record-session.py"
+RECORD="$REPO/scripts/record.sh"
 RENDER="$REPO/scripts/render-casts.py"
 
 # VMTTY COMMAND: a command in the VM with a terminal, so that it behaves as it does for a person.
 VMTTY=(ssh -tt -i "$RUN/id" -p "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
 	-o LogLevel=ERROR -o BatchMode=yes ubuntu@127.0.0.1)
-# rec NAME COLUMNS TITLE -- COMMAND...: one session, recorded.
+# rec NAME COLUMNS TITLE [--answer REGEX TEXT]... -- COMMAND...: one session, recorded with asciinema.
 rec() {
-	local name=$1 cols=$2 title=$3
-	shift 4
-	"$RECORD" --out "$CASTS/$name.cast" --cols "$cols" --rows 45 --title "$title" "$@" > /dev/null 2>&1
+	local name=$1
+	shift
+	"$RECORD" "$CASTS/$name.cast" "$@" > /dev/null 2>&1
 }
 # cast_text NAME: what the screen of a recording ended up showing. The text is read into a variable first, so that
 # grep stopping early does not break a pipe under pipefail.
@@ -540,10 +540,9 @@ rec unlocker-rehearse-initrd 100 "synctang-unlocker rehearse --initrd-only (on t
 	"${VMTTY[@]}" "sudo env LANG=C.UTF-8 synctang-unlocker rehearse --initrd-only" || true
 
 # A pairing, on both ends at once. The machine's operator answers y when asked, once the laptop is waiting.
-"$RECORD" --out "$CASTS/machine-pair.cast" --cols 100 --rows 60 --timeout 300 --title "synctang-unlocker pair (on the machine)" \
-	--answer 'enrol it on this volume\? \[y/N\]=y\n' -- \
-	"${VMTTY[@]}" "sudo bash -c \"LANG=C.UTF-8 synctang-unlocker pair --device /dev/vda3 --name e2e-vm --timeout 5m --existing-passphrase-file <(printf %s '$VM_PASSPHRASE')\"" \
-	> /dev/null 2>&1 &
+rec machine-pair 100 "synctang-unlocker pair (on the machine)" \
+	--answer 'enrol it on this volume\? \[y/N\]' 'y\n' -- \
+	"${VMTTY[@]}" "sudo bash -c \"LANG=C.UTF-8 synctang-unlocker pair --device /dev/vda3 --name e2e-vm --timeout 5m --existing-passphrase-file <(printf %s '$VM_PASSPHRASE')\"" &
 MACHINE_PAIR_PID=$!
 DEMO_LINK=""
 for _ in $(seq 1 90); do
@@ -566,7 +565,7 @@ rec keyholder-status 100 "synctang-keyholder status" -- env "XDG_CONFIG_HOME=$RU
 # An unlock, after a reboot, as a person does it: no machine named (there is only one), and Enter to approve.
 reboot_to_prompt
 rec keyholder-unlock 100 "synctang-keyholder unlock (on the laptop; the machine is waiting at its passphrase prompt)" \
-	--answer 'Press Enter to approve=\n' -- \
+	--answer 'Press Enter to approve' '\n' -- \
 	env "XDG_CONFIG_HOME=$RUN/kh-demo" "$KEYHOLDER" unlock --timeout 3m || true
 check "the recorded unlock said it unlocked" cast_has keyholder-unlock 'unlocked'
 check "the recorded unlock opened the machine" unlocked_without_a_passphrase

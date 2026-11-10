@@ -1,0 +1,50 @@
+#!/usr/bin/expect -f
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Runs a command at a terminal and types answers to it, as a person would, when its output asks:
+#
+#   answer.exp [-answer REGEX TEXT]... -- COMMAND [ARGS...]
+#
+# Each answer is typed once, in the order given, when the output matches REGEX (a Tcl regular expression);
+# TEXT may hold \n for Enter. The exit status is the command's. What the command shows goes to standard
+# output as it is, so a recording of this (scripts/record.sh) is a recording of the command.
+set timeout 300
+set answers {}
+set i 0
+while {$i < [llength $argv]} {
+	set a [lindex $argv $i]
+	if {$a eq "--"} { incr i; break }
+	if {$a ne "-answer" || $i + 2 >= [llength $argv]} {
+		puts stderr "answer.exp: unexpected argument \"$a\""
+		exit 2
+	}
+	lappend answers [lindex $argv [expr {$i + 1}]] [lindex $argv [expr {$i + 2}]]
+	incr i 3
+}
+set command [lrange $argv $i end]
+if {[llength $command] == 0} {
+	puts stderr "answer.exp: no command"
+	exit 2
+}
+spawn -noecho {*}$command
+foreach {pattern text} $answers {
+	expect {
+		-re $pattern {
+			# A person takes a moment.
+			after 400
+			send -- [subst -nocommands -novariables $text]
+		}
+		eof {
+			puts stderr "answer.exp: the command ended before \"$pattern\" appeared"
+			catch wait result
+			exit 3
+		}
+		timeout {
+			puts stderr "answer.exp: \"$pattern\" did not appear within $timeout s"
+			exit 4
+		}
+	}
+}
+expect eof
+catch wait result
+exit [lindex $result 3]

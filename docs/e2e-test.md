@@ -34,7 +34,8 @@ holder that is not on it. `[V]` marks what was run here, `[U]` what was not.
    unlocks. A leg whose tools are not there is skipped, and says so. (The first laptop, in step 3, is
    enrolled with `synctang-unlocker enrol`, the by-hand path.)
 8. Then it shows what the programs look like. It runs them again at a terminal, on both ends, and records each
-   session as an asciicast with `scripts/record-session.py`, a small recorder of its own (standard library only):
+   session as an asciicast with `asciinema` (`scripts/record.sh`, which also types the answers a prompt waits
+   for, through `expect`):
    the usage of the key holder at 80 and at 120 columns, `pair --help`, `status`, `devices` and `rehearse` on
    the machine, `machines` and `status` on the laptop, and two sessions that are real tests: a pairing, with the
    machine's operator answering from the recording (the codes on the two screens must be the same), and an
@@ -64,7 +65,7 @@ enrolled was refused by the machine at the first message (`reading hello: EOF`).
         scripts/e2e-vm.sh
 
 It needs root (a bridge, loop devices, a chroot), KVM, `qemu-system-x86`, `dnsmasq`,
-`cryptsetup`, `sgdisk` and `ssh`. Everything is under `$WORK`
+`cryptsetup`, `sgdisk`, `ssh`, and `asciinema` with `expect` for the recordings. Everything is under `$WORK`
 (`/var/tmp/synctang-e2e`); its `run/logs` directory has the console, the journal's
 console, both servers, `apt` and each key holder's output, which is where to look when
 it fails. The root filesystem the VM is made from is kept in `$WORK/cache`. `DEBS` names
