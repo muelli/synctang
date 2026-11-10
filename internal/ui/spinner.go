@@ -14,6 +14,8 @@ var (
 	plainFrames   = []string{"|", "/", "-", `\`}
 )
 
+// Keep a label short (under about 50 columns): a library that logs to the terminal on its own writes over
+// the spinner from the left, and what is left of a longer label shows after its message.
 // Spin shows a turning spinner and what label says, on one line that is redrawn in place, until the
 // function it returns is called, which clears the line. label is asked again at every turn, so it can
 // say how long has passed. It does nothing unless w is a terminal: to a pipe it writes nothing, and the

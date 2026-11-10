@@ -52,7 +52,7 @@ machine. It does not test the Keystore, the fingerprint or the Kotlin screens, w
 are tried by hand on a phone.
 
 `[V]` Run on this host (KVM, Ubuntu 26.04 guest, packages built from the commit before this line
-was written), 39 checks passed and none failed (the package versions the two programs report among them), including the two laptop-key legs of step 7 (each paired, with the two codes compared) and the phone pairing (the code the Go library offers the app compared with the machine's), which
+was written), 45 checks passed and none failed (the package versions the two programs report and the recordings among them), including the two laptop-key legs of step 7 (each paired, with the two codes compared) and the phone pairing (the code the Go library offers the app compared with the machine's), which
 ran against a real `gnome-keyring-daemon` and the real `systemd-creds`; the TPM variant is not in it, as the
 VM has no TPM. A key holder that was never
 enrolled was refused by the machine at the first message (`reading hello: EOF`).

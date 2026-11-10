@@ -323,7 +323,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 	started := time.Now()
 	showWaiting := func() {
 		status.Set(func() string {
-			return fmt.Sprintf("waiting for a key holder to answer the pairing code (%s of %s)", clock(time.Since(started)), clock(*window))
+			return fmt.Sprintf("waiting for a key holder (%s of %s)", clock(time.Since(started)), clock(*window))
 		})
 	}
 	showWaiting()

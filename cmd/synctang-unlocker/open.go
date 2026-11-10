@@ -200,7 +200,7 @@ func waitForApproval(device, machineName string, cert tls.Certificate, timeout t
 	defer status.Stop()
 	started := time.Now()
 	status.Set(func() string {
-		return fmt.Sprintf("waiting for a key holder to approve (%s of %s)", clock(time.Since(started)), clock(timeout))
+		return fmt.Sprintf("waiting for a key holder (%s of %s)", clock(time.Since(started)), clock(timeout))
 	})
 	for {
 		err := serveOneExchange(ctx, device, machineName, transport.ListenOptions{DirectAddr: directAddr}, tr, deliver)
@@ -215,7 +215,7 @@ func waitForApproval(device, machineName string, cert tls.Certificate, timeout t
 		}
 		ui.Notef(stderr, "%v (still waiting)\n", err)
 		status.Set(func() string {
-			return fmt.Sprintf("waiting for a key holder to approve (%s of %s)", clock(time.Since(started)), clock(timeout))
+			return fmt.Sprintf("waiting for a key holder (%s of %s)", clock(time.Since(started)), clock(timeout))
 		})
 		select {
 		case <-ctx.Done():

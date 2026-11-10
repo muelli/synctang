@@ -238,7 +238,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		}
 		asked := time.Now()
 		status.Set(func() string {
-			return fmt.Sprintf("waiting for the person at the machine to confirm (%s of %s)", elapsed(asked), clock(*wait))
+			return fmt.Sprintf("waiting for the machine's operator (%s of %s)", elapsed(asked), clock(*wait))
 		})
 	}
 
