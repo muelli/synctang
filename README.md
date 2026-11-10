@@ -142,9 +142,6 @@ If the laptop knows only one machine, use `synctang-keyholder unlock`.
 - `docs/threat-model.md` describes the threats. `docs/mr1-protocol.md` describes the protocol.
 - `STATUS.md` shows what works and what does not.
 
-At a terminal, the programs use colour and symbols. Use `--color=never` or `NO_COLOR=1` to
-stop this. In a pipe, the output is plain text.
-
 ## Licence
 
 AGPL-3.0-or-later. Read `LICENSE`. `THIRD_PARTY.md` lists the dependencies.

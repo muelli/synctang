@@ -20,13 +20,14 @@ person, without the passphrase leaving the key holder's side of the exchange.
   the `.deb` packages, each unlocked from the laptop key holder and from a Pixel 3a XL,
   with nobody typing a passphrase. The Ubuntu VM was unlocked with the F-Droid build of
   the app (versions 290 and 299, the latter with the one-tap flow).
+- A second phone, tried by the owner on 2026-11-10 (pairing and unlock), worked.
 - Through a relay and a discovery server of the owner's own on a private bridge with no
   route out, with nothing sent to the public servers.
 - `scripts/e2e-vm.sh` does the VM half of that automatically, with a headless phone in
   place of the real one: it passes locally and in CI (`docs/e2e-test.md`).
 
-There is no compatibility promise between releases yet. A new release may need a phone
-paired again, and nothing migrates an old file layout.
+There is no compatibility promise between releases. A new release may need a phone paired
+again.
 
 ## Work packages
 
@@ -57,8 +58,8 @@ paired again, and nothing migrates an old file layout.
   when there is no keyring, with a warning. Each store says what it protects and what it does not
   (`docs/threat-model.md`); none stops software running as the user. Tested with the library's mock and a fake
   tool, and against a real `gnome-keyring-daemon` on a private session bus and the real `systemd-creds`
-  (user scope, systemd 259) where they are installed. The TPM variant as first written could never work (user scope refuses a bare `tpm2` key; it now asks for `host+tpm2`); it has not been run on a TPM, as the test VM has none. The keyring is GNOME Keyring; no other
-  Secret Service is supported or tried. `synctang-keyholder pair` enrols a laptop from the link
+  (user scope, systemd 259) where they are installed. The TPM variant has not been run on a TPM, as the
+  test VM has none. The keyring is GNOME Keyring; no other Secret Service is supported or tried. `synctang-keyholder pair` enrols a laptop from the link
   `synctang-unlocker pair` shows, the same protocol as a phone, and both sides show a six-digit code to
   compare (`mrcore.PairSAS`); the phone app shows it on its pairing screen while the operator decides. `unlock` takes a machine's name, kept in `~/.config/synctang-keyholder/machines`.
   `synctang-unlocker enrol` remains, with `--recipient-transport-id` required.
@@ -77,8 +78,8 @@ paired again, and nothing migrates an old file layout.
   Tests: JVM tests of the flow through fakes, and instrumented Compose tests on an
   emulator in CI; the chip's tests were also run on the Pixel `[V]`. The listing's five
   screenshots are drawn by `ScreenshotsTest` (`scripts/screenshots.sh`). Not tried: a
-  screen reader (TalkBack), a second phone model, and the Keystore exceptions
-  for a key invalidated by a new fingerprint on a real device (JVM tests only).
+  screen reader (TalkBack) and the Keystore exceptions for a key invalidated by a new
+  fingerprint on a real device (JVM tests only).
   `-Psynctang.noBiometric=true` builds a debug-only variant whose key is not gated
   behind a biometric prompt; release builds cannot have it and the ungated key uses its
   own Keystore alias.
@@ -92,9 +93,7 @@ paired again, and nothing migrates an old file layout.
   is the installed one and that the kernel command line leaves the agent on, then runs the
   agent's own exchange with a key holder and checks the recovered secret against a keyslot,
   mapping nothing. It cannot test the network in early boot or the initrd starting.
-- **WP7** (VM acceptance): all eleven acceptance items pass (`TESTREPORT.md`). A4 was
-  the last, verified 2026-09-21 on a real StrongBox phone against a machine that had
-  been waiting at its LUKS prompt for over eleven hours.
+- **WP7** (VM acceptance): all eleven acceptance items pass (`TESTREPORT.md`).
 
 ## Test machines
 
@@ -179,9 +178,7 @@ publish have never run: every release so far has been a release candidate from `
 - Debian and Ubuntu machines that boot with initramfs-tools. `synctang-dracut`
   depends on dracut and regenerates every installed kernel's initrd with it, which would
   replace initramfs-tools images. Every machine tested here used dracut from the start.
-- A real machine (a physical NIC, the owner's own network) and a second phone.
-- The laptop key's stores are on a branch, `keyholder-key-storage`, and not yet on `main`. There is no
-  migration between stores: a key lives where `init` put it, and `init --force --store` makes a new one.
+- A real machine (a physical NIC, the owner's own network).
 - Reliability: one of the five relay integration tests failed once in thirteen runs with
   "already connected" (a join race, not fixed); one dial gave up after 90 s with every
   relay in the record "not found" and was not reproduced; and the machine took about 17 to
@@ -191,73 +188,17 @@ publish have never run: every release so far has been a release candidate from `
   the laptop key holder, the QR scanner, the packaging, the journal writer, the
   discovery trust code and the readiness polling. The relay and discovery servers are out
   of scope (they are Syncthing's).
-- Findings of the external security review of `a57ae27` (2026-10-23)
-  that are still open. Fixed since: silent peers holding a listener or the
-  pairing window, the phone validating the challenge point only after the
-  Keystore, empty `PeerID` dials and empty recipient lists failing open,
-  unfiltered peer strings, recipient transport ids not canonicalised,
-  non-uniform scalars, no length check on the recovered secret, and the
-  documents that overstated the confirm code, and the confirm code
-  itself, removed because the machine sent it to the key holder it was
-  meant to test. Open:
-  - A disk image plus one approval recovers the volume secret. The fix is
-    sealing the machine identity in a TPM (not built).
-  - Done 2026-11-01: the Android key was usable for a time window after any
-    strong biometric. It is now a scalar wrapped by a hardware key that needs a
-    fingerprint bound to each use (`BiometricPrompt.CryptoObject`), so there is
-    no window. The cost is that the scalar is in the app's memory during one
-    answer, which a non-exportable agreement key would avoid; no such key is
-    available on the test phone `[V]`. Tested on a Pixel 3a XL: a key that needs
-    a fingerprint refuses to unwrap without one, and a real unlock with a real
-    fingerprint worked (`TESTREPORT.md`). That a fingerprint cannot be spent on a
-    different operation is `[V]` (`OperationBindingTest`, 2026-11-02): of two
-    operations on one key only the authenticated one worked, and only once. Which
-    layer refuses is not observable.
-    The old key is not migrated: a phone is paired again.
-  - A threshold (two key holders must both answer) is the second
-    factor that would remove "one approval is enough". Parked for a
-    later round; see `docs/threat-model.md`.
-  - Done 2026-10-28: `PairProof` now covers the public key being enrolled,
-    under the label `synctang-pair-v2`. A machine and a phone from before
-    the change cannot pair with each other; both need updating. There was
-    no attack before, because the pinned channel already stopped anyone but
-    the proof's author altering the key, so this makes the proof
-    self-contained rather than closing a hole `[V]` (the unit tests, and
-    one that sends a different key from the one the proof covers).
-  - Done 2026-10-28: `synctang-dracut` now makes initrd images that carry
-    `machine.pem` root-only after rebuilding them, and warns loudly where a
-    filesystem ignores `chmod`. dracut already builds them under `umask 077`,
-    so this is a safety net. Not observed on a running system.
-  - Done 2026-10-28: device auto-discovery no longer takes the first block
-    device with an `mr-1` token. With one candidate nothing changes; with
-    several it picks the one a pending password request names (matching the
-    request's `Id=` to the device after resolving symlinks), refuses with a
-    message listing the candidates when nothing singles one out, and answers
-    the request that belongs to the device it unlocked. That the Id has the
-    form `cryptsetup:<device path>` is `[I]`, from systemd's source and not
-    observed on a running system here; the logic is tested with fake ids.
-  - Done: scanning a QR code no longer replaces the paired machine before pairing
-    succeeds; a pairing with a code is saved only once the machine has enrolled the
-    phone, a failed one keeps the working machine, and a replacement can be undone `[V]`
-    (JVM tests `aPairingWithACodeIsNotSavedUntilTheMachineHasEnrolledThePhone`,
-    `aFailedPairingWithAnotherMachineKeepsTheOneThatWorks`,
-    `aSuccessfulPairingThatReplacesAMachineCanBeUndoneToo`).
-- Whether `go-tpm`'s ECDH support is reachable for the
-  `synctang-keyholder` TPM2 backend; may remain a stub with tests skipped.
-- Two fixes for `syncthing-socket` (`ensureResolver` accepting a
-  loopback-only stub, `RunClient` not retrying a stale discovery
-  record) were reported to the user as a written summary; whether they
-  have become patches since was not checked. The third, the bare
-  `go.mod` module path, is done: release v164 declares the real path and
-  this repository imports its `identity` and `discovery` packages `[V]`.
-- One item left from the `mrcore`/transport review: a `Token`
-  Marshal/Unmarshal refactor. The other three are done: `Group.Negate`
-  now multiplies by the group order minus one instead of doing modular
-  arithmetic on the y-coordinate with `big.Int`, which removes the
-  last hand-rolled field arithmetic in the package and hands it to
-  nistec's constant-time code; `slices.Contains`/`slices.Equal`
-  replace the hand-rolled equivalents; the announce HTTP client is
-  built once rather than per call.
+- Open findings of the external security review of `a57ae27` (2026-10-23):
+  - A disk image plus one approval recovers the volume secret. The fix is sealing the machine
+    identity in a TPM (not built).
+  - A threshold (two key holders must both answer) is the second factor that would remove "one
+    approval is enough". Parked for a later round; see `docs/threat-model.md`.
+  - Not observed on a running system: that a password request's `Id=` has the form
+    `cryptsetup:<device path>` (`[I]`, from systemd's source); the device choice is tested with fake ids.
+- Two fixes for `syncthing-socket` (`ensureResolver` accepting a loopback-only stub, `RunClient` not
+  retrying a stale discovery record) were reported as a written summary; whether they became patches
+  was not checked.
+- A `Token` Marshal/Unmarshal refactor in `mrcore` is left.
 - `LocalDiscovery` is IPv4 multicast only. A LAN that is IPv6
   only would fall back to `SyncthingRelay`, which defeats the point
   on a LAN with no Internet. Not hit in testing (every network this
