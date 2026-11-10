@@ -150,6 +150,9 @@ func pair(dir, linkText string) error {
 	if err := pairer.Pair(l.machine, l.code, p.seed, p.pubHex, "e2e-phone", "", 180); err != nil {
 		return fmt.Errorf("pairing: %w", err)
 	}
+	// What the app shows while the operator decides; kept after Pair returns, so printing it here is
+	// enough for a test to compare it with the machine's.
+	fmt.Println("code:", pairer.ShortCode())
 	fmt.Println("paired with", l.machine)
 	return nil
 }

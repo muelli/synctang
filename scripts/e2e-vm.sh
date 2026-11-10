@@ -240,8 +240,8 @@ check "status says the initrd lacks the identity" grep -q "initrd: does not cont
 
 # The phone pairs from the link the machine shows, as the app does after a scan.
 "$E2EPHONE" init "$PHONE" > "$LOGS/phone-init.log"
-vm "sudo bash -c \"nohup synctang-unlocker pair --device /dev/vda3 --name e2e-vm --yes --timeout 5m --rebuild-initrd \
-	--existing-passphrase-file <(printf %s '$VM_PASSPHRASE') > /tmp/pair.out 2>&1 &\""
+vm "sudo bash -c \"nohup synctang-unlocker pair --device /dev/vda3 --name e2e-vm --timeout 5m --rebuild-initrd \
+	--existing-passphrase-file <(printf %s '$VM_PASSPHRASE') < <(echo y) > /tmp/pair.out 2>&1 &\""
 LINK=""
 for _ in $(seq 1 60); do
 	LINK="$(vm "grep -a -o 'synctang://pair[^ ]*' /tmp/pair.out" 2> /dev/null | head -1 || true)"
@@ -254,6 +254,11 @@ for _ in $(seq 1 30); do
 	vm 'grep -aq "paired" /tmp/pair.out' && break
 	sleep 1
 done
+# The phone shows the person the code while the operator decides (here the operator is an "echo y"):
+# it has to be the one the machine shows.
+PHONE_CODE="$(sed -n 's/^code: //p' "$LOGS/phone-pair.log" | head -1)"
+MACHINE_CODE="$(vm "grep -a 'code:' /tmp/pair.out" | grep -o '[0-9]\{3\} [0-9]\{3\}' | head -1 || true)"
+check "the machine and the phone showed the same code" test -n "$PHONE_CODE" -a "$PHONE_CODE" = "$MACHINE_CODE"
 
 # pair rebuilds the initrd after the pairing, because it was asked to and it was wrong; wait
 # for it to finish.
