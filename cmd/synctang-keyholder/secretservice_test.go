@@ -98,8 +98,8 @@ func TestAKeyringThatIsNotThereIsNotMistakenForNoKey(t *testing.T) {
 	if err == nil || errors.Is(err, errNoKey) {
 		t.Fatalf("err = %v: an unreachable keyring is not an absent key", err)
 	}
-	if !strings.Contains(err.Error(), "Secret Service") || !strings.Contains(err.Error(), "session") {
-		t.Errorf("the error should say what to look for: %v", err)
+	if !strings.Contains(err.Error(), "keyring could not be reached") || !strings.Contains(err.Error(), "no Secret Service is running") {
+		t.Errorf("the error should say what is wrong: %v", err)
 	}
 }
 

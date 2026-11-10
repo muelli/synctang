@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/muelli/synctang/mrcore"
 	"github.com/zalando/go-keyring"
@@ -47,12 +48,47 @@ func (s *secretServiceStore) Describe() string {
 // service, a locked collection nobody unlocked. Said so, because "no key" would send a person
 // to make a new one while theirs is simply out of reach.
 func unreachable(err error) error {
-	return fmt.Errorf("the keyring could not be reached (is a Secret Service running in this session, with the login keyring unlocked? "+
-		"it needs a D-Bus session, which plain ssh does not have): %w", err)
+	if errors.Is(err, errKeyringSilent) {
+		return fmt.Errorf("the keyring could not be reached: it did not answer within %s: a password prompt may be waiting on the desktop "+
+			"(unlock the login keyring there), or the Secret Service is stuck", keyringTimeout)
+	}
+	return fmt.Errorf("the keyring could not be reached: %s", keyringReason(err))
+}
+
+// The keyring calls, as variables so that tests can say what they do, and bounded: a locked keyring asks for its
+// password on the desktop, and where nobody is looking the call never returns.
+var (
+	keyringGet     = keyring.Get
+	keyringSet     = keyring.Set
+	keyringDelete  = keyring.Delete
+	keyringTimeout = 2 * time.Minute
+
+	errKeyringSilent = errors.New("the keyring did not answer")
+)
+
+// keyringCall runs f and gives up on it after keyringTimeout. The call itself cannot be stopped, and is left to
+// finish or not as the process ends.
+func keyringCall[T any](f func() (T, error)) (T, error) {
+	type answer struct {
+		v   T
+		err error
+	}
+	ch := make(chan answer, 1)
+	go func() {
+		v, err := f()
+		ch <- answer{v, err}
+	}()
+	select {
+	case a := <-ch:
+		return a.v, a.err
+	case <-time.After(keyringTimeout):
+		var zero T
+		return zero, errKeyringSilent
+	}
 }
 
 func (s *secretServiceStore) Exists() (bool, error) {
-	_, err := keyring.Get(secretServiceName, s.account)
+	_, err := keyringCall(func() (string, error) { return keyringGet(secretServiceName, s.account) })
 	switch {
 	case err == nil:
 		return true, nil
@@ -63,7 +99,7 @@ func (s *secretServiceStore) Exists() (bool, error) {
 }
 
 func (s *secretServiceStore) Load() ([]byte, error) {
-	stored, err := keyring.Get(secretServiceName, s.account)
+	stored, err := keyringCall(func() (string, error) { return keyringGet(secretServiceName, s.account) })
 	if errors.Is(err, keyring.ErrNotFound) {
 		return nil, fmt.Errorf("%w in the keyring for %s", errNoKey, s.account)
 	}
@@ -88,14 +124,16 @@ func (s *secretServiceStore) Save(scalar []byte, overwrite bool) error {
 	}
 	// The library takes a string, which Go cannot wipe: unlike the file store's, this copy of
 	// the key stays in memory until the garbage collector reuses it.
-	if err := keyring.Set(secretServiceName, s.account, hexOf(scalar)); err != nil {
+	secret := hexOf(scalar)
+	if _, err := keyringCall(func() (struct{}, error) { return struct{}{}, keyringSet(secretServiceName, s.account, secret) }); err != nil {
 		return unreachable(err)
 	}
 	return nil
 }
 
 func (s *secretServiceStore) Delete() error {
-	if err := keyring.Delete(secretServiceName, s.account); err != nil && !errors.Is(err, keyring.ErrNotFound) {
+	_, err := keyringCall(func() (struct{}, error) { return struct{}{}, keyringDelete(secretServiceName, s.account) })
+	if err != nil && !errors.Is(err, keyring.ErrNotFound) {
 		return unreachable(err)
 	}
 	return nil
@@ -113,7 +151,7 @@ func keyringReason(err error) string {
 	case strings.Contains(msg, "org.freedesktop.secrets") && strings.Contains(msg, "provided"):
 		return "no Secret Service is running: start GNOME Keyring"
 	case strings.Contains(msg, "unlock"):
-		return "the login keyring is locked and nobody unlocked it: " + msg
+		return "the login keyring is locked and nobody unlocked it (unlock it on the desktop and try again): " + msg
 	}
 	return msg
 }
@@ -121,7 +159,7 @@ func keyringReason(err error) string {
 // secretServiceAvailable reports whether there is a keyring to ask, as nil or the reason. A
 // probe for an item that does not exist: "not found" means the service answered.
 func secretServiceAvailable() error {
-	if _, err := keyring.Get(secretServiceName, "availability-probe"); err != nil && !errors.Is(err, keyring.ErrNotFound) {
+	if _, err := keyringCall(func() (string, error) { return keyringGet(secretServiceName, "availability-probe") }); err != nil && !errors.Is(err, keyring.ErrNotFound) {
 		return err
 	}
 	return nil
