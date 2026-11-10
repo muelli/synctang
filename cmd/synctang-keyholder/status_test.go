@@ -120,3 +120,20 @@ func hexOfScalarIn(t *testing.T, keyFile string) string {
 	}
 	return strings.TrimSpace(string(raw))
 }
+
+// Where the key is has a line of its own, apart from the prose about what that protects.
+func TestStatusGivesTheKeyLocationOnALineOfItsOwn(t *testing.T) {
+	keyFile, transportFile := keyholderDir(t)
+	_, _, _ = runKH("init", "--store", "file", "--key-file", keyFile, "--transport-key-file", transportFile)
+	_, out, _ := runKH("status", "--key-file", keyFile, "--transport-key-file", transportFile)
+	if !strings.Contains(out, "\n  where: file "+keyFile+"\n") {
+		t.Errorf("no location line:\n%s", out)
+	}
+	withMockKeyring(t)
+	keyFile2, transportFile2 := keyholderDir(t)
+	_, _, _ = runKH("init", "--store", "secret-service", "--key-file", keyFile2, "--transport-key-file", transportFile2)
+	_, out, _ = runKH("status", "--key-file", keyFile2, "--transport-key-file", transportFile2)
+	if !strings.Contains(out, "\n  where: Secret Service item \"synctang-keyholder\" for "+keyFile2+"\n") {
+		t.Errorf("no location line for the keyring:\n%s", out)
+	}
+}

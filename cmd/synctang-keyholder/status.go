@@ -42,7 +42,9 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	look := ui.For(stdout)
-	fmt.Fprintf(stdout, "%skey: held by %s\n%s\n", look.Emoji("🔑", ""), look.Bold(st.Name()), look.Dim(wrap.Paragraph(st.Describe(), "  ", wrap.Width(stdout))))
+	fmt.Fprintf(stdout, "%skey: held by %s\n", look.Emoji("🔑", ""), look.Bold(st.Name()))
+	fmt.Fprintf(stdout, "  where: %s\n", st.Location())
+	fmt.Fprintf(stdout, "%s\n", look.Dim(wrap.Paragraph(st.Describe(), "  ", wrap.Width(stdout))))
 
 	// Loaded to say whether it can be, and wiped at once. For a keyring this may ask for the
 	// login password, which is the information: it is what an unlock will ask too.
