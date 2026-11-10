@@ -140,3 +140,34 @@ func TestRemoveKeyslotRefusesWhatItCannotFind(t *testing.T) {
 		t.Errorf("--remove with --remove-keyslot: exit %d, want 2", code)
 	}
 }
+
+// "they are in keyslots: " followed by nothing is no help. When no key holder is enrolled at all, say that; when
+// some are, name where.
+func TestRemoveKeyslotSaysWhenNoKeyHolderIsEnrolledAtAll(t *testing.T) {
+	pass := []byte("existing-test-passphrase")
+	device := formatLoopbackImage(t, pass)
+	if err := enrolRecipient(device, pass, newPublicKey(t), "m", "MACHINE-ID", testKH1); err != nil {
+		t.Fatal(err)
+	}
+	slot := keyslotOfRecipient(t, device, testKH1)
+	passFile := filepath.Join(t.TempDir(), "pass")
+	if err := os.WriteFile(passFile, pass, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := removeRecipientByKeyslot(device, pass, slot); err != nil {
+		t.Fatal(err)
+	}
+	// The token is still there, with nobody in it.
+	err := removeRecipientByKeyslot(device, pass, "0")
+	if err == nil || !strings.Contains(err.Error(), "no key holder is enrolled on this device") || strings.Contains(err.Error(), "keyslots: )") {
+		t.Errorf("%v", err)
+	}
+
+	if err := enrolRecipient(device, pass, newPublicKey(t), "m", "MACHINE-ID", testKH2); err != nil {
+		t.Fatal(err)
+	}
+	err = removeRecipientByKeyslot(device, pass, "7")
+	if err == nil || !strings.Contains(err.Error(), "keyslot 7 holds no enrolled key holder") || !strings.Contains(err.Error(), "keyslot "+keyslotOfRecipient(t, device, testKH2)) {
+		t.Errorf("with some enrolled: %v", err)
+	}
+}

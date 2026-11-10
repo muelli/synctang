@@ -280,7 +280,14 @@ func removeRecipientByKeyslot(device string, existingPassphrase []byte, keyslot 
 			return removeRecipientAt(device, existingPassphrase, tok, tokenID, i)
 		}
 	}
-	return fmt.Errorf("keyslot %s holds no enrolled key holder (they are in keyslots: %s)", keyslot, strings.Join(tok.Keyslots, ", "))
+	if len(tok.Keyslots) == 0 {
+		return fmt.Errorf("keyslot %s holds no enrolled key holder: no key holder is enrolled on this device", keyslot)
+	}
+	where := "keyslot " + tok.Keyslots[0]
+	if len(tok.Keyslots) > 1 {
+		where = "keyslots " + strings.Join(tok.Keyslots, ", ")
+	}
+	return fmt.Errorf("keyslot %s holds no enrolled key holder (key holders are enrolled in %s)", keyslot, where)
 }
 
 // loadEnrolledToken reads device's mr-1 token and insists it actually

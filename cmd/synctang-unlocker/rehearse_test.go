@@ -327,3 +327,26 @@ func TestSomethingThatIsNotAnELFFileIsComparedByItsBytes(t *testing.T) {
 		t.Error("two byte strings are the same agent exactly when they are equal")
 	}
 }
+
+// Reading an initrd takes a while (lsinitrd lists it, and the agent in it is compared with the installed one),
+// and a command that says nothing meanwhile looks hung. Each phase says what it is about to do.
+func TestTheStaticChecksSayWhatTheyAreDoingAsTheyGo(t *testing.T) {
+	fakeRehearsal(t, []string{"synctang", "network"}, nil, "AGENT", "AGENT", "ro quiet")
+	idPath, confPath := systemFiles(t, "IDENTITY", "")
+	was := rehearsalStep
+	t.Cleanup(func() { rehearsalStep = was })
+	var steps []string
+	rehearsalStep = func(s string) { steps = append(steps, s) }
+
+	staticRehearsalChecks(idPath, confPath)
+
+	want := []string{"initrd", "dracut modules", "agent", "command line"}
+	if len(steps) != len(want) {
+		t.Fatalf("steps = %q", steps)
+	}
+	for i, w := range want {
+		if !strings.Contains(steps[i], w) {
+			t.Errorf("step %d = %q, want it to mention %q", i, steps[i], w)
+		}
+	}
+}

@@ -296,3 +296,32 @@ func TestStatusWithACustomIdentityFileDoesNotTalkAboutTheInitrd(t *testing.T) {
 		t.Errorf("status:\n%s", out.String())
 	}
 }
+
+// lsinitrd unpacks the whole initrd every time it runs. One run of a command asks for the listing and the dracut
+// modules several times; they come from one run of lsinitrd, and a rebuilt initrd is read again.
+func TestTheInitrdIsListedOncePerRunAndAgainAfterARebuild(t *testing.T) {
+	wasRun := lsinitrdRun
+	t.Cleanup(func() { lsinitrdRun = wasRun; forgetInitrd() })
+	forgetInitrd()
+	runs := 0
+	lsinitrdRun = func() ([]byte, error) {
+		runs++
+		return []byte("Image: /boot/initrd.img\n========\ndracut modules:\nbase\nnetwork\nsynctang\n========\n-rw-------   1 root  root   773 Nov  3 22:18 etc/synctang/machine.pem\n"), nil
+	}
+	for i := 0; i < 3; i++ {
+		if mods, err := readInitrdModules(); err != nil || len(mods) != 3 {
+			t.Fatalf("modules %v %v", mods, err)
+		}
+		if names, err := readInitrdListing(); err != nil || len(names) != 1 || names[0] != "etc/synctang/machine.pem" {
+			t.Fatalf("listing %v %v", names, err)
+		}
+	}
+	if runs != 1 {
+		t.Errorf("lsinitrd ran %d times for six reads", runs)
+	}
+	forgetInitrd()
+	_, _ = readInitrdListing()
+	if runs != 2 {
+		t.Errorf("a rebuilt initrd was not read again (%d runs)", runs)
+	}
+}

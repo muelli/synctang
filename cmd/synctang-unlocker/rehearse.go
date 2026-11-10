@@ -16,6 +16,8 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/muelli/synctang/internal/gnuflag"
 	"github.com/muelli/synctang/mrcore/transport"
@@ -34,20 +36,26 @@ const initrdAgent = "usr/local/bin/synctang-unlocker"
 
 // What the static checks read, as variables so that tests can say what is there.
 var (
-	initrdModules = func() ([]string, error) {
-		out, err := runCommand(nil, "lsinitrd")
-		if err != nil {
-			return nil, err
-		}
-		return parseInitrdModules(string(out))
-	}
+	initrdModules      = readInitrdModules
 	installedAgentPath = "/usr/sbin/synctang-unlocker"
 	kernelCommandLine  = func() (string, error) {
 		raw, err := os.ReadFile("/proc/cmdline")
 		return string(raw), err
 	}
 	staticChecks = staticRehearsalChecks
+
+	// rehearsalStep is told what the static checks are about to do, so that a command at a terminal can
+	// show it while it waits.
+	rehearsalStep = func(string) {}
 )
+
+func readInitrdModules() ([]string, error) {
+	out, err := lsinitrdOutput()
+	if err != nil {
+		return nil, err
+	}
+	return parseInitrdModules(string(out))
+}
 
 // parseInitrdModules reads the dracut modules from the header lsinitrd prints: the lines after
 // "dracut modules:" up to the next rule.
@@ -89,6 +97,7 @@ const (
 func staticRehearsalChecks(identityPath, networkConfPath string) []rehearsalCheck {
 	var checks []rehearsalCheck
 
+	rehearsalStep("reading the initrd for the machine identity")
 	st := checkInitrd(identityPath, networkConfPath)
 	switch {
 	case !st.Checked:
@@ -100,6 +109,7 @@ func staticRehearsalChecks(identityPath, networkConfPath string) []rehearsalChec
 	}
 
 	const modulesName = "the initrd has the synctang and network dracut modules"
+	rehearsalStep("listing the dracut modules in the initrd")
 	if mods, err := initrdModules(); err != nil {
 		checks = append(checks, rehearsalCheck{modulesName, "unchecked", err.Error()})
 	} else {
@@ -117,9 +127,11 @@ func staticRehearsalChecks(identityPath, networkConfPath string) []rehearsalChec
 		}
 	}
 
+	rehearsalStep("comparing the agent in the initrd with the installed one")
 	checks = append(checks, agentCheck())
 
 	const cmdlineName = "the kernel command line leaves the agent on"
+	rehearsalStep("reading the kernel command line")
 	if cmdline, err := kernelCommandLine(); err != nil {
 		checks = append(checks, rehearsalCheck{cmdlineName, "unchecked", err.Error()})
 	} else if slices.Contains(strings.Fields(cmdline), "rd.synctang=0") {
@@ -291,7 +303,18 @@ func runRehearse(args []string, stdout, stderr io.Writer) int {
 	}
 
 	fmt.Fprintln(stdout, "what the boot needs:")
+	// At a terminal, a line that says what is being done and for how long; to anything else, nothing.
+	status := ui.NewStatus(stderr)
+	defer status.Stop()
+	started := time.Now()
+	var step atomic.Value
+	step.Store("starting")
+	status.Set(func() string { return fmt.Sprintf("%s (%s)", step.Load(), clock(time.Since(started))) })
+	wasStep := rehearsalStep
+	rehearsalStep = func(s string) { step.Store(s) }
 	checks := staticChecks(*machineKeyFile, *networkConf)
+	rehearsalStep = wasStep
+	status.Stop()
 	if *machineKeyFile != defaultMachineKeyFile {
 		// The initrd only ever carries the default path.
 		for i := range checks {
@@ -311,7 +334,10 @@ func runRehearse(args []string, stdout, stderr io.Writer) int {
 
 	dev := *device
 	if dev == "" {
+		step.Store("looking for the volume that has a key holder enrolled")
+		status.Set(func() string { return fmt.Sprintf("%s (%s)", step.Load(), clock(time.Since(started))) })
 		found, err := findMr1Devices()
+		status.Stop()
 		switch {
 		case err != nil:
 			ui.Errorf(stderr, "%v; pair a key holder first, or name the device with --device (%s)\n", err, `"synctang-unlocker devices" lists them`)

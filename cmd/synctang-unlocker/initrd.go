@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 )
 
 // What the initrd carries for synctang, by the names it has inside the image. The agent
@@ -28,22 +29,7 @@ const (
 // are lsinitrd's, which reads the image of the running kernel; variables so that tests can
 // say what is in it.
 var (
-	initrdListing = func() ([]string, error) {
-		out, err := runCommand(nil, "lsinitrd")
-		if err != nil {
-			return nil, err
-		}
-		var names []string
-		for _, line := range strings.Split(string(out), "\n") {
-			// "-rw-------   1 root  root   773 Nov  3 22:18 etc/synctang/machine.pem", and
-			// "path -> target" for a link.
-			fields := strings.Fields(line)
-			if len(fields) >= 9 && strings.ContainsAny(fields[0][:1], "-dl") {
-				names = append(names, fields[8])
-			}
-		}
-		return names, nil
-	}
+	initrdListing = readInitrdListing
 	initrdContent = func(name string) ([]byte, error) {
 		return runCommand(nil, "lsinitrd", "-f", name)
 	}
@@ -52,9 +38,56 @@ var (
 	rebuildInitrd = func(stdout, stderr io.Writer) error {
 		cmd := exec.Command(resolveCommand("dracut"), "--force")
 		cmd.Stdout, cmd.Stderr = stdout, stderr
+		defer forgetInitrd()
 		return cmd.Run()
 	}
 )
+
+// lsinitrd decompresses the whole initrd to list it, which takes seconds, and the checks of one run each
+// ask for the listing (and its header of dracut modules): it is asked for once per run, and again after the
+// initrd is rebuilt.
+var (
+	lsinitrdRun = func() ([]byte, error) { return runCommand(nil, "lsinitrd") }
+
+	lsinitrdMu   sync.Mutex
+	lsinitrdDone bool
+	lsinitrdOut  []byte
+	lsinitrdErr  error
+)
+
+func lsinitrdOutput() ([]byte, error) {
+	lsinitrdMu.Lock()
+	defer lsinitrdMu.Unlock()
+	if !lsinitrdDone {
+		lsinitrdOut, lsinitrdErr = lsinitrdRun()
+		lsinitrdDone = true
+	}
+	return lsinitrdOut, lsinitrdErr
+}
+
+// forgetInitrd drops what lsinitrdOutput remembered, because the initrd has changed.
+func forgetInitrd() {
+	lsinitrdMu.Lock()
+	defer lsinitrdMu.Unlock()
+	lsinitrdDone = false
+}
+
+func readInitrdListing() ([]string, error) {
+	out, err := lsinitrdOutput()
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, line := range strings.Split(string(out), "\n") {
+		// "-rw-------   1 root  root   773 Nov  3 22:18 etc/synctang/machine.pem", and
+		// "path -> target" for a link.
+		fields := strings.Fields(line)
+		if len(fields) >= 9 && strings.ContainsAny(fields[0][:1], "-dl") {
+			names = append(names, fields[8])
+		}
+	}
+	return names, nil
+}
 
 // initrdStatus is what comparing the initrd with the system found. Checked is false when the
 // initrd could not be looked into at all, with the Reason; otherwise each Problem completes
