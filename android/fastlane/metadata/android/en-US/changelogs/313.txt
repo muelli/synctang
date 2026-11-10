@@ -1,7 +1,0 @@
-Unlock is one tap: the fingerprint prompt comes up by itself when the machine asks, and names it. Cancelling it brings back the Approve screen.
-
-- The status dot checks every minute; a long press on it checks now.
-- Pairing and unlocking say what they are doing and how long is left to approve.
-- A failed unlock says what the discovery server last knew of the machine.
-- Keyboard shortcuts and screen reader labels throughout.
-- If the app says the key must be replaced, pair again.

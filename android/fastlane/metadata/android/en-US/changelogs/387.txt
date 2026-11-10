@@ -1,0 +1,6 @@
+Unlock is one tap: the fingerprint prompt comes up by itself when the machine asks, and names it.
+- Pairing shows a six-digit code. Check that it is the same on the machine before you approve.
+- The status dot checks every minute; a long press checks now.
+- Pairing and unlocking say what they are doing and how long is left to approve.
+- A failed unlock says what the discovery server last knew of the machine.
+- Keyboard shortcuts and screen reader labels throughout.
