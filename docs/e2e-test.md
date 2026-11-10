@@ -33,7 +33,15 @@ holder that is not on it. `[V]` marks what was run here, `[U]` what was not.
    `systemd-creds` (user scope): a sealed blob and no key file, the key is not in it in the clear, and the machine
    unlocks. A leg whose tools are not there is skipped, and says so. (The first laptop, in step 3, is
    enrolled with `synctang-unlocker enrol`, the by-hand path.)
-8. After each unlock it checks that the agent logged `recovery attempt succeeded` in
+8. Then it shows what the programs look like. It runs them again at a terminal, on both ends, and records each
+   session as an asciicast with `scripts/record-session.py`, a small recorder of its own (standard library only):
+   the usage of the key holder at 80 and at 120 columns, `pair --help`, `status`, `devices` and `rehearse` on
+   the machine, `machines` and `status` on the laptop, and two sessions that are real tests: a pairing, with the
+   machine's operator answering from the recording (the codes on the two screens must be the same), and an
+   unlock after a reboot, with no machine named, as a person does it. `scripts/render-casts.py` turns the
+   directory of casts into `index.html`, which shows what each session ended up with, in colour, with no
+   JavaScript; CI uploads the directory as the `e2e-casts` artifact. Play a cast with `asciinema play FILE.cast`.
+9. After each unlock it checks that the agent logged `recovery attempt succeeded` in
    the VM's journal, and that the passphrase was not typed on the console since the
    reboot.
 
@@ -71,9 +79,9 @@ nothing; it appears in the test's command lines, so do not point this at a real 
 `.github/workflows/e2e.yml` runs it on a runner with KVM, for every pull request and
 for pushes to `main` that touch what it tests, and uploads the logs. On a `v<versionCode>` tag,
 `ci.yml` calls it on the packages that `build-deb` made, and the release job waits for it,
-so a release is only made of packages that unlocked a machine. `[U]` Neither workflow
-has run on GitHub yet: the KVM step is the one `emulator.yml` uses, and the rest
-was written to match what ran here.
+so a release is only made of packages that unlocked a machine. `[V]` `e2e.yml` has run on
+GitHub for pushes to `main` (the run for `d75cf34` finished with success, from the Actions API on
+2026-11-10). `[U]` The call from `ci.yml` on a release tag was not looked at after the first release was withdrawn.
 
 The `go-test` job in `ci.yml` also builds the two servers (`scripts/build-syncthing-servers.sh`)
 and gives them to `go test`, so that the tests in `integration/` run instead of

@@ -498,6 +498,82 @@ else
 	echo "skip systemd-creds: user-scope credentials do not work here"
 fi
 
+# ---------------------------------------------------------------------------------
+# What it looks like. The programs are run again at a terminal, on both ends, and recorded as asciicasts
+# (scripts/record-session.py), which CI uploads with a page that shows what each ended up looking like
+# (scripts/render-casts.py). Not only a picture: the pairing is a real one, with the two codes compared, and
+# the unlock is a real one, after a reboot, by the name the pairing gave the machine.
+log "recording the programs at a terminal, on both ends"
+CASTS="$RUN/casts"
+rm -rf -- "$CASTS" "$RUN/kh-demo"
+mkdir -p "$CASTS" "$RUN/kh-demo"
+RECORD="$REPO/scripts/record-session.py"
+RENDER="$REPO/scripts/render-casts.py"
+
+# VMTTY COMMAND: a command in the VM with a terminal, so that it behaves as it does for a person.
+VMTTY=(ssh -tt -i "$RUN/id" -p "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+	-o LogLevel=ERROR -o BatchMode=yes ubuntu@127.0.0.1)
+# rec NAME COLUMNS TITLE -- COMMAND...: one session, recorded.
+rec() {
+	local name=$1 cols=$2 title=$3
+	shift 4
+	"$RECORD" --out "$CASTS/$name.cast" --cols "$cols" --rows 45 --title "$title" "$@" > /dev/null 2>&1
+}
+# cast_text NAME: what the screen of a recording ended up showing. The text is read into a variable first, so that
+# grep stopping early does not break a pipe under pipefail.
+cast_text() { "$RENDER" --text "$CASTS/$1.cast"; }
+# shellcheck disable=SC2329  # run by check
+cast_has() { local text; text="$(cast_text "$1")"; grep -q -- "$2" <<< "$text"; }
+cast_code() { local text; text="$(cast_text "$1")"; grep -o '[0-9]\{3\} [0-9]\{3\}' <<< "$text" | head -1 || true; }
+
+# The key holder's help, at a narrow and a wide terminal: the same text, laid out for each.
+rec keyholder-usage-80 80 "synctang-keyholder: the usage, in a terminal 80 columns wide" -- "$KEYHOLDER" || true
+rec keyholder-usage-120 120 "synctang-keyholder: the usage, in a terminal 120 columns wide" -- "$KEYHOLDER" || true
+rec keyholder-help-pair 80 "synctang-keyholder pair --help" -- "$KEYHOLDER" pair --help || true
+
+# The machine, as its owner sees it.
+rec unlocker-status 100 "synctang-unlocker status (on the machine)" -- \
+	"${VMTTY[@]}" "sudo env LANG=C.UTF-8 synctang-unlocker status --device /dev/vda3" || true
+rec unlocker-devices 100 "synctang-unlocker devices (on the machine)" -- \
+	"${VMTTY[@]}" "sudo env LANG=C.UTF-8 synctang-unlocker devices" || true
+rec unlocker-rehearse-initrd 100 "synctang-unlocker rehearse --initrd-only (on the machine)" -- \
+	"${VMTTY[@]}" "sudo env LANG=C.UTF-8 synctang-unlocker rehearse --initrd-only" || true
+
+# A pairing, on both ends at once. The machine's operator answers y when asked, once the laptop is waiting.
+"$RECORD" --out "$CASTS/machine-pair.cast" --cols 100 --rows 60 --timeout 300 --title "synctang-unlocker pair (on the machine)" \
+	--answer 'enrol it on this volume\? \[y/N\]=y\n' -- \
+	"${VMTTY[@]}" "sudo bash -c \"LANG=C.UTF-8 synctang-unlocker pair --device /dev/vda3 --name e2e-vm --timeout 5m --existing-passphrase-file <(printf %s '$VM_PASSPHRASE')\"" \
+	> /dev/null 2>&1 &
+MACHINE_PAIR_PID=$!
+DEMO_LINK=""
+for _ in $(seq 1 90); do
+	DEMO_LINK="$(grep -o 'synctang://pair[^ ]*' <<< "$(cast_text machine-pair 2> /dev/null)" | head -1 || true)"
+	[ -n "$DEMO_LINK" ] && break
+	sleep 1
+done
+[ -n "$DEMO_LINK" ] || { kill "$MACHINE_PAIR_PID" 2> /dev/null; fail "the recorded pairing showed no link"; }
+rec keyholder-pair 100 "synctang-keyholder pair (on the laptop)" -- \
+	env "XDG_CONFIG_HOME=$RUN/kh-demo" "$KEYHOLDER" pair --store file --name demo-laptop "$DEMO_LINK" && KH_PAIR_OK=1 || KH_PAIR_OK=0
+wait "$MACHINE_PAIR_PID" && MACHINE_PAIR_OK=1 || MACHINE_PAIR_OK=0
+check "the recorded pairing succeeded on the laptop" test "$KH_PAIR_OK" = 1
+check "the recorded pairing succeeded on the machine" test "$MACHINE_PAIR_OK" = 1
+check "the two recorded pairing screens show the same code" \
+	test -n "$(cast_code keyholder-pair)" -a "$(cast_code keyholder-pair)" = "$(cast_code machine-pair)"
+
+rec keyholder-machines 100 "synctang-keyholder machines" -- env "XDG_CONFIG_HOME=$RUN/kh-demo" "$KEYHOLDER" machines || true
+rec keyholder-status 100 "synctang-keyholder status" -- env "XDG_CONFIG_HOME=$RUN/kh-demo" "$KEYHOLDER" status || true
+
+# An unlock, after a reboot, as a person does it: no machine named (there is only one), and Enter to approve.
+reboot_to_prompt
+rec keyholder-unlock 100 "synctang-keyholder unlock (on the laptop; the machine is waiting at its passphrase prompt)" \
+	--answer 'Press Enter to approve=\n' -- \
+	env "XDG_CONFIG_HOME=$RUN/kh-demo" "$KEYHOLDER" unlock --timeout 3m || true
+check "the recorded unlock said it unlocked" cast_has keyholder-unlock 'unlocked'
+check "the recorded unlock opened the machine" unlocked_without_a_passphrase
+
+"$RENDER" "$CASTS" > /dev/null
+check "the casts were rendered into a page" test -s "$CASTS/index.html"
+
 if [ "$FAILED" -eq 0 ]; then
 	log "end to end: all checks passed"
 else

@@ -135,3 +135,15 @@ jobs:
           name: e2e-logs
           path: ${{ runner.temp }}/e2e/run/logs
           retention-days: 7
+
+      - name: What the programs look like
+        # The pairing and the unlock run again at a terminal, on both ends, and recorded as asciicasts
+        # (scripts/record-session.py): index.html shows what each ended up looking like, and each .cast
+        # plays with "asciinema play". Uploaded even when the run fails, for whatever was recorded.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-casts
+          path: ${{ runner.temp }}/e2e/run/casts
+          retention-days: 14
+          if-no-files-found: ignore
