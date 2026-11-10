@@ -7,7 +7,6 @@ package main
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"crypto/tls"
 	"encoding/hex"
@@ -39,8 +38,9 @@ const usage = `usage: synctang-unlocker <command> [flags]
        synctang-unlocker --version
 
 commands:
-  enrol       add a key holder's public key to a LUKS volume (or --remove or
-              --replace one that is already enrolled)
+  enrol       add a key holder's public key to a LUKS volume
+  revoke      remove a key holder from a LUKS volume
+  rotate      give an enrolled key holder a new key
   agent       run the systemd password agent, answering recovery attempts
   status      show which key holders are enrolled and this machine's identity
   devices     list LUKS devices, and what is enrolled on each
@@ -97,6 +97,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 0
 	case "enrol":
 		return runEnrol(args[1:], stdout, stderr)
+	case "revoke":
+		return runRevoke(args[1:], stdout, stderr)
+	case "rotate":
+		return runRotate(args[1:], stdout, stderr)
 	case "agent":
 		return runAgentCLI(args[1:], stdout, stderr)
 	case "pair":
@@ -147,105 +151,14 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 	transportID := fs.String("transport-id", "", "this machine's transport identity")
 	recipientTransportID := fs.String("recipient-transport-id", "", "the recipient's own transport identity (from synctang-keyholder export-pubkey), if known")
 	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, "path to this machine's persistent transport identity")
-	remove := fs.String("remove", "", "revoke the enrolled recipient with this transport id instead of adding one")
-	replace := fs.String("replace", "", "rotate the enrolled recipient with this transport id to --pubkey, revoking the old key")
-	removeKeyslot := fs.String("remove-keyslot", "", "revoke the enrolled entry in this keyslot, whatever its transport id (for one that has none, which --remove cannot name; \"status\" says which)")
-	keyslot := fs.String("keyslot", "", "with --remove or --replace: the keyslot of the entry to act on, when several enrolled entries share the transport id")
 	rebuild := fs.Bool("rebuild-initrd", false, "after enrolling, run dracut --force if the initrd does not carry this machine's identity and network.conf")
 	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-
-	if *keyslot != "" && *remove == "" && *replace == "" {
-		ui.Errorln(stderr, "--keyslot goes with --remove or --replace")
 		return 2
 	}
 
 	if *device == "" {
 		ui.Errorf(stderr, "--device is required: %s\n", deviceHint())
 		return 2
-	}
-
-	if *remove != "" && *replace != "" {
-		ui.Errorln(stderr, "--remove and --replace are alternatives; use one or the other")
-		return 2
-	}
-
-	if *replace != "" {
-		if *device == "" || *pubkeyHex == "" || *passphraseFile == "" {
-			ui.Errorln(stderr, "--device, --pubkey and --existing-passphrase-file are all required with --replace")
-			return 2
-		}
-		pubkey, err := hex.DecodeString(*pubkeyHex)
-		if err != nil {
-			ui.Errorf(stderr, "--pubkey: %v\n", err)
-			return 2
-		}
-		passphrase, err := readPassphrase(*passphraseFile)
-		if err != nil {
-			ui.Errorf(stderr, "%v\n", err)
-			return 1
-		}
-		defer mrcore.Wipe(passphrase)
-
-		// A key holder that rotates its key normally keeps its transport
-		// identity, so --recipient-transport-id defaults to the one being
-		// replaced rather than to nothing: dropping it would quietly turn
-		// a rotation into an enrolment the agent cannot restrict.
-		newTransportID := cmp.Or(*recipientTransportID, *replace)
-
-		if err := replaceRecipient(*device, passphrase, pubkey, *replace, newTransportID, *keyslot); err != nil {
-			ui.Errorf(stderr, "%v\n", err)
-			return 1
-		}
-		look := ui.For(stdout)
-		fmt.Fprintln(stdout, look.Line(look.OK(""), fmt.Sprintf("rotated recipient %s on %s; its previous key no longer opens the device", *replace, *device)))
-		return 0
-	}
-
-	if *removeKeyslot != "" {
-		if *remove != "" || *replace != "" {
-			ui.Errorln(stderr, "--remove-keyslot cannot be combined with --remove or --replace")
-			return 2
-		}
-		if *device == "" || *passphraseFile == "" {
-			ui.Errorln(stderr, "--device and --existing-passphrase-file are required with --remove-keyslot")
-			return 2
-		}
-		passphrase, err := readPassphrase(*passphraseFile)
-		if err != nil {
-			ui.Errorf(stderr, "%v\n", err)
-			return 1
-		}
-		defer mrcore.Wipe(passphrase)
-		if err := removeRecipientByKeyslot(*device, passphrase, *removeKeyslot); err != nil {
-			ui.Errorf(stderr, "%v\n", err)
-			return 1
-		}
-		look := ui.For(stdout)
-		fmt.Fprintln(stdout, look.Line(look.OK(""), fmt.Sprintf("revoked the key holder in keyslot %s on %s", *removeKeyslot, *device)))
-		return 0
-	}
-
-	if *remove != "" {
-		if *device == "" || *passphraseFile == "" {
-			ui.Errorln(stderr, "--device and --existing-passphrase-file are required with --remove")
-			return 2
-		}
-		passphrase, err := readPassphrase(*passphraseFile)
-		if err != nil {
-			ui.Errorf(stderr, "%v\n", err)
-			return 1
-		}
-		defer mrcore.Wipe(passphrase)
-
-		if err := removeRecipient(*device, passphrase, *remove, *keyslot); err != nil {
-			ui.Errorf(stderr, "%v\n", err)
-			return 1
-		}
-		look := ui.For(stdout)
-		fmt.Fprintln(stdout, look.Line(look.OK(""), fmt.Sprintf("revoked recipient %s on %s", *remove, *device)))
-		return 0
 	}
 
 	if *device == "" || *pubkeyHex == "" || *passphraseFile == "" {

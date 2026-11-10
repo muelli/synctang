@@ -91,13 +91,13 @@ first and the old one revoked after it, so there is never a moment with neither,
 and `--yes` answers yes. So to re-pair a phone whose key changed, run the same
 `pair` command again and answer `y`. `enrol` does the same for a laptop: the same
 key is a no-op, and a different key for an enrolled ID is refused with the
-`--replace` command to use instead.
+`rotate` command to use instead.
 
 `status` warns if one transport ID is enrolled more than once (a state older
 versions could leave behind), and the agent then refuses to answer for it rather
 than pick a key. Repair it by naming the stale keyslot:
 
-    synctang-unlocker enrol --device /dev/sdXN --remove <transport id> --keyslot <n> \
+    synctang-unlocker revoke --device /dev/sdXN --keyslot <n> \
       --existing-passphrase-file <(printf %s "$PASS")
 
 The phone waits up to five minutes (the machine's default `--timeout`) for you to
@@ -347,16 +347,16 @@ machine".
 Revoke destroys that key holder's keyslot and removes its token entry,
 leaving the others alone:
 
-    synctang-unlocker enrol --device /dev/sdXN --remove <transport id> \
-      --existing-passphrase-file <(printf %s "$PASS")
+    synctang-unlocker revoke --device /dev/sdXN --existing-passphrase-file <(printf %s "$PASS") \
+      <transport id>
 
 Rotate replaces a key holder's key in one command. The new key is enrolled
 before the old one is revoked, so it can open the volume throughout:
 
     synctang-keyholder init --force        # on the laptop: new key, same transport id
     synctang-keyholder export-pubkey
-    synctang-unlocker enrol --device /dev/sdXN --replace <transport id> --pubkey <new public key> \
-      --existing-passphrase-file <(printf %s "$PASS")
+    synctang-unlocker rotate --device /dev/sdXN --pubkey <new public key> \
+      --existing-passphrase-file <(printf %s "$PASS") <transport id>
 
 To pair the phone with a different machine, or with the same one again,
 use "Pair with a machine again" on the Unlock screen. The machine already

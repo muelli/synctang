@@ -45,8 +45,8 @@ paired again, and nothing migrates an old file layout.
   re-announces every minute and rejoins a relay that drops it; a key holder's lookups
   back off and obey a 429's Retry-After. The relay pool's relays are measured at once,
   which takes a join from about 20 s to about 2 s (`docs/transport.md`).
-- **WP3** (`synctang-unlocker`): `enrol` (add, `--remove`, or `--replace` a recipient),
-  `agent`, `status`, `pair` and `open`. One enrolled recipient per transport ID. The agent
+- **WP3** (`synctang-unlocker`): `enrol` (add a recipient), `revoke` and `rotate` (remove a
+  recipient, or give it a new key), `agent`, `status`, `pair`, `devices`, `rehearse` and `open`. One enrolled recipient per transport ID. The agent
   logs to the journal as `synctang-unlocker`, at the level `rd.synctang.log=` sets.
   Settings for private servers come from `/etc/synctang/network.conf` and `rd.synctang.*`
   kernel arguments. Manual pages for every command, flag, file and kernel argument are

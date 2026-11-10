@@ -143,7 +143,7 @@ the tests named, run against loopback LUKS images (`cmd/synctang-unlocker`,
 - `enrol` with an ID that already has the same key (the same `kid`, the SHA-256
   of the public point) adds nothing and reports the keyslot
   (`TestEnrolOnceSameKeyTwiceIsIdempotent`). With a different key it is refused,
-  names the keyslot and the old key, and points at `--replace`
+  names the keyslot and the old key, and points at `rotate`
   (`TestEnrolOnceDifferentKeySameIDIsRefusedAndNothingChanges`).
 - `pair` treats the same key as success with nothing added
   (`TestPairSameKeyIsAlreadyEnrolledAndAddsNothing`); a different key asks the
@@ -151,8 +151,8 @@ the tests named, run against loopback LUKS images (`cmd/synctang-unlocker`,
   revoking the old (`TestPairDifferentKeyAsksNamingBothAndReplacesOnYes`), and on no
   changes nothing (`TestPairDifferentKeyDeclinedChangesNothing`).
 - A header that already has duplicates is repaired by naming the stale keyslot:
-  `enrol --remove <id> --keyslot <n>`. Without `--keyslot`, `--remove` and
-  `--replace` refuse and list the entries
+  `revoke --keyslot <n>`. Without `--keyslot`, `revoke <id>` and
+  `rotate <id>` refuse and list the entries
   (`TestRemoveRefusesWhenSeveralEntriesShareTheID`,
   `TestRemoveWithAKeyslotRemovesExactlyThatEntry`), and `status` prints a
   `WARNING` line with the command (`TestStatusWarnsAboutASharedTransportIDAndNamesTheFix`).

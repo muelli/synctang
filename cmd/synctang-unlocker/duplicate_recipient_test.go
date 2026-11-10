@@ -112,7 +112,7 @@ func TestEnrolOnceDifferentKeySameIDIsRefusedAndNothingChanges(t *testing.T) {
 	if err == nil {
 		t.Fatal("a second, different key for the same transport id was enrolled")
 	}
-	for _, want := range []string{"keyslot " + slot, shortKid(kidOf(oldPub)), "--replace " + testKH1, "--pubkey"} {
+	for _, want := range []string{"keyslot " + slot, shortKid(kidOf(oldPub)), "synctang-unlocker rotate", testKH1, "--pubkey"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q should contain %q", err, want)
 		}
@@ -157,8 +157,8 @@ func TestEnrolCommandReportsAlreadyEnrolledAndRefusesAConflict(t *testing.T) {
 	if code := run(args(other), &out, &errOut); code == 0 {
 		t.Fatalf("a different key for the same id succeeded: %q", out.String())
 	}
-	if !strings.Contains(errOut.String(), "--replace") {
-		t.Errorf("stderr %q should say to use --replace", errOut.String())
+	if !strings.Contains(errOut.String(), "rotate") {
+		t.Errorf("stderr %q should say to use rotate", errOut.String())
 	}
 }
 
@@ -247,7 +247,7 @@ func TestStatusWarnsAboutASharedTransportIDAndNamesTheFix(t *testing.T) {
 	if warning == "" {
 		t.Fatalf("no WARNING line in:\n%s", out.String())
 	}
-	for _, want := range []string{testKH1, slotOld, slotNew, shortKid(kidOf(oldPub)), shortKid(kidOf(newPub)), "synctang-unlocker enrol", "--remove " + testKH1, "--keyslot"} {
+	for _, want := range []string{testKH1, slotOld, slotNew, shortKid(kidOf(oldPub)), shortKid(kidOf(newPub)), "synctang-unlocker revoke", testKH1, "--keyslot"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("status output should contain %q:\n%s", want, out.String())
 		}

@@ -86,9 +86,9 @@ func TestRunEnrolEndToEnd(t *testing.T) {
 	}
 }
 
-// A8, exercised at the CLI level: "enrol --remove" revokes exactly the
+// A8, exercised at the CLI level: "revoke" revokes exactly the
 // named recipient and leaves the other one enrolled.
-func TestRunEnrolRemoveEndToEnd(t *testing.T) {
+func TestRunRevokeEndToEnd(t *testing.T) {
 	existingPassphrase := []byte("existing-test-passphrase")
 	device := formatLoopbackImage(t, existingPassphrase)
 
@@ -129,13 +129,13 @@ func TestRunEnrolRemoveEndToEnd(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	code := run([]string{
-		"enrol",
+		"revoke",
 		"--device", device,
 		"--existing-passphrase-file", passphraseFile,
-		"--remove", testKH1,
+		testKH1,
 	}, &stdout, &stderr)
 	if code != 0 {
-		t.Fatalf("run enrol --remove: exit %d, stderr %q", code, stderr.String())
+		t.Fatalf("run revoke: exit %d, stderr %q", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "revoked recipient "+testKH1) {
 		t.Errorf("expected confirmation of the revocation, got stdout %q", stdout.String())
@@ -156,18 +156,17 @@ func TestRunEnrolRemoveEndToEnd(t *testing.T) {
 		t.Fatalf("unmarshal exported token: %v", err)
 	}
 	if len(tok.Recipients) != 1 {
-		t.Fatalf("expected 1 recipient after --remove, got %d", len(tok.Recipients))
+		t.Fatalf("expected 1 recipient after revoke, got %d", len(tok.Recipients))
 	}
 	if id, ok := tok.Recipients[0].TransportDeviceID(); !ok || id != testKH2 {
 		t.Fatalf("surviving recipient = (%q, %v), want (%q, true)", id, ok, testKH2)
 	}
 }
 
-// "enrol --replace" must rotate the named key holder in one command,
-// keeping its transport id without being told it again: a rotation
-// whose --recipient-transport-id defaulted to empty would leave an
+// "rotate" must replace the named key holder's key in one command,
+// keeping its transport id: a rotation that lost it would leave an
 // entry the agent cannot restrict to any peer.
-func TestRunEnrolReplaceEndToEnd(t *testing.T) {
+func TestRunRotateEndToEnd(t *testing.T) {
 	existingPassphrase := []byte("existing-test-passphrase")
 	device := formatLoopbackImage(t, existingPassphrase)
 
@@ -205,14 +204,14 @@ func TestRunEnrolReplaceEndToEnd(t *testing.T) {
 	stdout.Reset()
 	stderr.Reset()
 	code := run([]string{
-		"enrol",
+		"rotate",
 		"--device", device,
 		"--pubkey", hex.EncodeToString(SNew),
 		"--existing-passphrase-file", passphraseFile,
-		"--replace", testKH1,
+		testKH1,
 	}, &stdout, &stderr)
 	if code != 0 {
-		t.Fatalf("run enrol --replace: exit %d, stderr %q", code, stderr.String())
+		t.Fatalf("run rotate: exit %d, stderr %q", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "rotated recipient "+testKH1) {
 		t.Errorf("expected confirmation of the rotation, got stdout %q", stdout.String())
@@ -220,7 +219,7 @@ func TestRunEnrolReplaceEndToEnd(t *testing.T) {
 
 	tok := exportTokenForTest(t, device)
 	if len(tok.Recipients) != 1 {
-		t.Fatalf("expected 1 recipient after --replace, got %d", len(tok.Recipients))
+		t.Fatalf("expected 1 recipient after rotate, got %d", len(tok.Recipients))
 	}
 	if id, ok := tok.Recipients[0].TransportDeviceID(); !ok || id != testKH1 {
 		t.Fatalf("rotated recipient = (%q, %v), want (%q, true)", id, ok, testKH1)
@@ -233,23 +232,62 @@ func TestRunEnrolReplaceEndToEnd(t *testing.T) {
 	}
 }
 
-// --remove and --replace disagree about what should happen to the named
-// recipient, so asking for both must be refused rather than silently
-// resolved in whichever order the code happens to check them.
-func TestRunEnrolRejectsRemoveAndReplaceTogether(t *testing.T) {
-	var stdout, stderr bytes.Buffer
-	code := run([]string{
-		"enrol",
-		"--device", "/nonexistent",
-		"--existing-passphrase-file", "/nonexistent",
-		"--remove", testKH1,
-		"--replace", testKH1,
-	}, &stdout, &stderr)
-	if code != 2 {
-		t.Fatalf("exit = %d, want 2; stderr %q", code, stderr.String())
+// What revoke and rotate want is said plainly, and the options that enrol used to take for them are gone:
+// there is one way to do each thing.
+func TestRevokeAndRotateWantWhatTheyNeed(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"revoke", "--device", "/nonexistent", "--existing-passphrase-file", "/nonexistent"}, "transport id or --keyslot"},
+		{[]string{"revoke", "--existing-passphrase-file", "/nonexistent", testKH1}, "--device"},
+		{[]string{"revoke", "--device", "/nonexistent", testKH1}, "--existing-passphrase-file"},
+		{[]string{"revoke", "--device", "/nonexistent", "--existing-passphrase-file", "/nonexistent", testKH1, testKH2}, "one key holder"},
+		{[]string{"rotate", "--device", "/nonexistent", "--existing-passphrase-file", "/nonexistent", testKH1}, "--pubkey"},
+		{[]string{"rotate", "--device", "/nonexistent", "--existing-passphrase-file", "/nonexistent", "--pubkey", "04aa"}, "transport id"},
+	} {
+		var stdout, stderr bytes.Buffer
+		if code := run(tc.args, &stdout, &stderr); code != 2 || !strings.Contains(stderr.String(), tc.want) {
+			t.Errorf("%v: exit %d, stderr %q (want it to mention %q)", tc.args, code, stderr.String(), tc.want)
+		}
 	}
-	if !strings.Contains(stderr.String(), "alternatives") {
-		t.Errorf("expected an explanation of the conflict, got stderr %q", stderr.String())
+}
+
+func TestEnrolNoLongerRemovesOrReplaces(t *testing.T) {
+	for _, flag := range []string{"--remove", "--replace", "--remove-keyslot", "--keyslot"} {
+		var stdout, stderr bytes.Buffer
+		code := run([]string{"enrol", "--device", "/nonexistent", flag, "x"}, &stdout, &stderr)
+		if code != 2 || !strings.Contains(stderr.String(), "unrecognised option '"+flag+"'") {
+			t.Errorf("%s: exit %d, stderr %q", flag, code, stderr.String())
+		}
+	}
+}
+
+// A transport id and the options may come in either order, as with other GNU programs.
+func TestRevokeTakesTheTransportIDBeforeOrAfterTheOptions(t *testing.T) {
+	pass := []byte("existing-test-passphrase")
+	for _, before := range []bool{true, false} {
+		device := formatLoopbackImage(t, pass)
+		if err := enrolRecipient(device, pass, newPublicKey(t), "m", "MACHINE-ID", testKH1); err != nil {
+			t.Fatal(err)
+		}
+		passFile := filepath.Join(t.TempDir(), "pass")
+		if err := os.WriteFile(passFile, pass, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		args := []string{"revoke", "--device", device, "--existing-passphrase-file", passFile}
+		if before {
+			args = []string{"revoke", testKH1, "--device", device, "--existing-passphrase-file", passFile}
+		} else {
+			args = append(args, testKH1)
+		}
+		var stdout, stderr bytes.Buffer
+		if code := run(args, &stdout, &stderr); code != 0 {
+			t.Fatalf("before=%v: exit %d: %s", before, code, stderr.String())
+		}
+		if got := len(exportTokenForTest(t, device).Recipients); got != 0 {
+			t.Errorf("before=%v: %d key holders left", before, got)
+		}
 	}
 }
 

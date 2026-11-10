@@ -23,7 +23,7 @@ import (
 //
 // Both were previously only available by reading the LUKS2 token JSON by
 // hand, which matters most in the one situation where being wrong is
-// expensive: revoking a key holder. "enrol --remove" takes a transport
+// expensive: revoking a key holder. "revoke" takes a transport
 // id and destroys the keyslot belonging to it, so naming the wrong one
 // destroys the wrong key holder's access.
 //
@@ -98,7 +98,7 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 		if !ok || id == "" {
 			// Worth saying rather than skipping: a recipient with no
 			// transport id can never be connected to, and cannot be
-			// named to "enrol --remove" either.
+			// named to "revoke" by id either.
 			id = "(none recorded: cannot be dialled, and is revoked by its keyslot)"
 		}
 		keyslot := "(unknown)"
@@ -131,7 +131,7 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 		slot := keyslotOf(tok, i)
 		printWarning(stdout,
 			fmt.Sprintf("the key holder in keyslot %s has no transport id, so the agent cannot tell it from a stranger and will never answer it. Remove it with:", slot),
-			[]string{fmt.Sprintf("synctang-unlocker enrol --device %s --remove-keyslot %s \\", activeDevice, slot), "  --existing-passphrase-file ..."},
+			[]string{fmt.Sprintf("synctang-unlocker revoke --device %s --keyslot %s \\", activeDevice, slot), "  --existing-passphrase-file ..."},
 			"Then enrol it again with --recipient-transport-id (\"synctang-keyholder export-pubkey\" prints it).")
 	}
 	if len(withoutID) == len(tok.Recipients) {
@@ -153,7 +153,7 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 			printWarning(stdout,
 				fmt.Sprintf("transport id %s is enrolled %d times (%s), so the agent will refuse to answer for it. "+
 					"Keep the entry whose key is current and remove each of the others with:", id, len(idxs), describeRecipients(tok, idxs)),
-				[]string{fmt.Sprintf("synctang-unlocker enrol --device %s --remove %s \\", activeDevice, id), "  --keyslot <n> --existing-passphrase-file ..."},
+				[]string{fmt.Sprintf("synctang-unlocker revoke --device %s --keyslot <n> \\", activeDevice), "  --existing-passphrase-file ..."},
 				"")
 		}
 	}

@@ -127,8 +127,8 @@ func matchRecipient(tok mrcore.Token, peerID string) (*mrcore.Recipient, error) 
 		slots[n] = keyslotOf(tok, i)
 	}
 	return nil, fmt.Errorf("synctang-unlocker: %d enrolled recipients share the transport id %s (keyslots %s), so the agent will not guess which key is the live one; "+
-		"run 'synctang-unlocker status', then remove the stale entry with 'synctang-unlocker enrol --remove %s --keyslot <n>'",
-		len(idxs), peerID, strings.Join(slots, ", "), peerID)
+		"run 'synctang-unlocker status', then remove the stale entry with 'synctang-unlocker revoke --keyslot <n>'",
+		len(idxs), peerID, strings.Join(slots, ", "))
 }
 
 // runExchange is everything that happens once a key holder is on the

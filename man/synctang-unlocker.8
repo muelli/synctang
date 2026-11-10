@@ -18,6 +18,22 @@ synctang\-unlocker \- unlock a LUKS volume with the approval of a key holder
 .I file
 .RI [ flags ]
 .br
+.B synctang\-unlocker revoke
+.B \-\-device
+.I device
+.B \-\-existing\-passphrase\-file
+.I file
+.RI ( transport\-id " | " \-\-keyslot " " n )
+.br
+.B synctang\-unlocker rotate
+.B \-\-device
+.I device
+.B \-\-pubkey
+.I hex
+.B \-\-existing\-passphrase\-file
+.I file
+.I transport\-id
+.br
 .B synctang\-unlocker pair
 .B \-\-device
 .I device
@@ -119,21 +135,8 @@ is already enrolled with the same key, nothing is added and the command prints
 .BI "already enrolled at keyslot " N
 and succeeds.
 If it is enrolled with a different key, the command fails and says to use
-.B \-\-replace ,
+.BR rotate ,
 naming the keyslot and the old key.
-.PP
-With
-.B \-\-remove
-it revokes a key holder, destroying its keyslot and removing its entry from the
-token, instead of adding one.
-With
-.B \-\-remove\-keyslot
-it does the same for the entry in one keyslot, whatever its transport identity, which is how an
-entry that has none is removed.
-With
-.B \-\-replace
-it swaps a key holder's key for a new one, enrolling the new key before the
-old one is revoked, so the volume can be opened throughout.
 .TP
 \fB\-\-device\fR \fIpath\fR
 The LUKS2 device or image to enrol on.
@@ -142,8 +145,7 @@ Required.
 \fB\-\-pubkey\fR \fIhex\fR
 The key holder's public key, hex-encoded, as printed by
 .B synctang\-keyholder export\-pubkey .
-Required, except with
-.BR \-\-remove .
+Required.
 .TP
 \fB\-\-existing\-passphrase\-file\fR \fIfile\fR
 A file holding an existing valid passphrase of the volume, or
@@ -183,9 +185,6 @@ The key holder's own transport identity, as printed by
 recorded with its entry so that the agent answers only that key holder.
 Required when adding a key holder: an entry without it could never be used, because
 the agent tells key holders from strangers by it and refuses to listen when none of the enrolled ones has one.
-With
-.B \-\-replace
-it defaults to the identity being replaced.
 .TP
 \fB\-\-machine\-key\-file\fR \fIfile\fR
 This machine's persistent transport identity.
@@ -195,45 +194,6 @@ It is created if it does not exist.
 When enrolling a disk image that belongs to another machine, name the identity
 inside that image here, or the key holder is told a Device ID that no machine
 announces.
-.TP
-\fB\-\-remove\fR \fIid\fR
-Revoke the enrolled key holder with this transport identity.
-Needs
-.B \-\-device
-and
-.BR \-\-existing\-passphrase\-file .
-.TP
-\fB\-\-replace\fR \fIid\fR
-Rotate the enrolled key holder with this transport identity to the key given
-with
-.BR \-\-pubkey .
-.TP
-\fB\-\-remove\-keyslot\fR \fIn\fR
-Revoke the enrolled entry in keyslot
-.IR n ,
-destroying the keyslot, whatever the entry's transport identity.
-For an entry that has none, which
-.B \-\-remove
-cannot name and which can never be used;
-.B status
-warns about it and gives the command.
-Not to be combined with
-.B \-\-remove
-or
-.BR \-\-replace .
-.TP
-\fB\-\-keyslot\fR \fIn\fR
-With
-.B \-\-remove
-or
-.BR \-\-replace :
-the keyslot of the entry to act on.
-Needed only when several enrolled entries share the transport identity, a state
-that
-.B status
-warns about.
-Without it, several matches are refused and listed, rather than the first being
-chosen.
 .TP
 \fB\-\-rebuild\-initrd\fR
 After enrolling, compare the initrd of the running kernel with this machine, by hash and with
@@ -251,6 +211,69 @@ is not found.
 Needs root and dracut.
 A rebuild that fails, or that leaves the initrd still different, makes the command exit with
 status 1 although the key holder is enrolled.
+.SS revoke
+Removes a key holder from the volume: its keyslot is destroyed and its entry is taken out of the
+.B mr\-1
+token, and the other key holders are left alone.
+It needs the privileges
+.BR cryptsetup (8)
+needs on the device, normally root, and an existing passphrase of the volume.
+The key holder is named by its transport identity, as
+.B status
+lists it, or by its keyslot with
+.BR \-\-keyslot .
+The identity and the options may come in either order.
+Run
+.B status
+first: naming the wrong identity revokes the wrong key holder.
+.TP
+\fB\-\-device\fR \fIpath\fR
+The LUKS2 device or image the key holder is enrolled on.
+Required.
+.TP
+\fB\-\-existing\-passphrase\-file\fR \fIfile\fR
+A file holding an existing valid passphrase of the volume, or
+.B \-
+for standard input; see
+.BR enrol .
+Required.
+.TP
+\fB\-\-keyslot\fR \fIn\fR
+The keyslot of the entry to revoke, whatever its transport identity.
+Needed when several enrolled entries share the transport identity, a state that
+.B status
+warns about; without it, several matches are refused and listed, rather than the first being chosen.
+It is also the way to revoke an entry that has no transport identity, which can never be used and which
+.B status
+warns about.
+.SS rotate
+Gives an enrolled key holder a new key: the new public key is enrolled before the old one is revoked, so the
+volume can be opened throughout, and the key holder keeps its transport identity.
+The key holder is named by its transport identity, as
+.B status
+lists it.
+It needs the privileges
+.BR cryptsetup (8)
+needs on the device, normally root, and an existing passphrase of the volume.
+.TP
+\fB\-\-device\fR \fIpath\fR
+The LUKS2 device or image the key holder is enrolled on.
+Required.
+.TP
+\fB\-\-pubkey\fR \fIhex\fR
+The key holder's new public key, hex-encoded, as printed by
+.B synctang\-keyholder export\-pubkey .
+Required.
+.TP
+\fB\-\-existing\-passphrase\-file\fR \fIfile\fR
+A file holding an existing valid passphrase of the volume, or
+.B \-
+for standard input; see
+.BR enrol .
+Required.
+.TP
+\fB\-\-keyslot\fR \fIn\fR
+The keyslot of the entry to rotate: needed only when several enrolled entries share the transport identity.
 .SS pair
 Shows a QR code and a one-time pairing code on the console, and enrols the key
 holder that answers it.
@@ -545,7 +568,7 @@ would fail every unlock without saying why.
 Run
 .B status
 to see them and
-.B enrol \-\-remove \-\-keyslot
+.B revoke \-\-keyslot
 to remove the stale one.
 .TP
 \fB\-\-device\fR \fIpath\fR
@@ -802,10 +825,10 @@ synctang\-unlocker status \-\-device /dev/sdXN
 Revoke a key holder, and rotate another one's key:
 .PP
 .nf
-synctang\-unlocker enrol \-\-device /dev/sdXN \-\-remove <transport id> \e
-  \-\-existing\-passphrase\-file <(printf %s "$PASS")
-synctang\-unlocker enrol \-\-device /dev/sdXN \-\-replace <transport id> \e
-  \-\-pubkey <new public key> \-\-existing\-passphrase\-file <(printf %s "$PASS")
+synctang\-unlocker revoke \-\-device /dev/sdXN \-\-existing\-passphrase\-file <(printf %s "$PASS") \e
+  <transport id>
+synctang\-unlocker rotate \-\-device /dev/sdXN \-\-pubkey <new public key> \e
+  \-\-existing\-passphrase\-file <(printf %s "$PASS") <transport id>
 .fi
 .PP
 Open an external drive after boot, and close it again:

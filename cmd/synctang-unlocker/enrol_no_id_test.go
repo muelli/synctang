@@ -62,7 +62,7 @@ func TestStatusWarnsAboutAnEntryWithoutATransportIDAndSaysHowToRemoveIt(t *testi
 	}
 	// A warning is wrapped to fit a terminal, so a phrase may be broken across lines.
 	warning = strings.Join(strings.Fields(warning), " ")
-	for _, want := range []string{"no transport id", "keyslot " + slot, "--remove-keyslot " + slot} {
+	for _, want := range []string{"no transport id", "keyslot " + slot, "synctang-unlocker revoke", "--keyslot " + slot} {
 		if !strings.Contains(warning, want) {
 			t.Errorf("the warning lacks %q:\n%s", want, out.String())
 		}
@@ -104,7 +104,7 @@ func TestRemoveKeyslotRemovesAnEntryThatHasNoTransportID(t *testing.T) {
 	device, _, passFile, slot := idlessImage(t)
 	slotsBefore := usedSlotCount(t, device)
 	var out, errOut bytes.Buffer
-	code := run([]string{"enrol", "--device", device, "--remove-keyslot", slot, "--existing-passphrase-file", passFile}, &out, &errOut)
+	code := run([]string{"revoke", "--device", device, "--keyslot", slot, "--existing-passphrase-file", passFile}, &out, &errOut)
 	if code != 0 {
 		t.Fatalf("exit %d: %s%s", code, out.String(), errOut.String())
 	}
@@ -129,15 +129,11 @@ func TestRemoveKeyslotRefusesWhatItCannotFind(t *testing.T) {
 	device, _, passFile, _ := idlessImage(t)
 	before := tokenBytes(t, device)
 	var out, errOut bytes.Buffer
-	if code := run([]string{"enrol", "--device", device, "--remove-keyslot", "7", "--existing-passphrase-file", passFile}, &out, &errOut); code == 0 {
+	if code := run([]string{"revoke", "--device", device, "--keyslot", "7", "--existing-passphrase-file", passFile}, &out, &errOut); code == 0 {
 		t.Fatalf("exit 0: %s", out.String())
 	}
 	if tokenBytes(t, device) != before {
 		t.Error("the token changed")
-	}
-	// Not together with --remove: two instructions for one run.
-	if code := run([]string{"enrol", "--device", device, "--remove", testKH1, "--remove-keyslot", "1", "--existing-passphrase-file", passFile}, &out, &errOut); code != 2 {
-		t.Errorf("--remove with --remove-keyslot: exit %d, want 2", code)
 	}
 }
 

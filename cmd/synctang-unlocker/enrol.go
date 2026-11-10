@@ -190,7 +190,7 @@ func enrolOnce(device string, existingPassphrase, recipientPublicKey []byte, mac
 			return enrolOutcome{Already: true, Keyslot: plan.Existing.Keyslot}, nil
 		case planReplace:
 			return enrolOutcome{}, fmt.Errorf("transport id %s is already enrolled with a different key (keyslot %s, key %s); "+
-				"to change its key use: synctang-unlocker enrol --device %s --replace %s --pubkey <new public key> ...",
+				"to change its key use: synctang-unlocker rotate --device %s --pubkey <new public key> %s ...",
 				recipientTransportID, plan.Existing.Keyslot, shortKid(plan.Existing.Kid), device, recipientTransportID)
 		}
 	}
@@ -238,8 +238,8 @@ func planEnrolment(device string, publicKey []byte, transportID string) (enrolPl
 		return enrolPlan{Kind: planReplace, Existing: existing}, nil
 	default:
 		return enrolPlan{}, fmt.Errorf("transport id %s is enrolled more than once (%s); remove all but one first, with "+
-			"synctang-unlocker enrol --remove %s --keyslot <n> (see synctang-unlocker status)",
-			transportID, describeRecipients(tok, idxs), transportID)
+			"synctang-unlocker revoke --keyslot <n> (see synctang-unlocker status)",
+			transportID, describeRecipients(tok, idxs))
 	}
 }
 
@@ -269,7 +269,7 @@ func removeRecipient(device string, existingPassphrase []byte, recipientTranspor
 }
 
 // removeRecipientByKeyslot revokes the entry that sits in keyslot, whatever its transport id,
-// including none: the way to remove an entry that "enrol --remove" cannot name.
+// including none: the way to remove an entry that "revoke" cannot name by its transport id.
 func removeRecipientByKeyslot(device string, existingPassphrase []byte, keyslot string) error {
 	tok, tokenID, err := loadEnrolledToken(device)
 	if err != nil {
