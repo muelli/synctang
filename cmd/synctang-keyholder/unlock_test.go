@@ -125,7 +125,7 @@ func TestUnlockAnswersMachineRecovery(t *testing.T) {
 	}()
 
 	var stdout strings.Builder
-	if err := runUnlockOnce(ctx, s, keyholderCert, machineID, "", addr, transport.NetworkConfig{}, true, strings.NewReader(""), &stdout); err != nil {
+	if err := runUnlockOnce(ctx, s, keyholderCert, machineID, "", addr, transport.NetworkConfig{}, true, strings.NewReader(""), &stdout, func() {}); err != nil {
 		t.Fatalf("runUnlockOnce: %v", err)
 	}
 

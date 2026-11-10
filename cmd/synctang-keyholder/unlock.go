@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/muelli/synctang/internal/ui"
 	"github.com/muelli/synctang/mrcore"
 	"github.com/muelli/synctang/mrcore/transport"
 )
@@ -50,7 +51,7 @@ type dialError struct{ error }
 
 func (e *dialError) Unwrap() error { return e.error }
 
-func runUnlockOnce(ctx context.Context, s []byte, cert tls.Certificate, machineID, alias, directAddr string, network transport.NetworkConfig, yes bool, stdin io.Reader, stdout io.Writer) error {
+func runUnlockOnce(ctx context.Context, s []byte, cert tls.Certificate, machineID, alias, directAddr string, network transport.NetworkConfig, yes bool, stdin io.Reader, stdout io.Writer, quiet func()) error {
 	tr := newDialTransport(cert, directAddr, network)
 	conn, err := tr.Dial(ctx, transport.DialOptions{PeerID: machineID, DirectAddr: directAddr})
 	if err != nil {
@@ -65,6 +66,7 @@ func runUnlockOnce(ctx context.Context, s []byte, cert tls.Certificate, machineI
 
 	in := bufio.NewReader(stdin)
 
+	quiet() // whatever was shown while waiting goes before the next thing is printed
 	if !yes {
 		fmt.Fprintf(stdout, "%s wants to unlock. Press Enter to approve, Ctrl-C to abort: ", describeMachine(alias, hello.Name, machineID))
 		if _, err := in.ReadString('\n'); err != nil && err != io.EOF {
@@ -104,7 +106,12 @@ func runUnlockOnce(ctx context.Context, s []byte, cert tls.Certificate, machineI
 		return fmt.Errorf("the machine could not use the answer: %s", result.Error)
 	}
 
-	fmt.Fprintln(stdout, "unlocked")
+	look := ui.For(stdout)
+	name := ""
+	if alias != "" {
+		name = " " + look.Dim(alias)
+	}
+	fmt.Fprintln(stdout, look.Line(look.OK(""), look.Green(look.Emoji("🔓", "")+"unlocked")+name))
 	return nil
 }
 

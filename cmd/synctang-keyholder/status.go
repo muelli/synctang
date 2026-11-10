@@ -41,15 +41,16 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 		}
 		return 1
 	}
-	fmt.Fprintf(stdout, "key: held by %s\n%s\n", st.Name(), wrap.Paragraph(st.Describe(), "  ", wrap.Width(stdout)))
+	look := ui.For(stdout)
+	fmt.Fprintf(stdout, "%skey: held by %s\n%s\n", look.Emoji("🔑", ""), look.Bold(st.Name()), look.Dim(wrap.Paragraph(st.Describe(), "  ", wrap.Width(stdout))))
 
 	// Loaded to say whether it can be, and wiped at once. For a keyring this may ask for the
 	// login password, which is the information: it is what an unlock will ask too.
 	if s, err := st.Load(); err != nil {
-		fmt.Fprintf(stdout, "readable: no (%v)\n", err)
+		fmt.Fprintln(stdout, look.Line(look.Fail(""), look.Red(fmt.Sprintf("readable: no (%v)", err))))
 	} else {
 		mrcore.Wipe(s)
-		fmt.Fprintln(stdout, "readable: yes")
+		fmt.Fprintln(stdout, look.Line(look.OK(""), "readable: yes"))
 	}
 
 	if _, err := os.Stat(*transportKeyFile); err != nil {
@@ -61,6 +62,6 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 		ui.Errorf(stderr, "%v\n", err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "transport identity: %s\n", protocol.NewDeviceID(cert.Certificate[0]))
+	fmt.Fprintf(stdout, "transport identity: %s\n", look.Dim(protocol.NewDeviceID(cert.Certificate[0]).String()))
 	return 0
 }

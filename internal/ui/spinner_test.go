@@ -87,3 +87,38 @@ func TestSpinnerUsesPlainFramesWhereUnicodeDoesNotWork(t *testing.T) {
 		t.Errorf("no plain frame in %q", buf.String())
 	}
 }
+
+func TestStatusReplacesOneLabelWithAnotherAndClearsItself(t *testing.T) {
+	buf := &lockedBuffer{}
+	st := newStatus(buf, true, Style{}, 5*time.Millisecond)
+	st.Set(func() string { return "first label" })
+	time.Sleep(30 * time.Millisecond)
+	st.Set(func() string { return "second label" })
+	time.Sleep(30 * time.Millisecond)
+	if !st.Live() {
+		t.Error("a status on a terminal is live")
+	}
+	st.Stop()
+	out := buf.String()
+	if !strings.Contains(out, "first label") || !strings.Contains(out, "second label") {
+		t.Errorf("%q", out)
+	}
+	if strings.Index(out, "first label") > strings.Index(out, "second label") {
+		t.Errorf("out of order: %q", out)
+	}
+	if !strings.HasSuffix(out, "\r\x1b[K") {
+		t.Errorf("not cleared: %q", out)
+	}
+	st.Stop() // harmless
+}
+
+func TestStatusToAPipeIsNotLiveAndWritesNothing(t *testing.T) {
+	var buf bytes.Buffer
+	st := newStatus(&buf, false, Style{}, time.Millisecond)
+	st.Set(func() string { return "x" })
+	time.Sleep(10 * time.Millisecond)
+	st.Stop()
+	if st.Live() || buf.Len() != 0 {
+		t.Errorf("live %v, wrote %q", st.Live(), buf.String())
+	}
+}

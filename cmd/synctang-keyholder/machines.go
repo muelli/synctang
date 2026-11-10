@@ -229,13 +229,24 @@ func runMachines(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stdout, "no machines are named yet: pair with one (synctang-keyholder pair), or name one with: synctang-keyholder machines add <name> <transport id>")
 			return 0
 		}
-		for _, m := range ms {
-			fmt.Fprintf(stdout, "%s  %s", m.Name, m.ID)
-			if m.Discovery != "" {
-				fmt.Fprintf(stdout, "  %s", m.Discovery)
+		look := ui.For(stdout)
+		if look == (ui.Style{}) {
+			// Plain: one machine to a line, as scripts have always read it.
+			for _, m := range ms {
+				fmt.Fprintf(stdout, "%s  %s", m.Name, m.ID)
+				if m.Discovery != "" {
+					fmt.Fprintf(stdout, "  %s", m.Discovery)
+				}
+				fmt.Fprintln(stdout)
 			}
-			fmt.Fprintln(stdout)
+			return 0
 		}
+		rows := make([][]string, len(ms))
+		for i, m := range ms {
+			rows[i] = []string{look.Bold(m.Name), m.ID, look.Dim(m.Discovery)}
+		}
+		header := []string{"NAME", "TRANSPORT ID", "DISCOVERY"}
+		fmt.Fprint(stdout, ui.Table(header, rows, look))
 		return 0
 	case "add":
 		if fs.NArg() != 2 {

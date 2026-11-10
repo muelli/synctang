@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/muelli/synctang/internal/gnuflag"
@@ -221,11 +222,25 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		selfName, _ = os.Hostname()
 	}
 
+	look := ui.For(stdout)
+	machineName := cmp.Or(link.Name, link.Machine)
+	status := ui.NewStatus(stderr)
+	defer status.Stop()
+	started := time.Now()
+	status.Set(func() string { return fmt.Sprintf("looking for %s (%s)", machineName, elapsed(started)) })
 	announce := func(sas string) {
+		status.Stop()
 		fmt.Fprintf(stdout, "\nAsking %s to enrol this key holder. The machine shows its operator a code,\n"+
-			"and it must be the same as this one:\n\n    %s\n\n"+
-			"If it is different, answer n on the machine: somebody else used the pairing link first.\n"+
-			"Waiting for the person at the machine to confirm (up to %s)...\n", cmp.Or(link.Name, link.Machine), sas, wait.Round(time.Second))
+			"and it must be the same as this one:\n\n%s\n\n"+
+			"If it is different, answer n on the machine: somebody else used the pairing link first.\n",
+			machineName, codeBox(look, sas))
+		if !status.Live() {
+			fmt.Fprintf(stdout, "Waiting for the person at the machine to confirm (up to %s)...\n", (*wait).Round(time.Second))
+		}
+		asked := time.Now()
+		status.Set(func() string {
+			return fmt.Sprintf("waiting for the person at the machine to confirm (%s of %s)", elapsed(asked), clock(*wait))
+		})
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
@@ -248,21 +263,40 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
-	fmt.Fprintf(stdout, "\npaired: %s has enrolled this key holder.\n", cmp.Or(link.Name, link.Machine))
+	status.Stop()
+	fmt.Fprintf(stdout, "\n%s\n", look.Line(look.OK(""), look.Emoji("🤝", "")+"paired: "+look.Bold(machineName)+" has enrolled this key holder."))
 	if alias == "" {
-		fmt.Fprintf(stdout, "Unlock it with: synctang-keyholder unlock %s\n"+
-			"(give it a name with: synctang-keyholder machines add <name> %s)\n", link.Machine, link.Machine)
+		fmt.Fprintf(stdout, "Unlock it with: %s\n"+
+			"(give it a name with: synctang-keyholder machines add <name> %s)\n", look.Cyan("synctang-keyholder unlock "+link.Machine), link.Machine)
 		return 0
 	}
 	previous, replaced, err := putMachine(*machinesFile, machine{Name: alias, ID: link.Machine, Discovery: chosenDiscovery}, true)
 	if err != nil {
-		fmt.Fprintf(stdout, "Unlock it with: synctang-keyholder unlock %s\n", link.Machine)
+		fmt.Fprintf(stdout, "Unlock it with: %s\n", look.Cyan("synctang-keyholder unlock "+link.Machine))
 		ui.Errorf(stderr, "paired, but the name %q could not be saved: %v\n", alias, err)
 		return 1
 	}
 	if replaced && previous.ID != link.Machine {
 		fmt.Fprintf(stdout, "(the name %s used to mean %s; it now means this machine)\n", alias, previous.ID)
 	}
-	fmt.Fprintf(stdout, "Unlock it with: synctang-keyholder unlock %s\n", alias)
+	fmt.Fprintf(stdout, "Unlock it with: %s\n", look.Cyan("synctang-keyholder unlock "+alias))
 	return 0
+}
+
+// elapsed is the time since then as a clock: 1:05.
+func elapsed(since time.Time) string { return clock(time.Since(since)) }
+
+func clock(d time.Duration) string {
+	d = d.Round(time.Second)
+	return fmt.Sprintf("%d:%02d", int(d.Minutes()), int(d.Seconds())%60)
+}
+
+// codeBox shows the short code where the eye goes: in a frame, bold, where symbols work, and as the
+// indented line it always was where they do not.
+func codeBox(look ui.Style, code string) string {
+	if !look.Unicode {
+		return "    " + code
+	}
+	bar := strings.Repeat("─", len(code)+2)
+	return "    ┌" + bar + "┐\n    │ " + look.Bold(code) + " │\n    └" + bar + "┘"
 }

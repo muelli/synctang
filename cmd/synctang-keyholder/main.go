@@ -7,6 +7,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/hex"
 	"errors"
@@ -134,7 +135,9 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	}
 	st, note, pubHex, transportID := made.store, made.note, made.pubHex, made.transportID
 
-	fmt.Fprintf(stdout, "generated a new key, held by %s\n%s\n", st.Name(), wrap.Paragraph(st.Describe(), "  ", wrap.Width(stdout)))
+	look := ui.For(stdout)
+	fmt.Fprintf(stdout, "%s\n%s\n", look.Line(look.OK(""), look.Emoji("🔑", "")+"generated a new key, held by "+look.Bold(st.Name())),
+		look.Dim(wrap.Paragraph(st.Describe(), "  ", wrap.Width(stdout))))
 	if note != "" {
 		ui.Notef(stderr, "%s\n", note)
 	}
@@ -142,13 +145,15 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 
 	// What happens next is enrolling this key on a machine, so say so, with the values that
 	// command needs (export-pubkey prints the same two lines again).
-	fmt.Fprintf(stdout, "S: %s\ntransport-id: %s\n\n", pubHex, transportID)
-	fmt.Fprintf(stdout, "To let a machine be unlocked with this key, run this on the machine, as root\n"+
-		"(synctang-keyholder export-pubkey prints the two lines above again):\n\n"+
+	fmt.Fprintf(stdout, "%s %s\n%s %s\n\n", look.Bold("S:"), pubHex, look.Bold("transport-id:"), transportID)
+	fmt.Fprintf(stdout, "The easy way to let a machine be unlocked with this key is to pair: run %s on the machine,\n"+
+		"then give the link it shows to %s here.\n\n", look.Cyan("synctang-unlocker pair"), look.Cyan("synctang-keyholder pair '<link>'"))
+	fmt.Fprintf(stdout, "Or enrol it by hand: run this on the machine, as root\n"+
+		"(synctang-keyholder export-pubkey prints the two lines above again):\n\n%s\n", look.Cyan(fmt.Sprintf(
 		"  synctang-unlocker enrol --device /dev/<device> --name <a name for this laptop> \\\n"+
-		"    --pubkey %s \\\n"+
-		"    --recipient-transport-id %s \\\n"+
-		"    --existing-passphrase-file <(printf %%s \"$PASS\")\n", pubHex, transportID)
+			"    --pubkey %s \\\n"+
+			"    --recipient-transport-id %s \\\n"+
+			"    --existing-passphrase-file <(printf %%s \"$PASS\")", pubHex, transportID)))
 	return 0
 }
 
@@ -351,14 +356,20 @@ func runUnlock(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// this against a real deployment. A fresh attempt is a fresh,
 	// independent race on both sides, so retrying converges rather
 	// than repeating the same mismatch.
+	status := ui.NewStatus(stderr)
+	defer status.Stop()
+	started := time.Now()
+	what := cmp.Or(target.Name, target.ID)
+	status.Set(func() string { return fmt.Sprintf("looking for %s (%s)", what, elapsed(started)) })
 	var lastErr error
 	for {
-		lastErr = runUnlockOnce(ctx, s, cert, machineID, target.Name, *directAddr, network, *yes, stdin, stdout)
+		lastErr = runUnlockOnce(ctx, s, cert, machineID, target.Name, *directAddr, network, *yes, stdin, stdout, status.Stop)
 		if lastErr == nil {
 			return 0
 		}
 		select {
 		case <-ctx.Done():
+			status.Stop()
 			ui.Errorf(stderr, "%v (last attempt: %v)\n", ctx.Err(), lastErr)
 			var dial *dialError
 			if *directAddr == "" && errors.As(lastErr, &dial) {

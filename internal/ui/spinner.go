@@ -53,3 +53,41 @@ func spin(w io.Writer, label func() string, live bool, s Style, every time.Durat
 		<-finished
 	}
 }
+
+// Status is the line a program redraws while it waits, and replaces when what it waits for changes. It
+// is for a person at a terminal: to anything else it is not live, writes nothing, and the program says
+// in ordinary lines what it would have shown.
+type Status struct {
+	w     io.Writer
+	live  bool
+	s     Style
+	every time.Duration
+	stop  func()
+}
+
+// NewStatus is a Status on w (usually standard error).
+func NewStatus(w io.Writer) *Status {
+	t := os.Getenv("TERM")
+	return newStatus(w, isTerminal(w) && t != "" && t != "dumb", For(w), 100*time.Millisecond)
+}
+
+func newStatus(w io.Writer, live bool, s Style, every time.Duration) *Status {
+	return &Status{w: w, live: live, s: s, every: every}
+}
+
+// Live says whether Set shows anything.
+func (st *Status) Live() bool { return st.live }
+
+// Set shows label (asked again at every turn, so it can say how long has passed) in place of what was shown.
+func (st *Status) Set(label func() string) {
+	st.Stop()
+	st.stop = spin(st.w, label, st.live, st.s, st.every)
+}
+
+// Stop clears the line. It is harmless to call again, and before printing anything else.
+func (st *Status) Stop() {
+	if st.stop != nil {
+		st.stop()
+		st.stop = nil
+	}
+}
