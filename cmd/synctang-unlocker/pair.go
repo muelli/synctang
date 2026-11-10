@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"github.com/muelli/synctang/internal/gnuflag"
 	"github.com/muelli/synctang/internal/ui"
+	"github.com/muelli/synctang/internal/wrap"
 	"io"
 	"log/slog"
 	"net/url"
@@ -423,8 +424,10 @@ func pairConfirmer(assumeYes bool, stdout io.Writer, stdin io.Reader) func(strin
 		}
 		// The pairing code only proves that whoever answered had it, and a code that was photographed
 		// or pasted somewhere is had by more than one party: the comparison is what tells them apart.
-		fmt.Fprint(stdout, "A laptop (synctang-keyholder pair) and the phone app show the same code: enrol it only if they are the same.\n"+
-			"An older phone app shows none: enrol it only if you scanned this QR code just now and nobody else could have.\n\n")
+		width := wrap.Width(stdout)
+		fmt.Fprintf(stdout, "%s\n%s\n\n",
+			wrap.Paragraph("A laptop (synctang-keyholder pair) and the phone app show the same code: enrol it only if they are the same.", "", width),
+			wrap.Paragraph("An older phone app shows none: enrol it only if you scanned this QR code just now and nobody else could have.", "", width))
 		fmt.Fprint(stdout, "enrol it on this volume? [y/N] ")
 
 		line, err := reader.ReadString('\n')

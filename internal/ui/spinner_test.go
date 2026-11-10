@@ -48,7 +48,7 @@ func TestSpinnerRedrawsOneLineAndClearsItWhenStopped(t *testing.T) {
 	stop()
 	stop() // stopping twice is harmless
 	out := buf.String()
-	if !strings.Contains(out, "\r") || !strings.Contains(out, "waiting for the machine") {
+	if !strings.Contains(out, "waiting for the machine\x1b[K\r") {
 		t.Errorf("no redraw: %q", out)
 	}
 	if strings.Count(out, "\n") != 0 {

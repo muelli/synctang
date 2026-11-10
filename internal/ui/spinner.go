@@ -38,7 +38,9 @@ func spin(w io.Writer, label func() string, live bool, s Style, every time.Durat
 		tick := time.NewTicker(every)
 		defer tick.Stop()
 		for i := 0; ; i++ {
-			_, _ = io.WriteString(w, "\r"+s.Cyan(frames[i%len(frames)])+" "+label()+"\x1b[K")
+			// The cursor goes back to the start of the line: a library that logs to the terminal on its own
+			// then writes over the spinner, from the left, instead of after it.
+			_, _ = io.WriteString(w, "\r"+s.Cyan(frames[i%len(frames)])+" "+label()+"\x1b[K\r")
 			select {
 			case <-done:
 				_, _ = io.WriteString(w, "\r\x1b[K")

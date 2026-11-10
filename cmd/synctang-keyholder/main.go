@@ -346,7 +346,7 @@ func runUnlock(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if s := network.Summary(); s != "" {
-		ui.Notef(stderr, "%s\n", s)
+		ui.Infof(stderr, "%s\n", s)
 	}
 
 	if *keyFile == "" {
