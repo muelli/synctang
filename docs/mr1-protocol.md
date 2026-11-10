@@ -127,8 +127,23 @@ a machine and a phone from before the key was bound used `v1` and cannot
 pair with each other (the machine reports that the pairing code did not
 match).
 Anybody who photographs the code can still *ask*, which is why you are
-shown who is asking and have to agree (`--yes` skips the question, for
-automation).
+shown who is asking and have to agree. `--yes` skips the question, and with it
+the comparison of the six-digit codes that catches a link somebody else used
+first; it is for automation that has another reason to trust the key holder.
+
+The order of the messages matters for that comparison. The key holder sends
+`PairRequest` (its public key and name) first. The machine checks that the key
+is a point on the curve, and only then sends `PairChallenge` with a fresh
+32-byte nonce. The key holder answers with `PairResponse`, the proof. The
+six-digit code is derived from the machine's id, the key holder's id, the public
+key and the nonce, so a key holder that has to choose its key before the nonce
+exists cannot try keys until one gives a code it wants. If the machine sent the
+nonce first, a key holder could do exactly that (this was found in a review and
+shown possible). Both clients refuse a nonce shorter than 16 bytes.
+
+Anyone who can reach the machine can send a `PairRequest` and so can hold the
+pairing slot while the operator is asked about another key holder; that is a
+denial of service for the length of the window, and not more.
 
 ### One entry per transport ID
 

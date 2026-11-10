@@ -241,6 +241,10 @@ func (p *Pairer) Pair(machineID, pairingCode, seed, publicKeyHex, name, directAd
 		if errors.As(lastErr, &refused) {
 			return refused.withKind()
 		}
+		var bad *pairBadChallenge
+		if errors.As(lastErr, &bad) {
+			return withKindDetail(FailurePairRefused, bad.Error(), bad)
+		}
 		// The machine was reached and has the proof; a fresh dial would only
 		// spend the one-time code again.
 		if errors.Is(lastErr, errOperatorTimeout) {
@@ -275,16 +279,22 @@ func pairOnce(ctx, dialCtx context.Context, prog *progress, cert tls.Certificate
 	stop := context.AfterFunc(dialCtx, func() { conn.Close() })
 	defer func() { stop() }()
 
+	// The phone speaks first: it says which key it wants enrolled, and the machine chooses the nonce after that,
+	// which is what keeps anyone from fitting a key to the short code (see mrcore.PairSAS).
+	prog.advance(StageSendingProof)
+	if err := mrcore.WriteMessage(conn, mrcore.PairRequest{PubKey: publicKey, Name: name}); err != nil {
+		return fmt.Errorf("mobile: sending the pairing request: %w", err)
+	}
 	var challenge mrcore.PairChallenge
 	if err := mrcore.ReadMessage(conn, &challenge); err != nil {
 		return fmt.Errorf("mobile: reading the pairing challenge: %w", err)
 	}
-
+	if len(challenge.Nonce) < mrcore.PairMinNonceLen {
+		return &pairBadChallenge{fmt.Errorf("the machine sent a nonce of %d bytes, which is too short to bind anything to", len(challenge.Nonce))}
+	}
 	proof := mrcore.PairProof(secret, machineID, selfID, publicKey, challenge.Nonce)
-	req := mrcore.PairRequest{PubKey: publicKey, Name: name, Proof: proof}
-	prog.advance(StageSendingProof)
-	if err := mrcore.WriteMessage(conn, req); err != nil {
-		return fmt.Errorf("mobile: sending the pairing request: %w", err)
+	if err := mrcore.WriteMessage(conn, mrcore.PairResponse{Proof: proof}); err != nil {
+		return fmt.Errorf("mobile: sending the proof of the pairing code: %w", err)
 	}
 	stop()
 	// Both sides can work out the code from what they hold, with nothing sent for it.
@@ -302,11 +312,17 @@ func pairOnce(ctx, dialCtx context.Context, prog *progress, cert tls.Certificate
 		return fmt.Errorf("mobile: reading the pairing result: %w", err)
 	}
 	if !result.OK {
-		return &pairRefused{reason: result.Error}
+		return &pairRefused{reason: mrcore.SafeLabel(result.Error, machineErrorMaxRunes)}
 	}
 	prog.advance(StageEnrolled)
 	return nil
 }
+
+// pairBadChallenge is a challenge no honest machine sends. Nothing was proved yet, but another attempt
+// would meet the same machine.
+type pairBadChallenge struct{ error }
+
+func (e *pairBadChallenge) Unwrap() error { return e.error }
 
 // pairRefused separates "the machine said no" from "the machine could
 // not be reached", because only the second is worth retrying and only

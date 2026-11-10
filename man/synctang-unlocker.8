@@ -298,7 +298,10 @@ On yes the new key is enrolled first and the old one revoked after it, so the
 volume can be opened throughout; on no, or with no answer, nothing is changed.
 .B \-\-yes
 answers yes to either question.
-The pairing code is good once, for the length of the window.
+The pairing code works until one key holder is enrolled or the window is over, and a wrong code does not use it up.
+Whoever can reach the machine can hold the pairing slot while it asks its question, so another key holder has to wait
+until the question is answered; the question has no time limit of its own beyond the window, and it is not cut off
+when the window ends.
 A wrong code or a refusal is reported and the command carries on waiting.
 .PP
 The passphrase is checked against the volume first, so a typo is found before
@@ -339,6 +342,7 @@ Default 5 minutes.
 .TP
 \fB\-\-yes\fR
 Enrol whoever answers the code, without asking for confirmation.
+This skips the comparison of the six-digit codes, which is what catches a pairing link that somebody else used first.
 .TP
 \fB\-\-rebuild\-initrd\fR
 After enrolling, compare the initrd of the running kernel with this machine, by hash and with

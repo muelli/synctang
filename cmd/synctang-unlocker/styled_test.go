@@ -74,13 +74,13 @@ func TestDevicesAtATerminalHaveABoldHeaderAndColouredState(t *testing.T) {
 
 func TestThePairingQuestionFramesTheCodeAtATerminal(t *testing.T) {
 	var plain bytes.Buffer
-	pairConfirmer(false, &plain, strings.NewReader("y\n"))("PEER", []byte{4, 1, 2, 3, 4, 5, 6, 7, 8}, "483 291")
+	pairConfirmer(false, &plain, strings.NewReader("y\n"))(pairPeer{ID: "PEER", PubKey: []byte{4, 1, 2, 3, 4, 5, 6, 7, 8}, SAS: "483 291"})
 	if !strings.Contains(plain.String(), "  code:          483 291\n") {
 		t.Errorf("plain output changed:\n%s", plain.String())
 	}
 	atATerminal(t)
 	var out bytes.Buffer
-	pairConfirmer(false, &out, strings.NewReader("y\n"))("PEER", []byte{4, 1, 2, 3, 4, 5, 6, 7, 8}, "483 291")
+	pairConfirmer(false, &out, strings.NewReader("y\n"))(pairPeer{ID: "PEER", PubKey: []byte{4, 1, 2, 3, 4, 5, 6, 7, 8}, SAS: "483 291"})
 	got := ui.StripEscapes(out.String())
 	if !strings.Contains(got, "  code:\n      ┌─────────┐\n      │ 483 291 │\n      └─────────┘\n") {
 		t.Errorf("no frame:\n%s", got)

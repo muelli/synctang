@@ -109,8 +109,14 @@ const pairSASLabel = "synctang-pair-sas-v1"
 // pasted link), the operator has to be able to tell the key holder in front of them from somebody
 // else's, and this is how. It is derived from the machine's and the key holder's Device IDs, the key
 // being enrolled and the nonce the machine chose for this connection, so each side can compute it
-// with nothing sent for the purpose. The nonce is the point: an attacker picks a key and identity
-// before it exists, so cannot make a code that will match, and gets one try in a million.
+// with nothing sent for the purpose.
+//
+// Why an attacker cannot make it match: the key holder sends the key being enrolled FIRST (PairRequest),
+// and the machine chooses the nonce only after it has the key (PairChallenge), so a key and a Device ID
+// that were chosen before the nonce existed cannot be ground to a code, and the code that the operator
+// is going to compare with comes from another connection, with a nonce the attacker has never seen.
+// Were the nonce sent first, a peer could choose its key after seeing it and find one that gives any code
+// it likes in seconds. A guess then has one chance in a million.
 //
 // It is not secret, and deliberately does not include the pairing code.
 func PairSAS(machineID, peerID string, pubKey, nonce []byte) string {
@@ -128,24 +134,44 @@ func PairSAS(machineID, peerID string, pubKey, nonce []byte) string {
 	return fmt.Sprintf("%03d %03d", n/1000, n%1000)
 }
 
-// PairChallenge is the machine's first message on a pairing
-// connection: a fresh random nonce the key holder must bind its proof
-// to.
+// The messages of a pairing, in the order they are sent. The order is part of what makes the short code
+// (PairSAS) mean something: the key holder says which key it wants enrolled before the machine chooses the
+// nonce that the code is made from.
+//
+//	key holder -> machine   PairRequest   the key to enrol (and a label), sent first
+//	machine -> key holder   PairChallenge a fresh nonce, chosen after the key was seen
+//	key holder -> machine   PairResponse  the proof of the pairing code, bound to the nonce and the key
+//	machine -> key holder   PairResult    the verdict
+
+// PairRequest is the key holder asking to be enrolled. PubKey is its long-term MR-1 public key S; Name is a
+// label for a human to recognise it by (the machine shows it, cleaned, beside the Device ID). Its transport
+// identity is deliberately absent: the machine takes that from the verified Conn.PeerID() rather than from
+// anything claimed here, so a key holder cannot ask to be enrolled under somebody else's identity. Nothing
+// here is authenticated yet: anyone who can reach the machine can send one, and gets a nonce back and
+// nothing else.
+type PairRequest struct {
+	PubKey []byte `json:"pubkey"`
+	Name   string `json:"name,omitempty"`
+}
+
+// PairChallenge is the machine's answer to a PairRequest: a fresh random nonce, chosen after the key
+// holder's key was known, that the key holder must bind its proof to. Name is the machine's own name, a
+// label.
 type PairChallenge struct {
 	Nonce []byte `json:"nonce"`
 	Name  string `json:"name,omitempty"`
 }
 
-// PairRequest is the key holder asking to be enrolled. PubKey is its
-// long-term MR-1 public key S; Name is a label for a human to
-// recognise it by. Its transport identity is deliberately absent: the
-// machine takes that from the verified Conn.PeerID() rather than from
-// anything claimed here, so a key holder cannot ask to be enrolled
-// under somebody else's identity.
-type PairRequest struct {
-	PubKey []byte `json:"pubkey"`
-	Name   string `json:"name,omitempty"`
-	Proof  []byte `json:"proof"`
+// PairNonceLen is the length of the nonce a machine sends, and the least a key holder accepts: a machine that
+// sent a short one (or none) would take the freshness out of the proof and of the short code.
+const PairNonceLen = 32
+
+// PairMinNonceLen is the shortest nonce a key holder accepts.
+const PairMinNonceLen = 16
+
+// PairResponse is the key holder's proof that it holds the pairing code (see PairProof).
+type PairResponse struct {
+	Proof []byte `json:"proof"`
 }
 
 // PairResult is the machine's verdict, sent whether or not the

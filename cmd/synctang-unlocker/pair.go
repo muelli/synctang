@@ -33,9 +33,16 @@ import (
 // it hold the pairing window against a real phone.
 var pairRequestTimeout = 30 * time.Second
 
-// pairNonceLen is the length of the per-connection nonce a key holder
-// binds its proof to.
-const pairNonceLen = 32
+// pairPeer is who answered the pairing code, as the operator is shown it: the Device ID from the verified
+// TLS handshake, the key it asks to have enrolled, the label it gave itself (cleaned of anything a terminal
+// would act on, and not authenticated), and the short code of this connection (mrcore.PairSAS), which the
+// key holder shows too.
+type pairPeer struct {
+	ID     string
+	PubKey []byte
+	Name   string
+	SAS    string
+}
 
 // pairOptions is everything one pairing window needs. Split out from
 // the flags so the exchange can be tested without a console, a QR code
@@ -52,13 +59,13 @@ type pairOptions struct {
 	// wants enrolled and the short code (mrcore.PairSAS) that the
 	// key holder shows too, for the operator to compare.
 	// Returning false abandons the pairing.
-	confirm func(peerID string, pubKey []byte, sas string) bool
+	confirm func(p pairPeer) bool
 
 	// confirmReplace is asked instead of confirm when the key holder's
 	// transport id is already enrolled with a different key: it names both
 	// keys, and returning true replaces the old entry with the new one. Nil
 	// means no.
-	confirmReplace func(peerID string, existing existingRecipient, newKid []byte) bool
+	confirmReplace func(p pairPeer, existing existingRecipient, newKid []byte) bool
 
 	// notify tells the operator something that is not a question, such as
 	// that the key holder was already enrolled. Nil means the log.
@@ -100,7 +107,32 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 	}
 	defer conn.Close()
 
-	nonce := make([]byte, pairNonceLen)
+	// Closing the connection is what interrupts a blocked read: the
+	// transport's Conn has no deadlines. Both the per-peer timeout and
+	// the end of the whole pairing window do it, so a silent peer cannot
+	// outlive either.
+	stopOnWindowEnd := context.AfterFunc(ctx, func() { conn.Close() })
+
+	// The key holder speaks first: it says which key it wants enrolled, and only then does the machine choose
+	// the nonce that the proof and the short code are made from. Were the nonce sent first, a peer could pick
+	// its key after seeing it and make the short code anything it liked (see mrcore.PairSAS).
+	requestTimer := time.AfterFunc(pairRequestTimeout, func() { conn.Close() })
+	var req mrcore.PairRequest
+	err = mrcore.ReadMessage(conn, &req)
+	requestTimer.Stop()
+	if err != nil {
+		stopOnWindowEnd()
+		return fmt.Errorf("synctang-unlocker: reading the pairing request: %w", err)
+	}
+
+	// Rejected here, before anything else is spent on it, so that a key that can never work does not first
+	// get a nonce or a human asked about it. PointToX decodes the point, which is the validation wanted: on
+	// the curve, in the right subgroup, not the point at infinity.
+	if _, err := mrcore.P256().PointToX(req.PubKey); err != nil {
+		return refusePairing(conn, mrcore.PairRefusedInvalidKey)
+	}
+
+	nonce := make([]byte, mrcore.PairNonceLen)
 	if _, err := rand.Read(nonce); err != nil {
 		return fmt.Errorf("synctang-unlocker: generating a pairing nonce: %w", err)
 	}
@@ -108,37 +140,27 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 		return fmt.Errorf("synctang-unlocker: sending the pairing challenge: %w", err)
 	}
 
-	// Closing the connection is what interrupts a blocked read: the
-	// transport's Conn has no deadlines. Both the per-peer timeout and
-	// the end of the whole pairing window do it, so a silent peer cannot
-	// outlive either.
-	requestTimer := time.AfterFunc(pairRequestTimeout, func() { conn.Close() })
-	stopOnWindowEnd := context.AfterFunc(ctx, func() { conn.Close() })
-	var req mrcore.PairRequest
-	err = mrcore.ReadMessage(conn, &req)
-	requestTimer.Stop()
+	responseTimer := time.AfterFunc(pairRequestTimeout, func() { conn.Close() })
+	var resp mrcore.PairResponse
+	err = mrcore.ReadMessage(conn, &resp)
+	responseTimer.Stop()
+	// From here the operator decides, and the end of the window does not close the connection under the question.
 	stopOnWindowEnd()
 	if err != nil {
-		return fmt.Errorf("synctang-unlocker: reading the pairing request: %w", err)
+		return fmt.Errorf("synctang-unlocker: reading the proof of the pairing code: %w", err)
 	}
 
 	// PeerID is the identity from the completed TLS handshake, not
-	// anything this message claimed, so the proof is bound to who the
+	// anything a message claimed, so the proof is bound to who the
 	// peer actually is and the enrolment records that same identity.
 	peerID := conn.PeerID()
 	expected := mrcore.PairProof(opts.secret, machineID, peerID, req.PubKey, nonce)
-	if !hmac.Equal(expected, req.Proof) {
+	if !hmac.Equal(expected, resp.Proof) {
 		logger.Warn("refused a pairing attempt with a bad proof", "peer", peerID)
 		return refusePairing(conn, mrcore.PairRefusedCodeMismatch)
 	}
-
-	// Rejected here rather than being left for enrolRecipient, so a
-	// key that can never work does not first get a human asked about
-	// it. PointToX decodes the point, which is the validation wanted:
-	// on the curve, in the right subgroup, not the point at infinity.
-	if _, err := mrcore.P256().PointToX(req.PubKey); err != nil {
-		return refusePairing(conn, mrcore.PairRefusedInvalidKey)
-	}
+	peer := pairPeer{ID: peerID, PubKey: req.PubKey, Name: mrcore.SafeLabel(req.Name, 64),
+		SAS: mrcore.PairSAS(machineID, peerID, req.PubKey, nonce)}
 
 	// One enrolled recipient per transport id. The same key already there is
 	// success with nothing to add; a different one is replaced, if the operator
@@ -164,7 +186,7 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 		return nil
 	case planReplace:
 		newKid := sha256.Sum256(req.PubKey)
-		if opts.confirmReplace == nil || !opts.confirmReplace(peerID, plan.Existing, newKid[:]) {
+		if opts.confirmReplace == nil || !opts.confirmReplace(peer, plan.Existing, newKid[:]) {
 			notify("not replacing; nothing was changed")
 			return refusePairing(conn, mrcore.PairRefusedDeclined)
 		}
@@ -180,7 +202,7 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 		return nil
 	}
 
-	if opts.confirm != nil && !opts.confirm(peerID, req.PubKey, mrcore.PairSAS(machineID, peerID, req.PubKey, nonce)) {
+	if opts.confirm != nil && !opts.confirm(peer) {
 		return refusePairing(conn, mrcore.PairRefusedDeclined)
 	}
 
@@ -231,7 +253,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 	name := fs.String("name", "", "this machine's name, shown to the key holder (default: the name already on the volume, else this machine's hostname)")
 	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, "path to this machine's persistent transport identity")
 	window := fs.Duration("timeout", defaultPairWindow, "how long to accept a pairing for")
-	yes := fs.Bool("yes", false, "enrol whoever answers the code without asking for confirmation")
+	yes := fs.Bool("yes", false, "enrol whoever answers the code without asking, which skips the code check that catches a leaked link")
 	rebuild := fs.Bool("rebuild-initrd", false, "after enrolling, run dracut --force if the initrd does not carry this machine's identity and network.conf")
 	directAddr := fs.String("direct-addr", "", "listen on this address directly, bypassing relay and discovery (testing only)")
 	networkConf := fs.String("network-conf", defaultNetworkConfFile, "file naming the relay pool and discovery servers to use instead of the public ones (the kernel arguments rd.synctang.relay= and rd.synctang.discovery= override it)")
@@ -335,15 +357,15 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		machineCert:        cert,
 		machineName:        *name,
 		secret:             secret,
-		confirm: func(peerID string, pubKey []byte, sas string) bool {
+		confirm: func(p pairPeer) bool {
 			status.Stop()
-			ok := confirm(peerID, pubKey, sas)
+			ok := confirm(p)
 			showWaiting()
 			return ok
 		},
-		confirmReplace: func(peerID string, existing existingRecipient, newKid []byte) bool {
+		confirmReplace: func(p pairPeer, existing existingRecipient, newKid []byte) bool {
 			status.Stop()
-			ok := confirmReplace(peerID, existing, newKid)
+			ok := confirmReplace(p, existing, newKid)
 			showWaiting()
 			return ok
 		},
@@ -395,38 +417,49 @@ func confirmationInput(passphraseFile string, assumeYes bool, stdin io.Reader) (
 	tty, err := openTTY()
 	if err != nil {
 		return nil, nil, fmt.Errorf("the passphrase is read from stdin, so the confirmation question has to be asked on a terminal, "+
-			"and none could be opened (%v); use --yes to enrol whoever answers the code without asking", err)
+			"and none could be opened (%v); use --yes to enrol whoever answers the code without asking (that skips the code check that catches a leaked link)", err)
 	}
 	return tty, tty, nil
 }
 
+// printPeer shows the operator who answered the pairing code and the short code to compare, the same way for
+// a new key holder and for one that is already enrolled.
+func printPeer(stdout io.Writer, p pairPeer) {
+	kid := sha256.Sum256(p.PubKey)
+	fmt.Fprintf(stdout, "  transport id:  %s\n", p.ID)
+	if p.Name != "" {
+		fmt.Fprintf(stdout, "  it calls itself: %s (it chose that itself, and it proves nothing)\n", p.Name)
+	}
+	fmt.Fprintf(stdout, "  key id:        %s\n", shortKid(kid[:]))
+	if look := ui.For(stdout); look.Unicode {
+		fmt.Fprintf(stdout, "  code:\n%s\n\n", ui.CodeBox(look, "      ", p.SAS))
+	} else {
+		fmt.Fprintf(stdout, "  code:          %s\n\n", p.SAS)
+	}
+	// The pairing code only proves that whoever answered had it, and a code that was photographed or pasted
+	// somewhere is had by more than one party: the comparison is what tells them apart.
+	fmt.Fprintf(stdout, "%s\n\n",
+		wrap.Paragraph("A laptop (synctang-keyholder pair) and the phone app show the same code: enrol it only if they are the same.", "", wrap.Width(stdout)))
+}
+
 // pairConfirmer builds the confirmation step. Possession of the code is
-// not by itself consent: the code is shown on a screen and can be
-// photographed, so the operator standing at the machine is shown the
+// the only thing that has been proved, and a code can be photographed, so the operator standing at the machine is shown the
 // identity that answered it and decides.
 //
 // stdin should be one *bufio.Reader shared with pairReplaceConfirmer, so that
 // whichever question is asked reads what was typed and nothing is buffered
 // away from the other.
-func pairConfirmer(assumeYes bool, stdout io.Writer, stdin io.Reader) func(string, []byte, string) bool {
+//
+// --yes (assumeYes) answers yes without showing anything to compare: it gives up the check against a pairing
+// code that leaked, and is for a script that has another reason to trust the key holder that answers.
+func pairConfirmer(assumeYes bool, stdout io.Writer, stdin io.Reader) func(pairPeer) bool {
 	if assumeYes {
-		return func(string, []byte, string) bool { return true }
+		return func(pairPeer) bool { return true }
 	}
 	reader := bufio.NewReader(stdin)
-	return func(peerID string, pubKey []byte, sas string) bool {
+	return func(p pairPeer) bool {
 		fmt.Fprintf(stdout, "\na key holder answered the pairing code:\n\n")
-		fmt.Fprintf(stdout, "  transport id:  %s\n", peerID)
-		fmt.Fprintf(stdout, "  public key:    %s\n", shortKid(pubKey))
-		if look := ui.For(stdout); look.Unicode {
-			fmt.Fprintf(stdout, "  code:\n%s\n\n", ui.CodeBox(look, "      ", sas))
-		} else {
-			fmt.Fprintf(stdout, "  code:          %s\n\n", sas)
-		}
-		// The pairing code only proves that whoever answered had it, and a code that was photographed
-		// or pasted somewhere is had by more than one party: the comparison is what tells them apart.
-		width := wrap.Width(stdout)
-		fmt.Fprintf(stdout, "%s\n\n",
-			wrap.Paragraph("A laptop (synctang-keyholder pair) and the phone app show the same code: enrol it only if they are the same.", "", width))
+		printPeer(stdout, p)
 		fmt.Fprint(stdout, "enrol it on this volume? [y/N] ")
 
 		line, err := reader.ReadString('\n')
@@ -442,17 +475,17 @@ func pairConfirmer(assumeYes bool, stdout io.Writer, stdin io.Reader) func(strin
 }
 
 // pairReplaceConfirmer is the question asked when the key holder that
-// answered the code is already enrolled with a different key: it names both
+// answered the code is already enrolled with a different key: it shows the same code to compare, and names both
 // keys, so the operator sees what is being replaced and by what. --yes means
 // yes; silence means no.
-func pairReplaceConfirmer(assumeYes bool, stdout io.Writer, stdin io.Reader) func(string, existingRecipient, []byte) bool {
+func pairReplaceConfirmer(assumeYes bool, stdout io.Writer, stdin io.Reader) func(pairPeer, existingRecipient, []byte) bool {
 	if assumeYes {
-		return func(string, existingRecipient, []byte) bool { return true }
+		return func(pairPeer, existingRecipient, []byte) bool { return true }
 	}
 	reader := bufio.NewReader(stdin)
-	return func(peerID string, existing existingRecipient, newKid []byte) bool {
+	return func(p pairPeer, existing existingRecipient, newKid []byte) bool {
 		fmt.Fprintf(stdout, "\na key holder that is already enrolled answered the pairing code:\n\n")
-		fmt.Fprintf(stdout, "  transport id:  %s\n\n", peerID)
+		printPeer(stdout, p)
 		fmt.Fprintf(stdout, "replace the existing entry for this key holder (keyslot %s, key %s) with this one (key %s)? [y/N] ",
 			existing.Keyslot, shortKid(existing.Kid), shortKid(newKid))
 
@@ -500,7 +533,7 @@ func pairingInstructions(machineID, name, encodedSecret string, network transpor
 	fmt.Fprintf(&b, "  %s\n\n", link)
 	b.WriteString("To pair a laptop instead, run this on it (the quotes matter):\n\n")
 	fmt.Fprintf(&b, "  synctang-keyholder pair '%s'\n\n", link)
-	fmt.Fprintf(&b, "The pairing code is good once, for the next %s.\n", window)
+	fmt.Fprintf(&b, "The pairing code works until one key holder is enrolled or %s are over.\n", window)
 	b.WriteString("Anyone who can read it off this screen, or off a photograph of\n")
 	b.WriteString("it, can ask to be enrolled, so you will be shown which key\n")
 	b.WriteString("holder is asking before anything is written to the volume.\n")

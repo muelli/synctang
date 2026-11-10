@@ -351,8 +351,8 @@ func pairWith(t *testing.T, f *pairFixture, confirmAnswer, replaceAnswer bool) *
 			machineCert:        f.machineCert,
 			machineName:        "test-machine",
 			secret:             secret,
-			confirm:            func(string, []byte, string) bool { r.confirmed++; return confirmAnswer },
-			confirmReplace: func(_ string, old existingRecipient, newKid []byte) bool {
+			confirm:            func(pairPeer) bool { r.confirmed++; return confirmAnswer },
+			confirmReplace: func(_ pairPeer, old existingRecipient, newKid []byte) bool {
 				r.replaceAsk = append(r.replaceAsk, old)
 				r.replaceNew = append(r.replaceNew, newKid)
 				return replaceAnswer
@@ -453,7 +453,7 @@ func TestPairReplaceConfirmerNamesBothKeysAndHonoursYes(t *testing.T) {
 
 	var out bytes.Buffer
 	ask := pairReplaceConfirmer(false, &out, strings.NewReader("y\n"))
-	if !ask(testKH1, old, newKid) {
+	if !ask(pairPeer{ID: testKH1, SAS: "123 456"}, old, newKid) {
 		t.Error("y was taken as no")
 	}
 	want := fmt.Sprintf("replace the existing entry for this key holder (keyslot 3, key %s) with this one (key %s)? [y/N] ", shortKid(old.Kid), shortKid(newKid))
@@ -463,13 +463,13 @@ func TestPairReplaceConfirmerNamesBothKeysAndHonoursYes(t *testing.T) {
 
 	for _, in := range []string{"n\n", "\n", ""} {
 		out.Reset()
-		if pairReplaceConfirmer(false, &out, strings.NewReader(in))(testKH1, old, newKid) {
+		if pairReplaceConfirmer(false, &out, strings.NewReader(in))(pairPeer{ID: testKH1, SAS: "123 456"}, old, newKid) {
 			t.Errorf("%q was taken as yes", in)
 		}
 	}
 
 	out.Reset()
-	if !pairReplaceConfirmer(true, &out, strings.NewReader(""))(testKH1, old, newKid) {
+	if !pairReplaceConfirmer(true, &out, strings.NewReader(""))(pairPeer{ID: testKH1, SAS: "123 456"}, old, newKid) {
 		t.Error("--yes was not yes")
 	}
 }

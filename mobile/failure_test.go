@@ -119,9 +119,7 @@ func refusingMachine(t *testing.T, addr, machineSeed, reason string) {
 			return
 		}
 		defer conn.Close()
-		_ = mrcore.WriteMessage(conn, mrcore.PairChallenge{Nonce: []byte("a nonce that is thirty two bytes")})
-		var req mrcore.PairRequest
-		_ = mrcore.ReadMessage(conn, &req)
+		_, _, _ = machineSide(conn, []byte("a nonce that is thirty two bytes"), "")
 		_ = mrcore.WriteMessage(conn, mrcore.PairResult{Error: reason})
 		time.Sleep(500 * time.Millisecond)
 	}()
@@ -137,6 +135,8 @@ func TestLastFailureOfAPairingRefusal(t *testing.T) {
 		{mrcore.PairRefusedDeclined, FailurePairDeclined, ""},
 		{mrcore.PairRefusedEnrolFailed, FailurePairRefused, mrcore.PairRefusedEnrolFailed},
 		{"some reason a newer machine gives", FailurePairRefused, "some reason a newer machine gives"},
+		// What a machine says is its own word, shown to a person: nothing in it acts on a display.
+		{"no\x1b]0;x\x07\nforged", FailurePairRefused, "no?]0;x??forged"},
 	} {
 		t.Run(tc.reason, func(t *testing.T) {
 			_, code, err := mrcore.NewPairingSecret()

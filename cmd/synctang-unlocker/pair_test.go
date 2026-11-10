@@ -98,18 +98,17 @@ func dialAndPair(t *testing.T, f *pairFixture, addr string, secret []byte) (mrco
 	}
 	defer conn.Close()
 
+	// The key holder speaks first, then answers the machine's nonce with the proof.
+	if err := mrcore.WriteMessage(conn, mrcore.PairRequest{PubKey: f.holderS, Name: "test phone"}); err != nil {
+		return mrcore.PairResult{}, err
+	}
 	var challenge mrcore.PairChallenge
 	if err := mrcore.ReadMessage(conn, &challenge); err != nil {
 		return mrcore.PairResult{}, err
 	}
-
 	f.nonce = challenge.Nonce
-	req := mrcore.PairRequest{
-		PubKey: f.holderS,
-		Name:   "test phone",
-		Proof:  mrcore.PairProof(secret, f.machineID, f.holderID, f.holderS, challenge.Nonce),
-	}
-	if err := mrcore.WriteMessage(conn, req); err != nil {
+	resp := mrcore.PairResponse{Proof: mrcore.PairProof(secret, f.machineID, f.holderID, f.holderS, challenge.Nonce)}
+	if err := mrcore.WriteMessage(conn, resp); err != nil {
 		return mrcore.PairResult{}, err
 	}
 
@@ -141,7 +140,7 @@ func TestPairEnrolsAKeyHolderThatProvesTheSecret(t *testing.T) {
 			machineCert:        f.machineCert,
 			machineName:        "test-machine",
 			secret:             secret,
-			confirm:            func(string, []byte, string) bool { return true },
+			confirm:            func(pairPeer) bool { return true },
 			listenOpts:         transport.ListenOptions{DirectAddr: f.addr},
 		})
 	}()
@@ -196,7 +195,7 @@ func TestPairRefusesAKeyHolderWithoutTheSecret(t *testing.T) {
 			machineCert:        f.machineCert,
 			machineName:        "test-machine",
 			secret:             secret,
-			confirm: func(string, []byte, string) bool {
+			confirm: func(pairPeer) bool {
 				t.Error("confirmation was asked for despite a bad proof")
 				return false
 			},
@@ -246,8 +245,8 @@ func TestPairRespectsTheOperatorDeclining(t *testing.T) {
 			machineCert:        f.machineCert,
 			machineName:        "test-machine",
 			secret:             secret,
-			confirm: func(peerID string, _ []byte, _ string) bool {
-				shownID = peerID
+			confirm: func(p pairPeer) bool {
+				shownID = p.ID
 				return false
 			},
 			listenOpts: transport.ListenOptions{DirectAddr: f.addr},
@@ -386,7 +385,7 @@ func TestPairShowsTheOperatorTheShortCodeOfThisConnection(t *testing.T) {
 		errCh <- runPairOnce(ctx, pairOptions{
 			device: f.device, existingPassphrase: f.passphrase, machineCert: f.machineCert,
 			machineName: "test-machine", secret: secret,
-			confirm:    func(_ string, _ []byte, sas string) bool { shown = sas; return true },
+			confirm:    func(p pairPeer) bool { shown = p.SAS; return true },
 			listenOpts: transport.ListenOptions{DirectAddr: f.addr},
 		})
 	}()
@@ -404,7 +403,7 @@ func TestPairShowsTheOperatorTheShortCodeOfThisConnection(t *testing.T) {
 func TestPairConfirmerPrintsTheCodeAndSaysWhatToCompareItWith(t *testing.T) {
 	var out bytes.Buffer
 	confirm := pairConfirmer(false, &out, strings.NewReader("y\n"))
-	if !confirm("PEER-ID", []byte{4, 1, 2, 3, 4, 5, 6, 7, 8}, "483 291") {
+	if !confirm(pairPeer{ID: "PEER-ID", PubKey: []byte{4, 1, 2, 3, 4, 5, 6, 7, 8}, SAS: "483 291"}) {
 		t.Fatal("y was not taken as yes")
 	}
 	for _, want := range []string{"483 291", "PEER-ID", "same code"} {

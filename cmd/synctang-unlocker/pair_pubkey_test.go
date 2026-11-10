@@ -58,7 +58,7 @@ func TestPairRefusesARequestWhoseKeyIsNotTheOneTheProofCovers(t *testing.T) {
 			machineCert: machineCert,
 			machineName: "test-machine",
 			secret:      secret,
-			confirm:     func(string, []byte, string) bool { return true },
+			confirm:     func(pairPeer) bool { return true },
 			listenOpts:  transport.ListenOptions{DirectAddr: addr},
 		})
 	}()
@@ -78,16 +78,15 @@ func TestPairRefusesARequestWhoseKeyIsNotTheOneTheProofCovers(t *testing.T) {
 	}
 	defer conn.Close()
 
+	if err := mrcore.WriteMessage(conn, mrcore.PairRequest{PubKey: carriedKey, Name: "test phone"}); err != nil {
+		t.Fatal(err)
+	}
 	var challenge mrcore.PairChallenge
 	if err := mrcore.ReadMessage(conn, &challenge); err != nil {
 		t.Fatal(err)
 	}
-	req := mrcore.PairRequest{
-		PubKey: carriedKey,
-		Name:   "test phone",
-		Proof:  mrcore.PairProof(secret, machineID, holderID, provedKey, challenge.Nonce),
-	}
-	if err := mrcore.WriteMessage(conn, req); err != nil {
+	resp := mrcore.PairResponse{Proof: mrcore.PairProof(secret, machineID, holderID, provedKey, challenge.Nonce)}
+	if err := mrcore.WriteMessage(conn, resp); err != nil {
 		t.Fatal(err)
 	}
 	var result mrcore.PairResult

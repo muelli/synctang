@@ -46,7 +46,7 @@ func TestPairGivesUpOnAPeerThatNeverSendsItsRequest(t *testing.T) {
 			machineCert: machineCert,
 			machineName: "test-machine",
 			secret:      secret,
-			confirm:     func(string, []byte, string) bool { return true },
+			confirm:     func(pairPeer) bool { return true },
 			listenOpts:  transport.ListenOptions{DirectAddr: addr},
 		})
 	}()
@@ -66,11 +66,8 @@ func TestPairGivesUpOnAPeerThatNeverSendsItsRequest(t *testing.T) {
 	}
 	defer conn.Close()
 
-	var challenge mrcore.PairChallenge
-	if err := mrcore.ReadMessage(conn, &challenge); err != nil {
-		t.Fatalf("reading the challenge: %v", err)
-	}
-	// Say nothing. The machine has to stop waiting on its own.
+	// Say nothing: not even the request. The machine speaks only after the key holder has, so it has sent
+	// nothing, and has to stop waiting on its own.
 
 	select {
 	case err := <-errCh:

@@ -212,9 +212,7 @@ func TestPairerSaysItIsWaitingForTheOperatorWhileTheyDecide(t *testing.T) {
 			return
 		}
 		defer conn.Close()
-		_ = mrcore.WriteMessage(conn, mrcore.PairChallenge{Nonce: []byte("a nonce that is thirty two bytes"), Name: "m"})
-		var req mrcore.PairRequest
-		if mrcore.ReadMessage(conn, &req) != nil {
+		if _, _, err := machineSide(conn, []byte("a nonce that is thirty two bytes"), "m"); err != nil {
 			return
 		}
 		<-release // the operator is deciding
