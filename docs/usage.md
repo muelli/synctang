@@ -75,7 +75,9 @@ is shown or created), then shows a QR code and a one-time code and waits. Scan i
 phone proves it holds the code and sends its public key, and the machine
 shows you which key holder answered before it writes anything. The code
 lasts five minutes (`--timeout`), enrols one key holder, and is useless
-replayed or on a second phone. `--yes` skips the confirmation. If the QR
+replayed or on a second phone. `--yes` skips the confirmation, and with it the
+comparison of the six-digit codes, so use it only when you have another reason to
+trust whoever answers. If the QR
 code will not scan (a serial console, say), the link it carries is
 printed as text to paste into the app's device ID field. (A device ID
 typed on its own only remembers the machine; the link, with its one-time
@@ -132,7 +134,10 @@ one-time code, and sends its public key. **Both sides now show a six-digit code,
 machine is asked whether to enrol: say yes only if the code on the laptop is the same.** The one-time
 code only proves that whoever answered had it, and a link that was photographed, read over a shoulder
 or pasted somewhere is had by more than one party. If the codes differ, answer `n` on the machine and
-pair again for a new link. (The phone app shows the same code while it waits, and says what to do if it differs.)
+pair again for a new link. A pairing link works until one key holder is enrolled or
+the five minutes are over, and a wrong code does not use it up. While the machine asks its question,
+another key holder cannot pair, and the question stays open after the five minutes if it is open then.
+(The phone app shows the same code while it waits, and says what to do if it differs.)
 
 The laptop remembers the machine under the name in the link, so unlocking is:
 

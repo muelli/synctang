@@ -100,21 +100,40 @@ copies in byte slices and wipe them. On Android, see the next section.
 
 **A leaked pairing link.** Pairing (`synctang-unlocker pair`, then `synctang-keyholder pair` or the app)
 turns a one-time code into an enrolled key holder. The code authenticates the key holder to the machine
-and nothing more, so whoever uses it first, while it lasts (five minutes, one pairing), is offered to the
-operator as a key holder, and if the operator says yes they hold a keyslot that opens the disk. The link
-leaks by being photographed, read over a shoulder, or pasted into a chat or a shell history. The defence
-is the operator's check: the machine and a laptop both show a six-digit code derived from both Device
-IDs, the key being enrolled and a nonce the machine chose for that connection (`mrcore.PairSAS`), and the
-operator enrols only if the two match. An attacker has to choose a key before the nonce exists, so cannot
-make a code that will match, and gets one try in a million; if they answered first, the laptop is refused
-and prints no code, which is also noticed. This is only as good as the comparison: an operator who
-answers yes without looking gets no protection from it. `[V]` The two programs show the same code in a
-test that runs both (`integration/`). The phone app shows the same code on its pairing screen while the operator decides (`[V]` on an emulator:
-the screen draws it, it is read out digit by digit, and it adds nothing to focus; `[V]` in a test that the
-code the library offers is what the machine works out; `[U]` not tried against a real machine from the app
-itself, since the pairing flow there is a scan on a phone). The machine's side of the link, its transport id, is checked by the
-key holder against the certificate it connects to, so a link cannot be used to make a laptop pair with
-a different machine.
+and nothing more, so whoever uses it first, while it lasts (until one key holder is enrolled or the five minutes
+are over; a wrong code does not use it up), is offered to the operator as a key holder, and if the operator says
+yes they hold a keyslot that opens the disk. The link leaks by being photographed, read over a shoulder, or
+pasted into a chat or a shell history. The defence is the operator's check: the machine and the real key
+holder both show a six-digit code derived from both Device IDs, the key being enrolled and a nonce the machine
+chose for that connection (`mrcore.PairSAS`), and the operator enrols only if the two match.
+
+That holds because of the order of the messages. The key holder names its key first, and the machine
+chooses the nonce only after that, so an attacker cannot try keys until one gives a code that matches what the
+real key holder will show: they get one try in a million for each connection. (An earlier order, with the nonce
+sent first, allowed exactly that grinding; a review showed it, and the order was changed. `[V]` a test that the
+code of one connection differs from another's and equals what the key holder works out.) Both clients refuse
+a nonce shorter than 16 bytes, which would also let a code be fitted.
+
+What the operator sees when somebody else answered first is not a refusal: the machine asks about a key holder
+while the laptop or phone shows no code yet, or a code that is different. The laptop keeps dialling until its
+`--timeout` and then says it could not reach the machine. This is only as good as the comparison: an operator
+who answers yes without looking gets no protection from it, and `--yes` gives the check up on purpose. The key
+holder's name that the machine shows is cleaned of control characters, and the key id shown is a hash of the
+public key.
+
+Anyone who can reach the machine can open a pairing connection and so hold the pairing slot while the operator
+is asked about it: that blocks pairing for the length of the window, and does nothing else. The question has no
+time limit of its own and stays open after the window ends.
+
+`[V]` The two programs show the same code in a test that runs both (`integration/`). The phone app shows the same
+code on its pairing screen while the operator decides (`[V]` on an emulator: the screen draws it, it is read out
+digit by digit, and it adds nothing to focus; `[V]` in a test that the code the library offers is what the
+machine works out; `[U]` not tried against a real machine from the app itself, since the pairing flow there is
+a scan on a phone). The machine's side of the link, its transport id, is checked by the key holder against the
+certificate it connects to, so a link cannot be used to make a laptop pair with a different machine. A link is
+also somebody's word about names: `synctang-keyholder pair` does not let the name in it take over a name the
+person already uses for another machine unless they pass `--force`, refuses a link with a setting it does not
+know or one given twice, and shows the name in it with control characters made harmless.
 
 **The phone's key is wrapped, not held, and what that means.** The MR-1 key
 agreement could be a Keystore key (`PURPOSE_AGREE_KEY`), non-exportable and
