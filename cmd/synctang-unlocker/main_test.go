@@ -415,3 +415,21 @@ func TestAnOrdinaryMissingPassphraseFileIsNotBlamedOnSudo(t *testing.T) {
 		t.Errorf("a plain missing file is explained by sudo: %v", err)
 	}
 }
+
+func TestVersionFlagPrintsTheVersionAndSucceeds(t *testing.T) {
+	for _, flag := range []string{"--version", "-version"} {
+		var stdout, stderr bytes.Buffer
+		if code := run([]string{flag}, &stdout, &stderr); code != 0 {
+			t.Fatalf("%s: exit %d, stderr %q", flag, code, stderr.String())
+		}
+		if !strings.HasPrefix(stdout.String(), "synctang-unlocker ") || stderr.Len() != 0 {
+			t.Errorf("%s: stdout %q stderr %q", flag, stdout.String(), stderr.String())
+		}
+	}
+}
+
+func TestTheUsageMentionsTheVersionFlag(t *testing.T) {
+	if !strings.Contains(usage, "synctang-unlocker --version") {
+		t.Errorf("usage does not mention --version:\n%s", usage)
+	}
+}

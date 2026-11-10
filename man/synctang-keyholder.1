@@ -3,6 +3,8 @@
 .SH NAME
 synctang\-keyholder \- the laptop key holder for synctang
 .SH SYNOPSIS
+.B synctang\-keyholder \-\-version
+.br
 .B synctang\-keyholder pair
 .RI [ flags ]
 .I link
@@ -49,6 +51,14 @@ By default the public Syncthing relay and discovery servers are used, and on the
 same local network the machine is found by multicast; see
 .BR synctang\-network.conf (5)
 to use your own discovery server.
+.PP
+.B \-\-version
+(also spelled
+.BR \-version )
+as the only argument prints the program's name and version, and the licence, and exits with status 0.
+In a package the version is the one
+.BR dpkg (1)
+shows; a program built any other way says that it is a development build.
 .SH COMMANDS
 Every command accepts
 .B \-h

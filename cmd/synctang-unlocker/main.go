@@ -17,6 +17,7 @@ import (
 	"github.com/muelli/synctang/internal/completion"
 	"github.com/muelli/synctang/internal/gnuflag"
 	"github.com/muelli/synctang/internal/journal"
+	"github.com/muelli/synctang/internal/version"
 	"github.com/muelli/synctang/internal/wrap"
 	"github.com/muelli/synctang/mrcore"
 	"io"
@@ -33,6 +34,7 @@ import (
 )
 
 const usage = `usage: synctang-unlocker <command> [flags]
+       synctang-unlocker --version
 
 commands:
   enrol       add a key holder's public key to a LUKS volume (or --remove or
@@ -78,6 +80,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	switch args[0] {
+	case "--version", "-version":
+		fmt.Fprint(stdout, version.Describe("synctang-unlocker"))
+		return 0
 	case "enrol":
 		return runEnrol(args[1:], stdout, stderr)
 	case "agent":

@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"github.com/muelli/synctang/internal/completion"
 	"github.com/muelli/synctang/internal/gnuflag"
+	"github.com/muelli/synctang/internal/version"
 	"github.com/muelli/synctang/internal/wrap"
 	"github.com/muelli/synctang/mrcore"
 	"io"
@@ -26,6 +27,7 @@ import (
 )
 
 const usage = `usage: synctang-keyholder <command> [flags]
+       synctang-keyholder --version
 
 commands:
   pair           enrol this key holder on a machine, from the link that
@@ -49,6 +51,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 
 	switch args[0] {
+	case "--version", "-version":
+		fmt.Fprint(stdout, version.Describe("synctang-keyholder"))
+		return 0
 	case "pair":
 		return runPair(args[1:], stdout, stderr)
 	case "init":

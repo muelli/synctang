@@ -48,9 +48,15 @@ endif
 # it happens to be built from (e.g. a shallow clone, or one with an
 # untracked file lying around). That is exactly the kind of accidental
 # input a reproducible build must not depend on.
+#
+# The version the programs report with --version is the package's own, from debian/changelog, set here
+# (-X) so that it is the string dpkg shows; the same commit always gives the same one.
+VERSION := $(shell dpkg-parsechangelog -SVersion)
+LDFLAGS := -s -w -X github.com/muelli/synctang/internal/version.Version=$(VERSION)
+
 override_dh_auto_build:
-	GOARCH=$(GOARCH_HOST) go build -buildvcs=false -ldflags "-s -w" -o synctang-unlocker ./cmd/synctang-unlocker
-	GOARCH=$(GOARCH_HOST) go build -buildvcs=false -ldflags "-s -w" -o synctang-keyholder ./cmd/synctang-keyholder
+	GOARCH=$(GOARCH_HOST) go build -buildvcs=false -ldflags "$(LDFLAGS)" -o synctang-unlocker ./cmd/synctang-unlocker
+	GOARCH=$(GOARCH_HOST) go build -buildvcs=false -ldflags "$(LDFLAGS)" -o synctang-keyholder ./cmd/synctang-keyholder
 
 override_dh_auto_test:
 	# Deliberately empty. The test suite needs real cryptsetup (loopback

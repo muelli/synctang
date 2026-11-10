@@ -118,3 +118,21 @@ func TestRunNoArgs(t *testing.T) {
 		t.Fatal("expected a nonzero exit with no command given")
 	}
 }
+
+func TestVersionFlagPrintsTheVersionAndSucceeds(t *testing.T) {
+	for _, flag := range []string{"--version", "-version"} {
+		var stdout, stderr bytes.Buffer
+		if code := run([]string{flag}, strings.NewReader(""), &stdout, &stderr); code != 0 {
+			t.Fatalf("%s: exit %d, stderr %q", flag, code, stderr.String())
+		}
+		if !strings.HasPrefix(stdout.String(), "synctang-keyholder ") || stderr.Len() != 0 {
+			t.Errorf("%s: stdout %q stderr %q", flag, stdout.String(), stderr.String())
+		}
+	}
+}
+
+func TestTheUsageMentionsTheVersionFlag(t *testing.T) {
+	if !strings.Contains(usage, "synctang-keyholder --version") {
+		t.Errorf("usage does not mention --version:\n%s", usage)
+	}
+}

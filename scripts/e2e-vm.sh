@@ -232,6 +232,14 @@ MACHINE_ID="$(sed -n "s/^this machine's transport id: //p" <<< "$STATUS_BEFORE" 
 [ -n "$MACHINE_ID" ] || fail "no machine transport id"
 echo "machine $MACHINE_ID"
 
+# --version says what dpkg says, for the package each program came in.
+# shellcheck disable=SC2016  # the \${Version} is for dpkg-query in the VM
+PKG_VERSION="$(vm "dpkg-query -W -f='\${Version}' synctang-unlocker")"
+check "the machine's synctang-unlocker reports its package version" \
+	test "$(vm 'synctang-unlocker --version' | head -1)" = "synctang-unlocker $PKG_VERSION"
+check "the laptop's synctang-keyholder reports its package version" \
+	test "$("$KEYHOLDER" --version | head -1)" = "synctang-keyholder $(dpkg-deb -f "$KEYHOLDER_DEB" Version)"
+
 # The initrd was built when the packages went in, before this machine had an identity, so it
 # cannot carry it: enrol and status must both say so.
 check "enrol warns that the initrd lacks the new identity" grep -q "does not contain this machine's identity" "$LOGS/enrol.log"
