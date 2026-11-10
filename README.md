@@ -2,454 +2,151 @@
 
 # synctang
 
-An on-demand LUKS volume unlocker for dracut-based boots. A machine asks;
-a human, on a laptop or phone, answers. There is no always-on server, and
-unattended reboots are deliberately not supported: if you need those, use
-Tang. In exchange the key holder's secret can be kept on a phone wrapped by a key in
-its secure hardware, which opens it only for your fingerprint, once per
-unlock (the secret is briefly in the app's memory while it is used; the app says
-plainly where the hardware half lives), or on a laptop in a file (a TPM or keyring backend is planned, not built), gated behind a keypress, and the LUKS
-passphrase is never on the phone in any form.
+synctang unlocks an encrypted disk (LUKS) when a person approves.
 
-Work in progress; see `STATUS.md` for what is built and what is not. There is no
-compatibility promise between releases yet: after an upgrade a phone may need to be paired
-again, and nothing migrates files from an older layout.
+A machine asks for the key. A key holder answers. A key holder is a phone or a laptop.
+No server runs all the time. The machine does not restart without a person.
+Use Tang if you need unattended restarts.
 
-## What is here
+The LUKS passphrase is never on the phone. The phone keeps a different secret. A key in the
+phone secure hardware wraps that secret. The key opens only for your fingerprint.
 
-- `synctang-unlocker`: the machine side. Runs in the dracut initrd as a systemd
-  password agent, and on the booted system to enrol and revoke key
-  holders. Subcommands: `pair`, `enrol`, `status`, `agent`.
-- `synctang-keyholder`: the laptop CLI. Subcommands: `init`, `export-pubkey`,
-  `unlock`.
-- The Android app (`android/`): the phone key holder. Pairs by scanning a
-  QR code; unlocks behind a biometric prompt. Its key is kept wrapped by a
-  key in the Android Keystore that opens only for a fingerprint, once for each
-  unlock.
-- `dracut/90synctang`: the dracut module that starts the agent at boot.
+This software is a work in progress. `STATUS.md` shows what is done.
+There is no compatibility promise between releases. After an upgrade, pair the phone again.
 
-## Threat model, in short
+## Parts
 
-The LUKS2 token and the machine's network identity sit on the unencrypted
-disk. They are useless without a key holder, but together they let whoever
-has the disk, or an image of it, *pose as the machine*:
+- `synctang-unlocker` is the machine side. It runs in the dracut initrd and asks for the key.
+  On the running system, it pairs and enrols key holders.
+- `synctang-keyholder` is the laptop program.
+- The Android app in `android/` is the phone key holder.
+- `dracut/90synctang` is the dracut module that starts the agent at boot.
 
-- The key holder shows the machine's name and verified identity and waits
-  for you to approve every unlock. **One approval of a request from a copy
-  of your disk hands over the volume secret.** Approve only when you are
-  rebooting that machine yourself. After any suspected exposure of the
-  disk or a backup, change the LUKS passphrase and enrol your key holders
-  again.
-- Everything crosses TLS 1.3 with the peer pinned by Device ID; rendezvous
-  servers and relays see two Device IDs and a traffic volume, nothing else.
+## Security
 
-Not defended against: the copied-disk case above until the machine's
-identity can be sealed in a TPM (not built), a coerced or careless human
-pressing approve, and unattended reboots by design. Details in
-`docs/threat-model.md`; the protocol is in `docs/mr1-protocol.md`.
+Warning: One approval gives the volume secret to the sender of the request.
+A copy of your disk can send a request that looks like the real one.
+Approve only when you restart the machine yourself.
+If you suspect that someone has a copy of the disk, change the LUKS passphrase.
+Then enrol the key holders again.
 
-## Installing
+All traffic uses TLS 1.3. Each side checks the Device ID of the other side.
+Relay and discovery servers see two Device IDs and the amount of traffic. They see nothing else.
 
-**Debian and Ubuntu.** The boot part of synctang is a dracut module, and
-`synctang-dracut` depends on dracut and, when it is installed, regenerates the initrd of
-every installed kernel with it. On a machine that boots with initramfs-tools, the default
-on Debian and Ubuntu, that replaces those images with dracut-built ones. That has not been
-tried on a stock Debian or Ubuntu install: every machine this was tested on used
-dracut from the start. Try it first on a machine you can recover. The ordinary console
-passphrase prompt still works if the agent does not.
+synctang does not protect you in these cases:
 
-**Machine and laptop.** Install the Debian packages you need
-(`synctang-dracut` pulls in `synctang-unlocker` and rebuilds your initrds). A
-release has them, for amd64 and arm64, among its assets on GitHub, with a
-`SHA256SUMS` file, a build-provenance attestation for each
-(`gh attestation verify <file> --repo muelli/synctang`), and a cosign bundle
-next to each file (see `docs/releasing.md`). Or build them:
+- A person approves a request that they should refuse.
+- Someone has a copy of the disk. A TPM can seal the machine identity, but this is not built.
+- The machine restarts without a person. This is by design.
 
-    just deb
-    sudo apt install ./dist/synctang-unlocker_*.deb ./dist/synctang-dracut_*.deb   # the machine
-    sudo apt install ./dist/synctang-keyholder_*.deb                                # a laptop key holder
+Read `docs/threat-model.md` for the details.
 
-Without Debian packaging, `go build ./cmd/synctang-unlocker ./cmd/synctang-keyholder`,
-install the binary as `synctang-unlocker` on the machine, run `just install-dracut`,
-then `dracut --force`. The module needs dracut's `network` module, which on Fedora and RHEL
-is in a separate package: install it first (`sudo dnf install dracut-network`), or
-`dracut` stops with "Module 'synctang' depends on module 'network', which can't be
-installed". The Debian package depends on it and brings it in itself.
+## Install
 
-**Phone.** Install an F-Droid client, add the repository
-`https://muelli.github.io/synctang/fdroid/repo` (or scan the QR code on
-<https://muelli.github.io/synctang/>), and install "synctang key holder".
-Two things to know:
+### Machine and laptop (Debian and Ubuntu)
 
-- A release APK is signed with a different key from a locally built debug
-  APK. Android will not update across that, and uninstalling destroys the
-  phone's Keystore key, so the phone must be paired again afterwards.
-- A client pins the repository fingerprint when the repository is added.
+Warning: `synctang-dracut` replaces the initrd of each kernel with an initrd that dracut builds.
+Debian and Ubuntu use initramfs-tools by default. We did not test this on a standard installation.
+Test it first on a machine that you can repair. The console passphrase prompt still works
+if the agent fails.
 
-## Using it
+1. Get the packages. A release on GitHub has them for amd64 and arm64.
+   Each file has a `SHA256SUMS` entry, an attestation and a cosign bundle.
+   To build them, run `just deb`.
+2. On the machine, install the unlocker and the dracut module:
 
-Every command, flag, file and kernel argument is in the manual pages:
-`man synctang-unlocker` (the machine), `man synctang-keyholder` (the laptop) and
-`man synctang-network.conf` (choosing the relay and discovery servers). The Debian
-packages install them; from a checkout, `man -l man/synctang-unlocker.8`.
+        sudo apt install ./dist/synctang-unlocker_*.deb ./dist/synctang-dracut_*.deb
 
-The commands below need root on the machine. `--existing-passphrase-file`
-takes an existing LUKS passphrase; the examples use process substitution
-so it never touches a disk. Run the commands from a root shell
-(`sudo -i`): `sudo synctang-unlocker ... <(printf %s "$PASS")` fails with `open
-/dev/fd/63: no such file or directory`, because sudo closes the descriptor that
-makes the process substitution work. For a single command, `-` reads the
-passphrase from stdin (`--existing-passphrase-file -` or `--existing-passphrase-file=-`):
+3. On the laptop, install the key holder:
 
-    printf %s "$PASS" | sudo synctang-unlocker enrol ... --existing-passphrase-file -
+        sudo apt install ./dist/synctang-keyholder_*.deb
 
-`pair` takes it the same way. Its confirmation question then cannot be answered on
-stdin, which the passphrase has used up, so it is asked on the terminal; with no
-terminal (from a script, say) pass `--yes`, and `pair` says so at once, before it
-shows a code.
+To verify a download, read `docs/releasing.md`.
+
+### Other systems
+
+1. Build the programs: `go build ./cmd/synctang-unlocker ./cmd/synctang-keyholder`.
+2. On the machine, install `synctang-unlocker` in the path.
+3. Run `just install-dracut`. Then run `dracut --force`.
+
+On Fedora and RHEL, install `dracut-network` first. Without it, dracut stops with
+"Module 'synctang' depends on module 'network'".
+
+### Phone
+
+1. Install an F-Droid client.
+2. Add the repository `https://muelli.github.io/synctang/fdroid/repo`.
+3. Install "synctang key holder".
+
+A release APK and a debug APK have different signatures. Android does not update from one to the other.
+If you uninstall the app, the phone key is lost. Then pair the phone again.
+
+## Quick start
+
+Run the machine commands as root on the machine. Use `sudo -i`. A process substitution
+does not work with a plain `sudo`.
+
+First, put the LUKS passphrase in a shell variable. Do not write it to a file.
 
     read -rsp 'LUKS passphrase: ' PASS
 
-At a terminal both programs colour their output (errors red, warnings yellow, what went well green), mark
-lines with check marks and crosses, show tables with headers, frame the code you compare when pairing and turn
-a spinner while they wait. Prose is wrapped to the width of the terminal. `--color=never` (anywhere on the
-line) or `NO_COLOR=1` turns the colour off, `--color=always` keeps it in a pager, and a locale that is not
-UTF-8 gets plain words instead of symbols. To a pipe or a file the output is plain text, as scripts read it.
-`synctang-keyholder unlock` with no machine named unlocks the only one it knows, and a mistyped command or
-machine name is answered with "did you mean ...?".
+To find the device, run `synctang-unlocker devices`.
 
-Shell completion for bash, zsh and fish comes with the Debian packages. Both programs
-write it themselves from their own commands and flags (`synctang-unlocker completion bash`,
-and likewise for `zsh` and `fish`), so it cannot name an option the program does not have;
-without the package, `source <(synctang-unlocker completion bash)` in `~/.bashrc` does it.
-Options are spelled with two dashes, as in the manual pages (`--device`), and a single dash
-also works.
+### 1. Pair a phone
 
-Not sure which device holds the volume? `synctang-unlocker devices` (as root) lists the
-LUKS devices on the machine with their UUID, size, the name each is open under, and how
-many key holders are enrolled; `enrol` and `pair` print the same list when `--device` is
-left out.
-
-    synctang-unlocker devices
-    DEVICE     UUID                                  SIZE     OPEN AS              SYNCTANG
-    /dev/vda3  91ae9308-22e5-4eba-af83-cc26c3c87818  5.0 GiB  synctang_test_crypt  2 key holders
-
-The first `pair` or `enrol` creates the machine's network identity in
-`/etc/synctang/machine.pem`. The initrd has to carry that identity, or at boot the agent
-makes a new one that no key holder knows and the machine is not found; the enrolled key
-holders themselves are read from the disk at boot, so only a change of identity or of
-`network.conf` needs a rebuild. An initrd built before the identity existed, which is the
-case right after installing the packages, does not have it. `pair` and `enrol` check
-this when they finish and say so, in words, with the fix; add `--rebuild-initrd` and they
-run `dracut --force` themselves when it is needed. `synctang-unlocker status` shows the
-same check at any time (it needs root, and `lsinitrd`, which dracut brings):
-
-    initrd: carries this machine's identity
-    initrd: does not contain this machine's identity (/etc/synctang/machine.pem), so at boot ...
-
-It looks at the initrd of the running kernel, which is the one `dracut --force` rebuilds.
-A rebuild rewrites your `/boot` images: keep a copy of the current one if the machine is
-not within reach.
-
-### Pair a phone
+On the machine:
 
     synctang-unlocker pair --device /dev/sdXN --name my-machine \
       --existing-passphrase-file <(printf %s "$PASS")
 
-Tests the passphrase against the header first (a typo stops it before anything
-is shown or created), then shows a QR code and a one-time code and waits. Scan it in the app: the
-phone proves it holds the code and sends its public key, and the machine
-shows you which key holder answered before it writes anything. The code
-lasts five minutes (`--timeout`), enrols one key holder, and is useless
-replayed or on a second phone. `--yes` skips the confirmation. If the QR
-code will not scan (a serial console, say), the link it carries is
-printed as text to paste into the app's device ID field. (A device ID
-typed on its own only remembers the machine; the link, with its one-time
-code, is what enrols the phone.)
+The command shows a QR code. Scan it with the app. The machine shows the key holder that answered.
+A new app shows a code. Compare it with the code on the machine. If the codes are the same, enter `y`.
+If the codes are different, enter `n`. Another person used the link first.
+An old app shows no code. Then enter `y` only if you scanned the QR code yourself, just now.
 
-There is one enrolled key holder per transport ID. If the phone that answers is
-already enrolled with the same key, nothing is asked and nothing is added
-(`already enrolled at keyslot N`). If it is enrolled with a different key, which
-is what happens when the app was updated and made a new key but kept its
-transport ID, the machine asks `replace the existing entry for this key holder
-(keyslot N, key X) with this one (key Y)? [y/N]`; on `y` the new key is enrolled
-first and the old one revoked after it, so there is never a moment with neither,
-and `--yes` answers yes. So to re-pair a phone whose key changed, run the same
-`pair` command again and answer `y`. `enrol` does the same for a laptop: the same
-key is a no-op, and a different key for an enrolled ID is refused with the
-`--replace` command to use instead.
+The code is valid for 5 minutes. It enrols one key holder.
 
-`status` warns if one transport ID is enrolled more than once (a state older
-versions could leave behind), and the agent then refuses to answer for it rather
-than pick a key. Repair it by naming the stale keyslot:
+### 2. Pair a laptop
 
-    synctang-unlocker enrol --device /dev/sdXN --remove <transport id> --keyslot <n> \
-      --existing-passphrase-file <(printf %s "$PASS")
-
-The phone waits up to five minutes (the machine's default `--timeout`) for you to
-answer that question, separately from the time it allows to reach the machine; if
-it runs out it says the machine did not confirm, and pairing again says the phone
-is already enrolled if you confirmed just after.
-
-`--qr` chooses how the code is drawn: `auto` (the default), `blocks`,
-`plain`, `kitty` or `iterm2`. Automatic means a real image on a terminal
-known to show one (Kitty and Ghostty through the Kitty graphics protocol;
-iTerm2 and WezTerm through iTerm2's inline images, also reached over ssh
-from iTerm2), the plain ASCII code when `NO_COLOR` is set, and half blocks
-everywhere else, which is what a serial console, a pipe, `tmux` and
-`screen` get. A multiplexer swallows image sequences unless it passes them
-through, so `--qr kitty` or `--qr iterm2` is how to ask for one there (the
-sequence is wrapped for tmux's `allow-passthrough`).
-
-### Pair a laptop
-
-Run the same command as for a phone on the machine:
-
-    synctang-unlocker pair --device /dev/sdXN --name my-machine \
-      --existing-passphrase-file <(printf %s "$PASS")
-
-Under the QR code it prints a second command, with the link in it. On the laptop, run that (the quotes
-matter, the link contains `&`):
+On the machine, run the same command. It prints a second command under the QR code. Copy that
+command. Run it on the laptop. Keep the quotes.
 
     synctang-keyholder pair 'synctang://pair?machine=...&name=my-machine&psk=...'
 
-That one string is all that is copied. The laptop makes its key if it has none, proves it holds the
-one-time code, and sends its public key. **Both sides now show a six-digit code, and the person at the
-machine is asked whether to enrol: say yes only if the code on the laptop is the same.** The one-time
-code only proves that whoever answered had it, and a link that was photographed, read over a shoulder
-or pasted somewhere is had by more than one party. If the codes differ, answer `n` on the machine and
-pair again for a new link. (The phone app shows the same code while it waits, and says what to do if it differs; an app from
-before that does not, and then the check is that you scanned the code yourself just now.)
+The laptop and the machine show a 6-digit code. Enter `y` on the machine only if the codes are the same.
+The laptop remembers the machine under its name.
 
-The laptop remembers the machine under the name in the link, so unlocking is:
-
-    synctang-keyholder unlock my-machine
-
-`synctang-keyholder machines` lists the names, and `machines add <name> <transport id>` names a machine
-by hand. The names live in a plain text file, `~/.config/synctang-keyholder/machines`.
-
-#### By hand
-
-`enrol` is the low-level way, for what pairing cannot reach (a machine that cannot be reached over the
-network while you pair, an image, a script). On the laptop:
-
-    synctang-keyholder init
-
-It prints the public key and the transport ID, and the command below with them filled in
-(`synctang-keyholder export-pubkey` prints the two values again later). On the machine, with the two
-values that printed (both are required):
-
-    synctang-unlocker enrol --device /dev/sdXN --name my-laptop \
-      --pubkey <public key> --recipient-transport-id <transport id> \
-      --existing-passphrase-file <(printf %s "$PASS")
-
-This adds a LUKS2 keyslot holding a fresh secret and an `mr-1` token
-entry for that key holder, and prints the machine's own transport ID,
-which the laptop needs to dial it. Name it with `synctang-keyholder machines add`.
-
-### Where the laptop's key is kept
-
-`synctang-keyholder init` keeps the key in GNOME Keyring (through the Secret Service) when there is one, and in a plain file, with a warning that says why, when there
-is not. `--store` chooses: `file`, `secret-service`, `systemd-creds` (sealed by systemd for your account,
-no desktop needed, systemd 256 or later) or `systemd-creds:tpm2` (also sealed to this machine's TPM, so
-the key cannot be moved or backed up from the blob; written for a machine with a TPM and not yet run on one). A keyring item is bound to the absolute path of the key file, so a moved key directory leaves it behind
-(`status` then says there is no key at that path). A store you ask for by name is never replaced by
-another if it is not there: the command fails. `synctang-keyholder status` says which store holds the key,
-what that does and does not protect against (`docs/threat-model.md` has the table), and whether it reads.
-
-None of the stores stops
-software running as you from asking for the key.
-
-### See who can unlock
-
-    synctang-unlocker status --device /dev/sdXN
-
-Prints the machine's transport ID and name and, for each enrolled key
-holder, its transport ID, keyslot and a short key id. Read-only. Run it
-before a revocation: naming the wrong transport ID revokes the wrong key
-holder.
-
-### Rehearse the first reboot
-
-Before the first reboot of a machine that was just set up, run
+### 3. Check before the first restart
 
     sudo synctang-unlocker rehearse
 
-(`pair` suggests it when it is done). It checks what the boot needs: that the initrd of the
-running kernel carries this machine's identity and `network.conf`, has the `synctang` and
-`network` dracut modules, holds the same `synctang-unlocker` that is installed (an upgrade that
-did not rebuild the initrd leaves the old one in it), and that the kernel command line does not
-carry `rd.synctang=0`. Each is `ok`, `PROBLEM` with the fix, or `unchecked` with the reason. Then
-it waits for a key holder, as `open` does, through the relay and discovery servers the machine
-would use at boot; you approve on the phone or the laptop; and it checks that what the machine
-recovered opens the volume. Nothing is opened: the volume of a running machine is in use, and the
-check is the one the agent makes at boot. `--initrd-only` does the first part alone.
+The command checks the initrd and waits for a key holder. It does not restart the machine.
+If it finds a problem, it shows the fix. For example, it can tell you to run `dracut --force`.
 
-A pass means a key holder is paired against this machine's real identity, the network settings work
-from outside, and its key opens the volume. It cannot test the network in early boot (DHCP in the
-initrd) or that the initrd starts, only a reboot does; if either fails the machine still shows its
-ordinary passphrase prompt on the console, and the passphrase still works.
+### 4. Unlock
 
-### Unlock
+At boot, the agent starts with the normal console prompt. The first answer wins.
+You can always type the passphrase on the console.
 
-At boot the agent starts alongside the ordinary console prompt; whoever
-answers first wins, so the console keeps working. To unlock, tap Unlock in
-the app, or on the laptop:
+On the phone: tap Unlock and touch the fingerprint sensor. On the laptop:
 
-    synctang-keyholder unlock <machine transport id>
+    synctang-keyholder unlock my-machine
 
-The key holder shows the machine's name, waits for Enter (or `--yes`),
-and answers once. The machine checks the recovered secret actually opens the volume
-before handing it to systemd, and tells the key holder how it went.
-In the app, Unlock is one tap: it connects, and the fingerprint prompt comes up by itself as
-soon as the machine's request arrives, naming the machine. If you cancel the prompt, the
-approve screen (the machine's name and key, and how long is left) is there to try again
-or to decline; the machine is told nothing until you decline or the time runs out.
-The app gives you 75 seconds to approve, counted from when it connected to the machine,
-and shows how long is left on the approve screen (a connection with nothing on it can be
-closed by a relay or a network after a minute or two; `docs/relay-idle.md`). The 75
-seconds include the fingerprint prompt: if it is still up when they run out, the app
-dismisses it, tells the machine no and says so, and a touch that arrives after that
-answers nothing.
-While the app connects, pairs or sends its answer, it says what it is doing (looking
-for the machine, connected through a relay or on the local network and waiting for the
-machine to ask, waiting for you to confirm on the machine), how long it has been, and
-which attempt it is on after the first.
+If the laptop knows only one machine, use `synctang-keyholder unlock`.
 
-The app's main screen shows a dot and a line of words saying whether the machine has announced
-itself to the discovery server lately (waiting, announced some minutes ago, not announced, or
-cannot check); it is what the machine published, not a promise that an unlock will work, and it
-never stops you pressing Unlock. A machine that is waiting republishes every minute, so the
-app looks once when the screen appears or the app comes back, then every minute or so, and
-"Check again", or a long press on the dot, looks now (at most every 10 seconds). The public discovery server is shared and
-answers a client that asks too often with HTTP 429 and a Retry-After of minutes: the app then
-leaves it alone for that long and keeps showing what it showed, and a dial's retries (and the
-command-line tools') back off from 3 to 15 seconds and wait out a Retry-After too.
-When an unlock gives up, the app (and `synctang-keyholder unlock`) looks the machine up once more and
-says what discovery knows: it announced itself N seconds ago but did not answer, it last announced
-itself minutes or hours ago so it may not be at its prompt, or it never announced itself.
-A debug build of the app logs what it is doing, and `adb logcat -v time -s synctang GoLog`
-follows it; release builds log warnings only (`docs/debugging.md`).
+## More
 
-Kernel command line options:
+- `docs/usage.md` has the full detail. It covers options, the phone app and kernel arguments.
+  It also covers your own relay and discovery servers, external drives, and how to revoke or replace a key holder.
+- The manual pages describe each command: `man synctang-unlocker`, `man synctang-keyholder`
+  and `man synctang-network.conf`.
+- `docs/threat-model.md` describes the threats. `docs/mr1-protocol.md` describes the protocol.
+- `STATUS.md` shows what works and what does not.
 
-- `rd.synctang=0` does not start the agent; the escape hatch for when the
-  network path is what is broken.
-- `rd.synctang.log=LEVEL` sets how much the agent logs (`trace`, `debug`, `info`, `warn` or
-  `error`, default `info`). Its log goes to the journal, so after the boot
-  `journalctl -b -t synctang-unlocker` shows it.
-- `rd.synctang.relay=URL` and `rd.synctang.discovery=URL` use your own relay
-  and discovery server instead of the public ones, for this boot; see
-  "Use your own relay and discovery server" below.
-
-Off the local network the phone needs Internet access; on the same
-network it does not. Both sides try local discovery (a multicast on the
-LAN, IPv4 only, same broadcast domain) and the public Syncthing relay
-network at once, and use whichever finds the other first. Details in
-`docs/transport.md`.
-
-### Use your own relay and discovery server
-
-The public Syncthing relay pool and discovery servers are the default. To use
-your own, on the machine put them in `/etc/synctang/network.conf` and rebuild
-the initrd (for example `sudo dracut --force`):
-
-    relay-pool=relay://192.0.2.10:22067/?id=<the relay's Device ID>
-    discovery=https://discovery.example.org/v2/
-
-`relay-pool` is either a relay pool URL or, as here, one relay of your own;
-`discovery-announce=` is only needed when announcements go to a different
-URL than lookups. Only the machine needs a relay setting: a key holder learns the relay from
-discovery. `synctang-unlocker pair` then puts the discovery server in the pairing
-link, so a phone paired by QR code follows the machine's choice and nobody
-types a URL on it (update the app first: an older one ignores it and looks
-on the public servers). On a laptop, give the discovery server with
-`synctang-keyholder unlock --discovery URL`, or in `~/.config/synctang-keyholder/config`. Both
-sides must use the same discovery server. A private discovery server with a
-self-signed certificate is trusted by its Device ID, written in the URL as
-`?id=<Device ID>` (or `?insecure` to skip the check); with neither, the
-system's certificate authorities decide. Plain `http://` is for lookups only,
-never for announcing. A relay or discovery server sees
-two Device IDs and how much traffic passed, not what it carried. Details,
-and what was and was not tested, in `docs/private-servers.md`.
-
-### Open a drive after boot
-
-The agent only runs in the initrd, and is stopped before the switch to the
-real root. For a volume that is not asking for a password at boot, an
-external drive plugged in later say, there is a command that waits for a key
-holder and then opens the volume itself:
-
-    sudo synctang-unlocker open /dev/sdb1 backup
-
-It prints this machine's transport id, waits (five minutes, `--timeout`) for
-a key holder to approve, checks that the recovered secret really opens the
-volume, runs `cryptsetup open`, prints `/dev/mapper/backup` and exits.
-Nothing keeps running. Without a name the volume is called
-`synctang-<start of its UUID>`. Mounting is a separate step, and
-`cryptsetup close backup` closes it.
-
-The drive has to have a key holder enrolled first, which writes a keyslot and a
-token into the drive's own LUKS header: run `synctang-unlocker pair --device /dev/sdb1`
-(or `enrol`) once, with the drive's passphrase, as for any other volume, and
-back its header up first. The token names key holders, not a machine, so the
-drive can be opened on any computer that runs `synctang-unlocker` and whose transport
-id the key holder knows. The phone app keeps one paired machine at a time; the
-laptop's `synctang-keyholder unlock <transport id>` takes any.
-
-### Keyboard use of the app
-
-The app can be driven from a hardware keyboard (Android's desktop mode, or a
-phone with one attached). Tab and Shift+Tab move between controls, Enter or
-Space presses the focused one, and each screen starts with its main control
-focused. Every control also has a key, which works wherever focus is; Meta+/
-shows the ones the current screen offers.
-
-| Key | Does |
-| --- | --- |
-| Ctrl+Enter | The main action of the screen: Unlock, Approve and unlock, Try again, Scan again, Pair, Unlock something again |
-| Esc | Back out, as the Back gesture does: Decline, Cancel, keep the machine already paired, close About, dismiss the undo bar |
-| Ctrl+P | Pair with a machine again |
-| Ctrl+R | Check again whether the machine is waiting |
-| Ctrl+I | About this phone |
-| Ctrl+E | Enrol by hand |
-| Ctrl+Shift+C | Copy the enrolment command |
-| Ctrl+T | Show or hide the technical details of an error |
-| Ctrl+1, Ctrl+2 | Show in full or less: the device ID, the key requested |
-| Ctrl+G, Ctrl+O | Allow the camera, open the app's settings |
-| Ctrl+Z | Undo a pairing that replaced a machine |
-
-"Use a software key on this phone" has no key, and is not focused when its
-screen opens: it weakens a protection, so it has to be reached and pressed on
-purpose. A held key does not repeat an action. Each screen names itself to the
-screen reader and in the window title, for instance "synctang: Pair with a
-machine".
-
-### Revoke or rotate a key holder
-
-Revoke destroys that key holder's keyslot and removes its token entry,
-leaving the others alone:
-
-    synctang-unlocker enrol --device /dev/sdXN --remove <transport id> \
-      --existing-passphrase-file <(printf %s "$PASS")
-
-Rotate replaces a key holder's key in one command. The new key is enrolled
-before the old one is revoked, so it can open the volume throughout:
-
-    synctang-keyholder init --force        # on the laptop: new key, same transport id
-    synctang-keyholder export-pubkey
-    synctang-unlocker enrol --device /dev/sdXN --replace <transport id> --pubkey <new public key> \
-      --existing-passphrase-file <(printf %s "$PASS")
-
-To pair the phone with a different machine, or with the same one again,
-use "Pair with a machine again" on the Unlock screen. The machine already
-paired stays paired until the new pairing has worked, and the Unlock
-screen then offers to undo the switch for a few seconds. To forget a machine
-on the phone altogether, clear the app's data in Android's settings, then
-revoke the phone on the machine.
+At a terminal, the programs use colour and symbols. Use `--color=never` or `NO_COLOR=1` to
+stop this. In a pipe, the output is plain text.
 
 ## Licence
 
-AGPL-3.0-or-later. See `LICENSE`. Dependencies are listed in
-`THIRD_PARTY.md`; how releases are built and published is in
-`docs/releasing.md`.
+AGPL-3.0-or-later. Read `LICENSE`. `THIRD_PARTY.md` lists the dependencies.
+`docs/releasing.md` explains how releases are built.

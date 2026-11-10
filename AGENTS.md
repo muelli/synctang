@@ -21,6 +21,9 @@
 - Docs never tell a user to put the LUKS passphrase in a file on disk:
   examples use `--existing-passphrase-file <(printf %s "$PASS")` (`-`
   reads stdin, which `pair` also needs for its confirmation question).
+- The README is short and written in ASD-STE100 (Simplified Technical English): short active sentences
+  (20 words or fewer for an instruction, 25 for a description), one instruction in a sentence, no
+  contractions. The full usage guide is `docs/usage.md`.
 - The README is for installing and using the software. Design notes go
   in `docs/`, conventions and gotchas here, current state in
   `STATUS.md`, release and publishing mechanics in `docs/releasing.md`.
