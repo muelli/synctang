@@ -50,7 +50,7 @@ type dialError struct{ error }
 
 func (e *dialError) Unwrap() error { return e.error }
 
-func runUnlockOnce(ctx context.Context, s []byte, cert tls.Certificate, machineID, directAddr string, network transport.NetworkConfig, yes bool, stdin io.Reader, stdout io.Writer) error {
+func runUnlockOnce(ctx context.Context, s []byte, cert tls.Certificate, machineID, alias, directAddr string, network transport.NetworkConfig, yes bool, stdin io.Reader, stdout io.Writer) error {
 	tr := newDialTransport(cert, directAddr, network)
 	conn, err := tr.Dial(ctx, transport.DialOptions{PeerID: machineID, DirectAddr: directAddr})
 	if err != nil {
@@ -66,7 +66,7 @@ func runUnlockOnce(ctx context.Context, s []byte, cert tls.Certificate, machineI
 	in := bufio.NewReader(stdin)
 
 	if !yes {
-		fmt.Fprintf(stdout, "Machine %q (%s) wants to unlock. Press Enter to approve, Ctrl-C to abort: ", mrcore.SafeLabel(hello.Name, 64), machineID)
+		fmt.Fprintf(stdout, "%s wants to unlock. Press Enter to approve, Ctrl-C to abort: ", describeMachine(alias, hello.Name, machineID))
 		if _, err := in.ReadString('\n'); err != nil && err != io.EOF {
 			return fmt.Errorf("reading approval: %w", err)
 		}
@@ -106,4 +106,22 @@ func runUnlockOnce(ctx context.Context, s []byte, cert tls.Certificate, machineI
 
 	fmt.Fprintln(stdout, "unlocked")
 	return nil
+}
+
+// describeMachine is how the approval prompt names the machine. The identity is what was dialled and is
+// always shown. alias is the name the person gave the machine in the address book (empty if they dialled
+// an id); announced is what the machine says it is called, which proves nothing and is cleaned of control
+// characters, and is shown when there is no alias or when it differs from it. Nothing is shown for a name
+// that is empty, rather than a pair of quotes.
+func describeMachine(alias, announced, id string) string {
+	announced = mrcore.SafeLabel(announced, 64)
+	switch {
+	case alias != "" && (announced == "" || announced == alias):
+		return fmt.Sprintf("Machine %s (%s)", alias, id)
+	case alias != "":
+		return fmt.Sprintf("Machine %s (calls itself %q, %s)", alias, announced, id)
+	case announced != "":
+		return fmt.Sprintf("Machine %q (%s)", announced, id)
+	}
+	return "Machine " + id
 }
