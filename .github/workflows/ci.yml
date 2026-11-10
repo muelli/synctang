@@ -52,11 +52,11 @@ jobs:
         # a target that has stopped building or a regression an earlier
         # run already found, and it keeps the corpus honest. Longer
         # runs belong on a machine with time, not in every push.
-        run: |
-          for t in FuzzReadMessage FuzzTokenUnmarshal FuzzLiftX FuzzFinishXOnly; do
-            echo "== $t"
-            go test ./mrcore/ -run "^$t$" -fuzz "^$t$" -fuzztime=20s
-          done
+        #
+        # The fuzz engine sometimes ends a run that found nothing with "context deadline exceeded" (the time
+        # limit came while it was working on an input). scripts/ci-fuzz.sh repeats such a run, and never a
+        # run that found something.
+        run: ./scripts/ci-fuzz.sh 20s FuzzReadMessage FuzzTokenUnmarshal FuzzLiftX FuzzFinishXOnly
 
   go-test-privileged:
     runs-on: ubuntu-26.04
@@ -81,6 +81,7 @@ jobs:
       - run: ./scripts/test-agent-log.sh
       - run: ./scripts/test-manpages.sh
       - run: ./scripts/test-casts.sh
+      - run: ./scripts/test-ci-fuzz.sh
       - run: ./scripts/emulator-vm/test-idle-shutdown.sh
       - run: SKIP_REAL_AWS_CHECK=1 ./scripts/emulator-vm/test-emu-ctl.sh
 
