@@ -98,7 +98,7 @@ jobs:
 
       - name: Set up Go
         if: steps.gate.outputs.ready == 'true'
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.25"
 
@@ -451,7 +451,7 @@ jobs:
       #   gh attestation verify <file> --repo ${{ github.repository }}
       - name: Attest published artifacts
         if: steps.gate.outputs.ready == 'true'
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
             site/fdroid/repo/synctang-${{ steps.version.outputs.code }}*.apk
@@ -463,7 +463,7 @@ jobs:
       # previous APKs back out of it.
       - name: Configure Pages
         if: steps.gate.outputs.ready == 'true'
-        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
         with:
           # Creates the Pages site with build_type=workflow if it does not
           # exist, so switching from branch deployment needs no click in
@@ -472,7 +472,7 @@ jobs:
 
       - name: Upload the site
         if: steps.gate.outputs.ready == 'true'
-        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: site
 
@@ -485,13 +485,13 @@ jobs:
         if: steps.gate.outputs.ready == 'true'
         id: deployment
         continue-on-error: true
-        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
         with:
           timeout: 600000
 
       - name: Deploy to Pages, second try
         if: steps.gate.outputs.ready == 'true' && steps.deployment.outcome == 'failure'
         id: deployment_retry
-        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
         with:
           timeout: 600000
