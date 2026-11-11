@@ -62,3 +62,12 @@ func TestCheckSecretLength(t *testing.T) {
 		}
 	}
 }
+
+// A token with no recipients is not one whose recipients lack a transport id: nobody is enrolled, which is what the
+// agent should say (it said the other, which "status" contradicts).
+func TestAuthorizedPeersSaysNobodyIsEnrolledForATokenWithNoRecipients(t *testing.T) {
+	_, err := authorizedPeersFor(mrcore.Token{})
+	if err == nil || !strings.Contains(err.Error(), "no key holder is enrolled") || strings.Contains(err.Error(), "transport id") {
+		t.Errorf("%v", err)
+	}
+}
