@@ -47,7 +47,7 @@ func loadNetworkConfig(confPath, cmdlinePath string) (transport.NetworkConfig, e
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
 		case err != nil:
-			return transport.NetworkConfig{}, fmt.Errorf("reading %s: %w", confPath, err)
+			return transport.NetworkConfig{}, fmt.Errorf(T("reading %s: %w"), confPath, err)
 		default:
 			defer f.Close()
 			file, err = transport.ParseNetworkConf(f)
@@ -63,7 +63,7 @@ func loadNetworkConfig(confPath, cmdlinePath string) (transport.NetworkConfig, e
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
 		case err != nil:
-			return transport.NetworkConfig{}, fmt.Errorf("reading %s: %w", cmdlinePath, err)
+			return transport.NetworkConfig{}, fmt.Errorf(T("reading %s: %w"), cmdlinePath, err)
 		default:
 			cmd, err = parseCmdlineNetwork(string(raw))
 			if err != nil {
@@ -107,7 +107,7 @@ func parseCmdlineNetwork(cmdline string) (transport.NetworkConfig, error) {
 func resolveNetwork(confPath string, stdout, stderr io.Writer) (transport.NetworkConfig, bool) {
 	c, err := loadNetworkConfig(confPath, procCmdline)
 	if err != nil {
-		ui.Errorf(stderr, "network settings: %v\n", err)
+		ui.Errorf(stderr, T("network settings: %v\n"), err)
 		return transport.NetworkConfig{}, false
 	}
 	if s := c.Summary(); s != "" {

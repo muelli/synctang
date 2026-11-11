@@ -45,7 +45,7 @@ func machinesFileFlag(fs *flag.FlagSet) *string {
 	if err != nil {
 		def = ""
 	}
-	return fs.String("machines-file", def, "file naming the machines this key holder can unlock")
+	return fs.String("machines-file", def, T("file naming the machines this key holder can unlock"))
 }
 
 var machineNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
@@ -54,10 +54,10 @@ var machineNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 // two meanings), and what would not survive being a word on a line.
 func validMachineName(name string) error {
 	if !machineNameRE.MatchString(name) {
-		return fmt.Errorf("%q is not a usable machine name: use letters, digits, dots, dashes and underscores, starting with a letter or digit, at most 64", name)
+		return fmt.Errorf(T("%q is not a usable machine name: use letters, digits, dots, dashes and underscores, starting with a letter or digit, at most 64"), name)
 	}
 	if _, err := protocol.DeviceIDFromString(name); err == nil {
-		return fmt.Errorf("%q is not a usable machine name: it is a transport id", name)
+		return fmt.Errorf(T("%q is not a usable machine name: it is a transport id"), name)
 	}
 	return nil
 }
@@ -66,7 +66,7 @@ func validMachineName(name string) error {
 // would split the line into more fields than there are, and the book would not read any more.
 func checkDiscoveryURL(u string) error {
 	if strings.ContainsFunc(u, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) {
-		return errors.New("the discovery server in it has a space or a control character")
+		return errors.New(T("the discovery server in it has a space or a control character"))
 	}
 	return nil
 }
@@ -74,7 +74,7 @@ func checkDiscoveryURL(u string) error {
 func canonicalMachineID(id string) (string, error) {
 	got, err := protocol.DeviceIDFromString(strings.TrimSpace(id))
 	if err != nil {
-		return "", fmt.Errorf("%q is not a transport id (the machine prints it as \"this machine's transport id\"): %w", id, err)
+		return "", fmt.Errorf(T("%q is not a transport id (the machine prints it as \"this machine's transport id\"): %w"), id, err)
 	}
 	return got.String(), nil
 }
@@ -86,7 +86,7 @@ func loadMachines(path string) ([]machine, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("reading %s: %w", path, err)
+		return nil, fmt.Errorf(T("reading %s: %w"), path, err)
 	}
 	defer f.Close()
 	var out []machine
@@ -98,14 +98,14 @@ func loadMachines(path string) ([]machine, error) {
 		}
 		fields := strings.Fields(line)
 		if len(fields) < 2 || len(fields) > 3 {
-			return nil, fmt.Errorf("%s: line %d: want \"name transport-id [discovery-url]\"", path, n)
+			return nil, fmt.Errorf(T("%s: line %d: want \"name transport-id [discovery-url]\""), path, n)
 		}
 		if err := validMachineName(fields[0]); err != nil {
-			return nil, fmt.Errorf("%s: line %d: %w", path, n, err)
+			return nil, fmt.Errorf(T("%s: line %d: %w"), path, n, err)
 		}
 		id, err := canonicalMachineID(fields[1])
 		if err != nil {
-			return nil, fmt.Errorf("%s: line %d: %w", path, n, err)
+			return nil, fmt.Errorf(T("%s: line %d: %w"), path, n, err)
 		}
 		m := machine{Name: fields[0], ID: id}
 		if len(fields) == 3 {
@@ -114,7 +114,7 @@ func loadMachines(path string) ([]machine, error) {
 		out = append(out, m)
 	}
 	if err := sc.Err(); err != nil {
-		return nil, fmt.Errorf("reading %s: %w", path, err)
+		return nil, fmt.Errorf(T("reading %s: %w"), path, err)
 	}
 	return out, nil
 }
@@ -123,7 +123,7 @@ func loadMachines(path string) ([]machine, error) {
 func saveMachines(path string, ms []machine) error {
 	sort.Slice(ms, func(i, j int) bool { return ms[i].Name < ms[j].Name })
 	var b strings.Builder
-	b.WriteString("# The machines this key holder can unlock: name, transport id, and optionally a discovery server.\n")
+	b.WriteString(T("# The machines this key holder can unlock: name, transport id, and optionally a discovery server.\n"))
 	for _, m := range ms {
 		fmt.Fprintf(&b, "%s %s", m.Name, m.ID)
 		if m.Discovery != "" {
@@ -172,7 +172,7 @@ func putMachine(path string, m machine, replace bool) (previous machine, replace
 			return old, false, nil
 		}
 		if old.ID != m.ID && !replace {
-			return old, false, fmt.Errorf("%s already names %s: use --force to make it name %s instead", m.Name, old.ID, m.ID)
+			return old, false, fmt.Errorf(T("%s already names %s: use --force to make it name %s instead"), m.Name, old.ID, m.ID)
 		}
 		ms[i] = m
 		return old, true, saveMachines(path, ms)
@@ -202,8 +202,8 @@ func resolveMachine(path, arg string) (machine, error) {
 		}
 	}
 	if len(ms) == 0 {
-		return machine{}, fmt.Errorf("%q is neither a transport id nor the name of a machine, and no machines are named yet: "+
-			"pair with one (synctang-keyholder pair), or name one with: synctang-keyholder machines add <name> <transport id>", arg)
+		return machine{}, fmt.Errorf(T("%q is neither a transport id nor the name of a machine, and no machines are named yet: "+
+			"pair with one (synctang-keyholder pair), or name one with: synctang-keyholder machines add <name> <transport id>"), arg)
 	}
 	names := make([]string, len(ms))
 	for i, m := range ms {
@@ -211,9 +211,9 @@ func resolveMachine(path, arg string) (machine, error) {
 	}
 	maybe := ""
 	if m, ok := ui.Closest(arg, names); ok {
-		maybe = fmt.Sprintf("did you mean %s? ", m)
+		maybe = fmt.Sprintf(T("did you mean %s? "), m)
 	}
-	return machine{}, fmt.Errorf("%q is neither a transport id nor the name of a machine; %sthe names are: %s; name another with: synctang-keyholder machines add <name> <transport id>",
+	return machine{}, fmt.Errorf(T("%q is neither a transport id nor the name of a machine; %sthe names are: %s; name another with: synctang-keyholder machines add <name> <transport id>"),
 		arg, maybe, strings.Join(names, ", "))
 }
 
@@ -226,13 +226,13 @@ func runMachines(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(gnuflag.Writer(stderr))
 	file := machinesFileFlag(fs)
 	// Both are for "add", and defined for every subcommand so that "machines -h" lists them.
-	discovery := fs.String("discovery", "", "with add: the discovery server URL for this machine, if it does not use the public one")
-	force := fs.Bool("force", false, "with add: make an existing name stand for this machine instead")
+	discovery := fs.String("discovery", "", T("with add: the discovery server URL for this machine, if it does not use the public one"))
+	force := fs.Bool("force", false, T("with add: make an existing name stand for this machine instead"))
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if *file == "" {
-		ui.Errorln(stderr, "--machines-file is required (could not determine a default)")
+		ui.Errorln(stderr, T("--machines-file is required (could not determine a default)"))
 		return 2
 	}
 	switch sub {
@@ -243,7 +243,7 @@ func runMachines(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		if len(ms) == 0 {
-			fmt.Fprintln(stdout, "no machines are named yet: pair with one (synctang-keyholder pair), or name one with: synctang-keyholder machines add <name> <transport id>")
+			fmt.Fprintln(stdout, T("no machines are named yet: pair with one (synctang-keyholder pair), or name one with: synctang-keyholder machines add <name> <transport id>"))
 			return 0
 		}
 		look := ui.For(stdout)
@@ -267,7 +267,7 @@ func runMachines(args []string, stdout, stderr io.Writer) int {
 		return 0
 	case "add":
 		if fs.NArg() != 2 {
-			ui.Errorln(stderr, "machines add wants a name and a transport id")
+			ui.Errorln(stderr, T("machines add wants a name and a transport id"))
 			return 2
 		}
 		name := fs.Arg(0)
@@ -284,11 +284,11 @@ func runMachines(args []string, stdout, stderr io.Writer) int {
 			ui.Errorf(stderr, "%v\n", err)
 			return 1
 		}
-		fmt.Fprintf(stdout, "%s is %s; unlock it with: synctang-keyholder unlock %s\n", name, id, name)
+		fmt.Fprintf(stdout, T("%s is %s; unlock it with: synctang-keyholder unlock %s\n"), name, id, name)
 		return 0
 	case "remove":
 		if fs.NArg() != 1 {
-			ui.Errorln(stderr, "machines remove wants a name")
+			ui.Errorln(stderr, T("machines remove wants a name"))
 			return 2
 		}
 		ms, err := loadMachines(*file)
@@ -302,13 +302,13 @@ func runMachines(args []string, stdout, stderr io.Writer) int {
 					ui.Errorf(stderr, "%v\n", err)
 					return 1
 				}
-				fmt.Fprintf(stdout, "removed %s (the machine still lets this key holder unlock it: this only forgets the name)\n", m.Name)
+				fmt.Fprintf(stdout, T("removed %s (the machine still lets this key holder unlock it: this only forgets the name)\n"), m.Name)
 				return 0
 			}
 		}
-		ui.Errorf(stderr, "no machine named %q\n", fs.Arg(0))
+		ui.Errorf(stderr, T("no machine named %q\n"), fs.Arg(0))
 		return 1
 	}
-	ui.Errorf(stderr, "unknown machines command %q: want list, add or remove\n", sub)
+	ui.Errorf(stderr, T("unknown machines command %q: want list, add or remove\n"), sub)
 	return 2
 }

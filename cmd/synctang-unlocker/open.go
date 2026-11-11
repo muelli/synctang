@@ -77,7 +77,7 @@ func defaultMapperName(dump string) string {
 	return "synctang-volume"
 }
 
-const openUsage = `usage: synctang-unlocker open [flags] <device> [name]
+var openUsage = T(`usage: synctang-unlocker open [flags] <device> [name]
        synctang-unlocker open --device <device> [flags] [name]
 
 Waits for a key holder to approve, then opens the LUKS volume on <device> as
@@ -85,17 +85,17 @@ Waits for a key holder to approve, then opens the LUKS volume on <device> as
 "cryptsetup close <name>". Needs root. The volume must already have a key
 holder enrolled (see "synctang-unlocker pair").
 
-`
+`)
 
 func runOpen(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("open", flag.ContinueOnError)
 	fs.SetOutput(gnuflag.Writer(stderr))
-	deviceFlag := fs.String("device", "", "the LUKS device to open, instead of giving it as the first argument")
-	machineName := fs.String("name", "", "this machine's name, shown to the key holder (default: the name given at enrolment)")
-	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, "path to this machine's persistent transport identity")
-	timeout := fs.Duration("timeout", defaultOpenTimeout, "give up waiting for a key holder after this long")
-	directAddr := fs.String("direct-addr", "", "listen on this address directly, bypassing relay and discovery (testing only)")
-	networkConf := fs.String("network-conf", defaultNetworkConfFile, "file naming the relay pool and discovery servers to use instead of the public ones (the kernel arguments rd.synctang.relay= and rd.synctang.discovery= override it)")
+	deviceFlag := fs.String("device", "", T("the LUKS device to open, instead of giving it as the first argument"))
+	machineName := fs.String("name", "", T("this machine's name, shown to the key holder (default: the name given at enrolment)"))
+	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, T("path to this machine's persistent transport identity"))
+	timeout := fs.Duration("timeout", defaultOpenTimeout, T("give up waiting for a key holder after this long"))
+	directAddr := fs.String("direct-addr", "", T("listen on this address directly, bypassing relay and discovery (testing only)"))
+	networkConf := fs.String("network-conf", defaultNetworkConfFile, T("file naming the relay pool and discovery servers to use instead of the public ones (the kernel arguments rd.synctang.relay= and rd.synctang.discovery= override it)"))
 	fs.Usage = func() { fmt.Fprint(stderr, openUsage); fs.PrintDefaults() }
 	// Flags may come after the positional arguments, as people type them.
 	var positional []string
@@ -124,7 +124,7 @@ func runOpen(args []string, stdout, stderr io.Writer) int {
 	if len(positional) == 2 {
 		name = positional[1]
 		if !validMapperName(name) {
-			ui.Errorf(stderr, "%q is not a usable name (letters, digits, '_', '.' and '-', starting with a letter or digit, at most 63 characters)\n", name)
+			ui.Errorf(stderr, T("%q is not a usable name (letters, digits, '_', '.' and '-', starting with a letter or digit, at most 63 characters)\n"), name)
 			return 2
 		}
 	}
@@ -132,27 +132,27 @@ func runOpen(args []string, stdout, stderr io.Writer) int {
 	// Before anything waits: approving on a phone and then finding out that
 	// nothing could be opened is the worst way to learn this.
 	if geteuid() != 0 {
-		ui.Errorf(stderr, "opening a volume needs root; %s\n", rootHint())
+		ui.Errorf(stderr, T("opening a volume needs root; %s\n"), rootHint())
 		return 1
 	}
 
 	dump, err := runCommand(nil, "cryptsetup", "luksDump", device)
 	if err != nil {
-		ui.Errorf(stderr, "reading the LUKS header of %s: %v%s\n", device, err, permissionHint(err))
+		ui.Errorf(stderr, T("reading the LUKS header of %s: %v%s\n"), device, err, permissionHint(err))
 		return 1
 	}
 	if _, id, err := loadToken(string(dump), device, "", ""); err != nil {
 		ui.Errorf(stderr, "%v\n", err)
 		return 1
 	} else if id < 0 {
-		ui.Errorf(stderr, "%s has no key holder enrolled, so nobody could approve opening it; enrol one first with: synctang-unlocker pair --device %s --existing-passphrase-file ...\n", device, device)
+		ui.Errorf(stderr, T("%s has no key holder enrolled, so nobody could approve opening it; enrol one first with: synctang-unlocker pair --device %s --existing-passphrase-file ...\n"), device, device)
 		return 1
 	}
 	if name == "" {
 		name = defaultMapperName(string(dump))
 	}
 	if mapperExists(name) {
-		ui.Errorf(stderr, "/dev/mapper/%s already exists; close it first or choose another name\n", name)
+		ui.Errorf(stderr, T("/dev/mapper/%s already exists; close it first or choose another name\n"), name)
 		return 1
 	}
 
@@ -170,19 +170,19 @@ func runOpen(args []string, stdout, stderr io.Writer) int {
 
 // openOnDemand waits up to timeout for a key holder whose answer opens device.
 func openOnDemand(device, name, machineName string, cert tls.Certificate, timeout time.Duration, directAddr string, network transport.NetworkConfig, stdout, stderr io.Writer) int {
-	fmt.Fprintf(stdout, "waiting for a key holder to approve opening %s as /dev/mapper/%s\n", device, name)
-	fmt.Fprintf(stdout, "this machine's transport id: %s\n", protocol.NewDeviceID(cert.Certificate[0]))
+	fmt.Fprintf(stdout, T("waiting for a key holder to approve opening %s as /dev/mapper/%s\n"), device, name)
+	fmt.Fprintf(stdout, T("this machine's transport id: %s\n"), protocol.NewDeviceID(cert.Certificate[0]))
 
 	deliver := func(key []byte) error {
 		if err := openVolume(device, name, key); err != nil {
-			return fmt.Errorf("synctang-unlocker: opening %s: %w", device, err)
+			return fmt.Errorf(T("synctang-unlocker: opening %s: %w"), device, err)
 		}
 		return nil
 	}
 	if !waitForApproval(device, machineName, cert, timeout, directAddr, network, deliver, stderr) {
 		return 1
 	}
-	fmt.Fprintf(stdout, "unlocked: /dev/mapper/%s\n", name)
+	fmt.Fprintf(stdout, T("unlocked: /dev/mapper/%s\n"), name)
 	return 0
 }
 
@@ -200,7 +200,7 @@ func waitForApproval(device, machineName string, cert tls.Certificate, timeout t
 	defer status.Stop()
 	started := time.Now()
 	status.Set(func() string {
-		return fmt.Sprintf("waiting for a key holder (%s of %s)", clock(time.Since(started)), clock(timeout))
+		return fmt.Sprintf(T("waiting for a key holder (%s of %s)"), clock(time.Since(started)), clock(timeout))
 	})
 	for {
 		err := serveOneExchange(ctx, device, machineName, transport.ListenOptions{DirectAddr: directAddr}, tr, deliver)
@@ -210,12 +210,12 @@ func waitForApproval(device, machineName string, cert tls.Certificate, timeout t
 		}
 		status.Stop()
 		if ctx.Err() != nil {
-			ui.Errorf(stderr, "nobody approved within %s\n", timeout)
+			ui.Errorf(stderr, T("nobody approved within %s\n"), timeout)
 			return false
 		}
-		ui.Notef(stderr, "%v (still waiting)\n", err)
+		ui.Notef(stderr, T("%v (still waiting)\n"), err)
 		status.Set(func() string {
-			return fmt.Sprintf("waiting for a key holder (%s of %s)", clock(time.Since(started)), clock(timeout))
+			return fmt.Sprintf(T("waiting for a key holder (%s of %s)"), clock(time.Since(started)), clock(timeout))
 		})
 		select {
 		case <-ctx.Done():

@@ -81,7 +81,7 @@ func lowestFreeKeyslot(dump string) (int, error) {
 			return i, nil
 		}
 	}
-	return 0, fmt.Errorf("no free keyslot: all %d slots are occupied", maxKeyslots)
+	return 0, fmt.Errorf(T("no free keyslot: all %d slots are occupied"), maxKeyslots)
 }
 
 // tokenIDsOfType returns the token IDs whose type matches tokenType,

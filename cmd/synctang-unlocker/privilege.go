@@ -35,16 +35,16 @@ func asRoot() string {
 }
 
 // rootHint is what to add to a message about something that takes root: how to run the command as root.
-func rootHint() string { return "run it as root: " + asRoot() }
+func rootHint() string { return T("run it as root: ") + asRoot() }
 
 // noDeviceError is the error for a search of the block devices that found no mr-1 token. Reading a LUKS header
 // takes root, and a search made as an ordinary user fails to read every one of them: that is not "no device
 // has a token", and the message says what was wrong.
 func noDeviceError(root bool) error {
 	if !root {
-		return fmt.Errorf("no block device could be checked for an %s token: reading a LUKS header takes root; %s", mrTokenType, rootHint())
+		return fmt.Errorf(T("no block device could be checked for an %s token: reading a LUKS header takes root; %s"), mrTokenType, rootHint())
 	}
-	return fmt.Errorf("no block device carries an %s token", mrTokenType)
+	return fmt.Errorf(T("no block device carries an %s token"), mrTokenType)
 }
 
 // permissionHint is what to add to the message of a failed read of a LUKS header when the reason was
@@ -55,7 +55,7 @@ func permissionHint(err error) string {
 	}
 	text := strings.ToLower(err.Error())
 	if strings.Contains(text, "permission") || strings.Contains(text, "not permitted") || strings.Contains(text, "eacces") {
-		return "; reading a LUKS header takes root, " + rootHint()
+		return T("; reading a LUKS header takes root, ") + rootHint()
 	}
 	return ""
 }

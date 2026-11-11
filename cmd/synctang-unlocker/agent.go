@@ -41,8 +41,8 @@ func authorizedPeersFor(tok mrcore.Token) ([]string, error) {
 		}
 	}
 	if len(peers) == 0 {
-		return nil, errors.New("synctang-unlocker: no enrolled recipient has a transport id, so no key holder could be told apart from a stranger; " +
-			"enrol again with --recipient-transport-id (see 'synctang-unlocker status')")
+		return nil, errors.New(T("synctang-unlocker: no enrolled recipient has a transport id, so no key holder could be told apart from a stranger; " +
+			"enrol again with --recipient-transport-id (see 'synctang-unlocker status')"))
 	}
 	return peers, nil
 }
@@ -55,7 +55,7 @@ func authorizedPeersFor(tok mrcore.Token) ([]string, error) {
 func runAgentOnce(ctx context.Context, device string, machineCert tls.Certificate, machineName string, askPasswordDir string, listenOpts transport.ListenOptions, tr transport.Transport) error {
 	deliver := func(keyMaterial []byte) error {
 		if err := answerAskPasswordFor(askPasswordDir, device, keyMaterial); err != nil {
-			return fmt.Errorf("synctang-unlocker: answering ask-password request: %w", err)
+			return fmt.Errorf(T("synctang-unlocker: answering ask-password request: %w"), err)
 		}
 		return nil
 	}
@@ -73,15 +73,15 @@ type deliverFunc func(keyMaterial []byte) error
 func serveOneExchange(ctx context.Context, device, machineName string, listenOpts transport.ListenOptions, tr transport.Transport, deliver deliverFunc) error {
 	dump, err := runCommand(nil, "cryptsetup", "luksDump", device)
 	if err != nil {
-		return fmt.Errorf("synctang-unlocker: reading LUKS header: %w", err)
+		return fmt.Errorf(T("synctang-unlocker: reading LUKS header: %w"), err)
 	}
 
 	tok, existingTokenID, err := loadToken(string(dump), device, machineName, "")
 	if err != nil {
-		return fmt.Errorf("synctang-unlocker: loading token: %w", err)
+		return fmt.Errorf(T("synctang-unlocker: loading token: %w"), err)
 	}
 	if existingTokenID < 0 {
-		return fmt.Errorf("synctang-unlocker: %s has no enrolled mr-1 recipients", device)
+		return fmt.Errorf(T("synctang-unlocker: %s has no enrolled mr-1 recipients"), device)
 	}
 
 	authorizedPeers, err := authorizedPeersFor(tok)
@@ -94,7 +94,7 @@ func serveOneExchange(ctx context.Context, device, machineName string, listenOpt
 
 	conn, err := tr.Listen(ctx, opts)
 	if err != nil {
-		return fmt.Errorf("synctang-unlocker: listening: %w", err)
+		return fmt.Errorf(T("synctang-unlocker: listening: %w"), err)
 	}
 	defer conn.Close()
 
@@ -118,7 +118,7 @@ func matchRecipient(tok mrcore.Token, peerID string) (*mrcore.Recipient, error) 
 	idxs := recipientsByTransportID(tok, peerID)
 	switch len(idxs) {
 	case 0:
-		return nil, fmt.Errorf("synctang-unlocker: connected peer %s does not match any enrolled recipient", peerID)
+		return nil, fmt.Errorf(T("synctang-unlocker: connected peer %s does not match any enrolled recipient"), peerID)
 	case 1:
 		return &tok.Recipients[idxs[0]], nil
 	}
@@ -126,8 +126,8 @@ func matchRecipient(tok mrcore.Token, peerID string) (*mrcore.Recipient, error) 
 	for n, i := range idxs {
 		slots[n] = keyslotOf(tok, i)
 	}
-	return nil, fmt.Errorf("synctang-unlocker: %d enrolled recipients share the transport id %s (keyslots %s), so the agent will not guess which key is the live one; "+
-		"run 'synctang-unlocker status', then remove the stale entry with 'synctang-unlocker revoke --keyslot <n>'",
+	return nil, fmt.Errorf(T("synctang-unlocker: %d enrolled recipients share the transport id %s (keyslots %s), so the agent will not guess which key is the live one; "+
+		"run 'synctang-unlocker status', then remove the stale entry with 'synctang-unlocker revoke --keyslot <n>'"),
 		len(idxs), peerID, strings.Join(slots, ", "))
 }
 
@@ -175,25 +175,25 @@ func runExchange(
 	}
 
 	if err := mrcore.WriteMessage(conn, mrcore.Hello{Name: machineName}); err != nil {
-		return fmt.Errorf("synctang-unlocker: sending hello: %w", err)
+		return fmt.Errorf(T("synctang-unlocker: sending hello: %w"), err)
 	}
 
 	e, X, err := mrcore.ChallengeStart(mrcore.P256(), matched.C)
 	if err != nil {
-		return fmt.Errorf("synctang-unlocker: starting challenge: %w", err)
+		return fmt.Errorf(T("synctang-unlocker: starting challenge: %w"), err)
 	}
 	defer mrcore.Wipe(e)
 
 	if err := mrcore.WriteMessage(conn, mrcore.RecoverRequest{Kid: matched.Kid, X: X}); err != nil {
-		return fmt.Errorf("synctang-unlocker: sending recover request: %w", err)
+		return fmt.Errorf(T("synctang-unlocker: sending recover request: %w"), err)
 	}
 
 	var resp mrcore.RecoverResponse
 	if err := mrcore.ReadMessage(conn, &resp); err != nil {
-		return fmt.Errorf("synctang-unlocker: reading recover response: %w", err)
+		return fmt.Errorf(T("synctang-unlocker: reading recover response: %w"), err)
 	}
 	if resp.Error != "" {
-		return fmt.Errorf("synctang-unlocker: key holder declined: %s", mrcore.SafeLabel(resp.Error, 200))
+		return fmt.Errorf(T("synctang-unlocker: key holder declined: %s"), mrcore.SafeLabel(resp.Error, 200))
 	}
 
 	// From here on the key holder has done its part and is waiting to
@@ -236,10 +236,10 @@ func runExchange(
 	case len(resp.XOnly) > 0:
 		P, err = mrcore.FinishXOnly(mrcore.P256(), e, *matched, resp.XOnly)
 	default:
-		return report(fmt.Errorf("synctang-unlocker: recover response carries neither Y nor XOnly"))
+		return report(errors.New(T("synctang-unlocker: recover response carries neither Y nor XOnly")))
 	}
 	if err != nil {
-		return report(fmt.Errorf("synctang-unlocker: finishing recovery: %w", err))
+		return report(fmt.Errorf(T("synctang-unlocker: finishing recovery: %w"), err))
 	}
 	defer mrcore.Wipe(P)
 	if err := checkSecretLength(P); err != nil {
@@ -255,7 +255,7 @@ func runExchange(
 	defer mrcore.Wipe(keyMaterial)
 
 	if err := verifyPassphrase(device, keyMaterial); err != nil {
-		return report(fmt.Errorf("synctang-unlocker: recovered secret does not open %s: %w", device, err))
+		return report(fmt.Errorf(T("synctang-unlocker: recovered secret does not open %s: %w"), device, err))
 	}
 
 	if err := deliver(keyMaterial); err != nil {
@@ -276,7 +276,7 @@ const volumeSecretLen = 32
 // to check it.
 func checkSecretLength(P []byte) error {
 	if len(P) != volumeSecretLen {
-		return fmt.Errorf("synctang-unlocker: recovered secret is %d bytes, expected %d; this token was not written by this tool", len(P), volumeSecretLen)
+		return fmt.Errorf(T("synctang-unlocker: recovered secret is %d bytes, expected %d; this token was not written by this tool"), len(P), volumeSecretLen)
 	}
 	return nil
 }
@@ -370,7 +370,7 @@ func parseAskFile(r io.Reader) (askRequest, error) {
 		case "NotAfter":
 			n, err := strconv.ParseUint(strings.TrimSpace(value), 10, 64)
 			if err != nil {
-				return askRequest{}, fmt.Errorf("unparseable NotAfter %q: %w", value, err)
+				return askRequest{}, fmt.Errorf(T("unparseable NotAfter %q: %w"), value, err)
 			}
 			req.notAfter = n
 		}
@@ -379,7 +379,7 @@ func parseAskFile(r io.Reader) (askRequest, error) {
 		return askRequest{}, err
 	}
 	if req.socket == "" {
-		return askRequest{}, fmt.Errorf("no Socket= in the request")
+		return askRequest{}, errors.New(T("no Socket= in the request"))
 	}
 	return req, nil
 }
@@ -402,11 +402,11 @@ func monotonicNowUsec() (uint64, error) {
 	}
 	fields := strings.Fields(string(data))
 	if len(fields) == 0 {
-		return 0, fmt.Errorf("unexpected /proc/uptime format")
+		return 0, errors.New(T("unexpected /proc/uptime format"))
 	}
 	var seconds float64
 	if _, err := fmt.Sscanf(fields[0], "%f", &seconds); err != nil {
-		return 0, fmt.Errorf("parsing /proc/uptime: %w", err)
+		return 0, fmt.Errorf(T("parsing /proc/uptime: %w"), err)
 	}
 	return uint64(seconds * 1e6), nil
 }
@@ -419,7 +419,7 @@ func monotonicNowUsec() (uint64, error) {
 func pendingCryptsetupRequests(dir string) ([]askRequest, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, fmt.Errorf("reading %s: %w", dir, err)
+		return nil, fmt.Errorf(T("reading %s: %w"), dir, err)
 	}
 
 	var reqs []askRequest
@@ -448,7 +448,7 @@ func pendingCryptsetupRequests(dir string) ([]askRequest, error) {
 		reqs = append(reqs, req)
 	}
 	if len(reqs) == 0 {
-		return nil, fmt.Errorf("no pending cryptsetup password request in %s", dir)
+		return nil, fmt.Errorf(T("no pending cryptsetup password request in %s"), dir)
 	}
 	return reqs, nil
 }
@@ -500,7 +500,7 @@ func answerAskPasswordFor(dir, device string, p []byte) error {
 
 	conn, err := net.Dial("unixgram", req.socket)
 	if err != nil {
-		return fmt.Errorf("dialing %s: %w", req.socket, err)
+		return fmt.Errorf(T("dialing %s: %w"), req.socket, err)
 	}
 	defer conn.Close()
 
@@ -508,7 +508,7 @@ func answerAskPasswordFor(dir, device string, p []byte) error {
 	defer mrcore.Wipe(payload)
 
 	if _, err := conn.Write(payload); err != nil {
-		return fmt.Errorf("writing to %s: %w", req.socket, err)
+		return fmt.Errorf(T("writing to %s: %w"), req.socket, err)
 	}
 	return nil
 }

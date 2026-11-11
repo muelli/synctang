@@ -73,7 +73,7 @@ func parseInitrdModules(listing string) ([]string, error) {
 		}
 	}
 	if !in || len(modules) == 0 {
-		return nil, errors.New("lsinitrd printed no list of dracut modules")
+		return nil, errors.New(T("lsinitrd printed no list of dracut modules"))
 	}
 	return modules, nil
 }
@@ -87,9 +87,9 @@ type rehearsalCheck struct {
 	Detail string
 }
 
-const (
-	identityCheckName = "the initrd carries this machine's identity and network.conf"
-	fixInitrd         = "run dracut --force as root, then rehearse again"
+var (
+	identityCheckName = T("the initrd carries this machine's identity and network.conf")
+	fixInitrd         = T("run dracut --force as root, then rehearse again")
 )
 
 // staticRehearsalChecks looks at what the boot needs without a key holder: the identity and
@@ -97,7 +97,7 @@ const (
 func staticRehearsalChecks(identityPath, networkConfPath string) []rehearsalCheck {
 	var checks []rehearsalCheck
 
-	rehearsalStep("reading the initrd for the machine identity")
+	rehearsalStep(T("reading the initrd for the machine identity"))
 	st := checkInitrd(identityPath, networkConfPath)
 	switch {
 	case !st.Checked:
@@ -108,8 +108,8 @@ func staticRehearsalChecks(identityPath, networkConfPath string) []rehearsalChec
 		checks = append(checks, rehearsalCheck{identityCheckName, "ok", ""})
 	}
 
-	const modulesName = "the initrd has the synctang and network dracut modules"
-	rehearsalStep("listing the dracut modules in the initrd")
+	modulesName := T("the initrd has the synctang and network dracut modules")
+	rehearsalStep(T("listing the dracut modules in the initrd"))
 	if mods, err := initrdModules(); err != nil {
 		checks = append(checks, rehearsalCheck{modulesName, "unchecked", err.Error()})
 	} else {
@@ -121,22 +121,22 @@ func staticRehearsalChecks(identityPath, networkConfPath string) []rehearsalChec
 		}
 		if len(missing) > 0 {
 			checks = append(checks, rehearsalCheck{modulesName, "problem",
-				fmt.Sprintf("the initrd lacks the dracut module(s) %s, so the agent would not be there at boot (is synctang-dracut installed, and dracut-network?); %s", strings.Join(missing, " and "), fixInitrd)})
+				fmt.Sprintf(T("the initrd lacks the dracut module(s) %s, so the agent would not be there at boot (is synctang-dracut installed, and dracut-network?); %s"), strings.Join(missing, " and "), fixInitrd)})
 		} else {
 			checks = append(checks, rehearsalCheck{modulesName, "ok", ""})
 		}
 	}
 
-	rehearsalStep("comparing the agent in the initrd with the installed one")
+	rehearsalStep(T("comparing the agent in the initrd with the installed one"))
 	checks = append(checks, agentCheck())
 
-	const cmdlineName = "the kernel command line leaves the agent on"
-	rehearsalStep("reading the kernel command line")
+	cmdlineName := T("the kernel command line leaves the agent on")
+	rehearsalStep(T("reading the kernel command line"))
 	if cmdline, err := kernelCommandLine(); err != nil {
 		checks = append(checks, rehearsalCheck{cmdlineName, "unchecked", err.Error()})
 	} else if slices.Contains(strings.Fields(cmdline), "rd.synctang=0") {
 		checks = append(checks, rehearsalCheck{cmdlineName, "problem",
-			"rd.synctang=0 is on this boot's kernel command line, which switches the agent off in the initrd; take it out of the boot loader entry if it should run"})
+			T("rd.synctang=0 is on this boot's kernel command line, which switches the agent off in the initrd; take it out of the boot loader entry if it should run")})
 	} else {
 		checks = append(checks, rehearsalCheck{cmdlineName, "ok", ""})
 	}
@@ -146,7 +146,7 @@ func staticRehearsalChecks(identityPath, networkConfPath string) []rehearsalChec
 // agentCheck compares the agent in the initrd with the installed one: a package upgrade that
 // did not rebuild the initrd leaves the old one in it.
 func agentCheck() rehearsalCheck {
-	const name = "the agent in the initrd is the installed one"
+	name := T("the agent in the initrd is the installed one")
 	installed, err := os.ReadFile(installedAgentPath)
 	if err != nil {
 		return rehearsalCheck{name, "unchecked", err.Error()}
@@ -156,14 +156,14 @@ func agentCheck() rehearsalCheck {
 		return rehearsalCheck{name, "unchecked", err.Error()}
 	}
 	if !slices.Contains(names, initrdAgent) {
-		return rehearsalCheck{name, "problem", "the initrd has no " + initrdAgent + ", so there would be no agent at boot; " + fixInitrd}
+		return rehearsalCheck{name, "problem", T("the initrd has no ") + initrdAgent + T(", so there would be no agent at boot; ") + fixInitrd}
 	}
 	inside, err := initrdContent(initrdAgent)
 	if err != nil {
 		return rehearsalCheck{name, "unchecked", err.Error()}
 	}
 	if !sameAgent(inside, installed) {
-		return rehearsalCheck{name, "problem", "the initrd has a different synctang-unlocker from the installed one (the package was upgraded since the initrd was built); " + fixInitrd}
+		return rehearsalCheck{name, "problem", T("the initrd has a different synctang-unlocker from the installed one (the package was upgraded since the initrd was built); ") + fixInitrd}
 	}
 	return rehearsalCheck{name, "ok", ""}
 }
@@ -269,40 +269,40 @@ func printChecks(w io.Writer, checks []rehearsalCheck) int {
 	return problems
 }
 
-const rehearsalNotTested = `
+var rehearsalNotTested = T(`
 not tested, because only a real boot can: the network in early boot (DHCP in the initrd) and
 the initrd starting at all. If either goes wrong the machine still shows its ordinary
 passphrase prompt on the console, and the passphrase still works.
-`
+`)
 
 // rehearsalHint is what "pair" says once a key holder is enrolled.
 func rehearsalHint(device string) string {
-	return fmt.Sprintf("to rehearse the unlock without rebooting: synctang-unlocker rehearse --device %s", device)
+	return fmt.Sprintf(T("to rehearse the unlock without rebooting: synctang-unlocker rehearse --device %s"), device)
 }
 
 func runRehearse(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("rehearse", flag.ContinueOnError)
 	fs.SetOutput(gnuflag.Writer(stderr))
-	device := fs.String("device", "", "the enrolled LUKS device to rehearse the unlock of (default: the one device with a synctang token)")
-	machineName := fs.String("name", "", "this machine's name, shown to the key holder (default: the name given at enrolment)")
-	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, "path to this machine's persistent transport identity")
-	timeout := fs.Duration("timeout", defaultOpenTimeout, "give up waiting for a key holder after this long")
-	initrdOnly := fs.Bool("initrd-only", false, "only check the initrd and the boot settings; wait for no key holder")
-	directAddr := fs.String("direct-addr", "", "listen on this address directly, bypassing relay and discovery (testing only)")
-	networkConf := fs.String("network-conf", defaultNetworkConfFile, "file naming the relay pool and discovery servers to use instead of the public ones (the kernel arguments rd.synctang.relay= and rd.synctang.discovery= override it)")
+	device := fs.String("device", "", T("the enrolled LUKS device to rehearse the unlock of (default: the one device with a synctang token)"))
+	machineName := fs.String("name", "", T("this machine's name, shown to the key holder (default: the name given at enrolment)"))
+	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, T("path to this machine's persistent transport identity"))
+	timeout := fs.Duration("timeout", defaultOpenTimeout, T("give up waiting for a key holder after this long"))
+	initrdOnly := fs.Bool("initrd-only", false, T("only check the initrd and the boot settings; wait for no key holder"))
+	directAddr := fs.String("direct-addr", "", T("listen on this address directly, bypassing relay and discovery (testing only)"))
+	networkConf := fs.String("network-conf", defaultNetworkConfFile, T("file naming the relay pool and discovery servers to use instead of the public ones (the kernel arguments rd.synctang.relay= and rd.synctang.discovery= override it)"))
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if fs.NArg() > 0 {
-		ui.Errorf(stderr, "rehearse takes no arguments, got %q\n", fs.Arg(0))
+		ui.Errorf(stderr, T("rehearse takes no arguments, got %q\n"), fs.Arg(0))
 		return 2
 	}
 	if geteuid() != 0 {
-		ui.Errorf(stderr, "rehearse reads the initrd and the LUKS header, which takes root; %s\n", rootHint())
+		ui.Errorf(stderr, T("rehearse reads the initrd and the LUKS header, which takes root; %s\n"), rootHint())
 		return 1
 	}
 
-	fmt.Fprintln(stdout, "what the boot needs:")
+	fmt.Fprintln(stdout, T("what the boot needs:"))
 	// At a terminal, a line that says what is being done and for how long; to anything else, nothing.
 	status := ui.NewStatus(stderr)
 	defer status.Stop()
@@ -319,45 +319,45 @@ func runRehearse(args []string, stdout, stderr io.Writer) int {
 		// The initrd only ever carries the default path.
 		for i := range checks {
 			if checks[i].Name == identityCheckName {
-				checks[i] = rehearsalCheck{identityCheckName, "unchecked", *machineKeyFile + " is not the identity file an initrd carries (" + defaultMachineKeyFile + ")"}
+				checks[i] = rehearsalCheck{identityCheckName, "unchecked", *machineKeyFile + T(" is not the identity file an initrd carries (") + defaultMachineKeyFile + ")"}
 			}
 		}
 	}
 	if problems := printChecks(stdout, checks); problems > 0 {
-		ui.Errorf(stderr, "%d problem(s) above: fix them first, and nobody was asked to approve a rehearsal that cannot pass\n", problems)
+		ui.Errorf(stderr, T("%d problem(s) above: fix them first, and nobody was asked to approve a rehearsal that cannot pass\n"), problems)
 		return 1
 	}
 	if *initrdOnly {
-		fmt.Fprintln(stdout, "\nthe initrd looks right; run rehearse without --initrd-only to try the unlock itself with a key holder")
+		fmt.Fprintln(stdout, T("\nthe initrd looks right; run rehearse without --initrd-only to try the unlock itself with a key holder"))
 		return 0
 	}
 
 	dev := *device
 	if dev == "" {
-		step.Store("looking for the volume that has a key holder enrolled")
+		step.Store(T("looking for the volume that has a key holder enrolled"))
 		status.Set(func() string { return fmt.Sprintf("%s (%s)", step.Load(), clock(time.Since(started))) })
 		found, err := findMr1Devices()
 		status.Stop()
 		switch {
 		case err != nil:
-			ui.Errorf(stderr, "%v; pair a key holder first, or name the device with --device (%s)\n", err, `"synctang-unlocker devices" lists them`)
+			ui.Errorf(stderr, T("%v; pair a key holder first, or name the device with --device (%s)\n"), err, `"synctang-unlocker devices" lists them`)
 			return 1
 		case len(found) > 1:
-			ui.Errorf(stderr, "several devices carry a token (%s): name one with --device\n", strings.Join(found, ", "))
+			ui.Errorf(stderr, T("several devices carry a token (%s): name one with --device\n"), strings.Join(found, ", "))
 			return 1
 		}
 		dev = found[0]
 	}
 	dump, err := runCommand(nil, "cryptsetup", "luksDump", dev)
 	if err != nil {
-		ui.Errorf(stderr, "reading the LUKS header of %s: %v%s\n", dev, err, permissionHint(err))
+		ui.Errorf(stderr, T("reading the LUKS header of %s: %v%s\n"), dev, err, permissionHint(err))
 		return 1
 	}
 	if _, id, err := loadToken(string(dump), dev, "", ""); err != nil {
 		ui.Errorf(stderr, "%v\n", err)
 		return 1
 	} else if id < 0 {
-		ui.Errorf(stderr, "%s has no key holder enrolled, so nobody could approve a rehearsal; pair one first: synctang-unlocker pair --device %s\n", dev, dev)
+		ui.Errorf(stderr, T("%s has no key holder enrolled, so nobody could approve a rehearsal; pair one first: synctang-unlocker pair --device %s\n"), dev, dev)
 		return 1
 	}
 	cert, err := transport.LoadOrCreateCert(*machineKeyFile)
@@ -370,8 +370,8 @@ func runRehearse(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	fmt.Fprintf(stdout, "\nwaiting for a key holder to approve a rehearsal of unlocking %s\n", dev)
-	fmt.Fprintf(stdout, "this machine's transport id: %s\n", protocol.NewDeviceID(cert.Certificate[0]))
+	fmt.Fprintf(stdout, T("\nwaiting for a key holder to approve a rehearsal of unlocking %s\n"), dev)
+	fmt.Fprintf(stdout, T("this machine's transport id: %s\n"), protocol.NewDeviceID(cert.Certificate[0]))
 	// Nothing is opened: the exchange already checks the recovered secret against a keyslot
 	// before it delivers it, and the volume of a running machine is in use.
 	nothing := func([]byte) error { return nil }
@@ -379,7 +379,7 @@ func runRehearse(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	fmt.Fprintf(stdout, "\n%s", ui.For(stdout).Green(ui.For(stdout).Emoji("🎉", "")))
-	fmt.Fprintf(stdout, "rehearsal passed: a key holder approved, and what it recovered opens %s, which is what the agent checks at boot\n", dev)
+	fmt.Fprintf(stdout, T("rehearsal passed: a key holder approved, and what it recovered opens %s, which is what the agent checks at boot\n"), dev)
 	fmt.Fprint(stdout, rehearsalNotTested)
 	return 0
 }

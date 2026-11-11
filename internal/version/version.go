@@ -6,6 +6,7 @@
 package version
 
 import (
+	"github.com/muelli/synctang/internal/i18n"
 	"runtime/debug"
 	"strings"
 )
@@ -17,7 +18,7 @@ var Version string
 // and where the source is.
 func Describe(program string) string {
 	return program + " " + current() + "\n" +
-		"Licence AGPL-3.0-or-later. Source: https://github.com/muelli/synctang\n"
+		i18n.T("Licence AGPL-3.0-or-later. Source: https://github.com/muelli/synctang\n")
 }
 
 // current is the version, or what is known of a build that was not given one: the commit it was built
@@ -42,7 +43,7 @@ func current() string {
 			if modified == "true" {
 				revision += ", with changes"
 			}
-			return "(development build, commit " + strings.TrimSpace(revision) + ")"
+			return i18n.T("(development build, commit ") + strings.TrimSpace(revision) + ")"
 		}
 	}
 	return "(development build)"

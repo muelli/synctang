@@ -51,7 +51,7 @@ var (
 	devicesSource = func() ([]candidate, error) {
 		data, err := os.ReadFile("/proc/partitions")
 		if err != nil {
-			return nil, fmt.Errorf("enumerating block devices: %w", err)
+			return nil, fmt.Errorf(T("enumerating block devices: %w"), err)
 		}
 		return blockCandidates(string(data)), nil
 	}
@@ -216,7 +216,7 @@ func formatDevicesFor(devs []luksDevice, look ui.Style) string {
 		}
 		rows[i] = []string{d.Path, d.UUID, humanSize(d.Size), open, state}
 	}
-	return ui.Table([]string{"DEVICE", "UUID", "SIZE", "OPEN AS", "SYNCTANG"}, rows, look)
+	return ui.Table([]string{T("DEVICE"), T("UUID"), T("SIZE"), T("OPEN AS"), T("SYNCTANG")}, rows, look)
 }
 
 // runDevices lists the LUKS volumes on this machine, so that the device to pair or enrol
@@ -228,11 +228,11 @@ func runDevices(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if fs.NArg() > 0 {
-		ui.Errorf(stderr, "devices takes no arguments, got %q\n", fs.Arg(0))
+		ui.Errorf(stderr, T("devices takes no arguments, got %q\n"), fs.Arg(0))
 		return 2
 	}
 	if !isRoot() {
-		ui.Errorf(stderr, "devices reads LUKS headers, which takes root; %s\n", rootHint())
+		ui.Errorf(stderr, T("devices reads LUKS headers, which takes root; %s\n"), rootHint())
 		return 1
 	}
 	devs, err := listDevices()
@@ -241,7 +241,7 @@ func runDevices(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	if len(devs) == 0 {
-		ui.Errorln(stderr, "no LUKS device found")
+		ui.Errorln(stderr, T("no LUKS device found"))
 		return 1
 	}
 	fmt.Fprint(stdout, formatDevicesFor(devs, ui.For(stdout)))
@@ -251,7 +251,7 @@ func runDevices(args []string, stdout, stderr io.Writer) int {
 // deviceHint is what to tell someone who left out --device: the command that lists the
 // volumes, and the volumes themselves when they can be read.
 func deviceHint() string {
-	hint := `run "synctang-unlocker devices" to list the LUKS devices on this machine`
+	hint := T(`run "synctang-unlocker devices" to list the LUKS devices on this machine`)
 	if !isRoot() {
 		return hint + " (as root: " + asRoot() + ")"
 	}
@@ -262,7 +262,7 @@ func deviceHint() string {
 	var b strings.Builder
 	b.WriteString(hint + "; found:")
 	for _, d := range devs {
-		fmt.Fprintf(&b, "\n  %s  %s, uuid %s, %s", d.Path, humanSize(d.Size), d.UUID, d.synctang())
+		fmt.Fprintf(&b, T("\n  %s  %s, uuid %s, %s"), d.Path, humanSize(d.Size), d.UUID, d.synctang())
 	}
 	return b.String()
 }

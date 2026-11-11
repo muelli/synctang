@@ -28,7 +28,7 @@ import (
 	"github.com/syncthing/syncthing/lib/protocol"
 )
 
-const usage = `usage: synctang-keyholder <command> [flags]
+var usage = T(`usage: synctang-keyholder <command> [flags]
        synctang-keyholder --version
 
 commands:
@@ -42,7 +42,7 @@ commands:
   completion     print a shell completion script (bash, zsh or fish)
 
 --color=auto|always|never and --verbose work anywhere on the line.
-`
+`)
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
@@ -94,7 +94,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return out.String()
 		}, nil, args[1:], stdout, stderr)
 	default:
-		ui.Errorf(stderr, "unknown command %q%s\n%s", args[0], completion.DidYouMean(args[0], usage), completion.Reflow(usage, wrap.Width(stderr)))
+		ui.Errorf(stderr, T("unknown command %q%s\n%s"), args[0], completion.DidYouMean(args[0], usage), completion.Reflow(usage, wrap.Width(stderr)))
 		return 2
 	}
 }
@@ -107,7 +107,7 @@ func keyFileFlag(fs *flag.FlagSet) *string {
 		// explicitly.
 		def = ""
 	}
-	return fs.String("key-file", def, "path to the long-term private key")
+	return fs.String("key-file", def, T("path to the long-term private key"))
 }
 
 func transportKeyFileFlag(fs *flag.FlagSet) *string {
@@ -115,7 +115,7 @@ func transportKeyFileFlag(fs *flag.FlagSet) *string {
 	if err != nil {
 		def = ""
 	}
-	return fs.String("transport-key-file", def, "path to this key holder's persistent transport identity")
+	return fs.String("transport-key-file", def, T("path to this key holder's persistent transport identity"))
 }
 
 func runInit(args []string, stdout, stderr io.Writer) int {
@@ -123,17 +123,17 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(gnuflag.Writer(stderr))
 	keyFile := keyFileFlag(fs)
 	transportKeyFile := transportKeyFileFlag(fs)
-	force := fs.Bool("force", false, "overwrite an existing key")
-	storeSpec := fs.String("store", "auto", "where to keep the key: "+storeNames+" (auto is the desktop keyring when there is one, else a plain file)")
+	force := fs.Bool("force", false, T("overwrite an existing key"))
+	storeSpec := fs.String("store", "auto", T("where to keep the key: ")+storeNames+T(" (auto is the desktop keyring when there is one, else a plain file)"))
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if *keyFile == "" {
-		ui.Errorln(stderr, "--key-file is required (could not determine a default)")
+		ui.Errorln(stderr, T("--key-file is required (could not determine a default)"))
 		return 2
 	}
 	if *transportKeyFile == "" {
-		ui.Errorln(stderr, "--transport-key-file is required (could not determine a default)")
+		ui.Errorln(stderr, T("--transport-key-file is required (could not determine a default)"))
 		return 2
 	}
 
@@ -144,22 +144,22 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	st, note, pubHex, transportID := made.store, made.note, made.pubHex, made.transportID
 
 	look := ui.For(stdout)
-	fmt.Fprintf(stdout, "%s\n%s\n", look.Line(look.OK(""), look.Emoji("🔑", "")+"generated a new key, held by "+look.Bold(st.Name())),
+	fmt.Fprintf(stdout, "%s\n%s\n", look.Line(look.OK(""), look.Emoji("🔑", "")+T("generated a new key, held by ")+look.Bold(st.Name())),
 		look.Dim(wrap.Paragraph(st.Describe(), "  ", wrap.Width(stdout))))
 	if note != "" {
 		ui.Notef(stderr, "%s\n", note)
 	}
-	fmt.Fprintf(stdout, "transport identity at %s\n\n", *transportKeyFile)
+	fmt.Fprintf(stdout, T("transport identity at %s\n\n"), *transportKeyFile)
 
 	// What happens next is enrolling this key on a machine, so say so, with the values that
 	// command needs (export-pubkey prints the same two lines again).
 	fmt.Fprintf(stdout, "%s %s\n%s %s\n\n", look.Bold("S:"), pubHex, look.Bold("transport-id:"), transportID)
-	fmt.Fprintf(stdout, "To let a machine be unlocked with this key, the easy way is to pair with it:\n"+
+	fmt.Fprintf(stdout, T("To let a machine be unlocked with this key, the easy way is to pair with it:\n"+
 		"  1. on the machine, as root:  %s\n"+
-		"  2. here:                     %s\n\n",
-		look.Cyan("synctang-unlocker pair --device /dev/<device>"), look.Cyan("synctang-keyholder pair '<link>'"))
-	fmt.Fprintf(stdout, "Or enrol it by hand: run this on the machine, as root\n"+
-		"(synctang-keyholder export-pubkey prints the two lines above again):\n\n%s\n", look.Cyan(fmt.Sprintf(
+		"  2. here:                     %s\n\n"),
+		look.Cyan("synctang-unlocker pair --device /dev/<device>"), look.Cyan("synctang-keyholder pair '<link>'")) // i18n:skip commands, not messages
+	fmt.Fprintf(stdout, T("Or enrol it by hand: run this on the machine, as root\n"+
+		"(synctang-keyholder export-pubkey prints the two lines above again):\n\n%s\n"), look.Cyan(fmt.Sprintf( // i18n:skip a command, not a message
 		"  synctang-unlocker enrol --device /dev/<device> --name <a name for this laptop> \\\n"+
 			"    --pubkey %s \\\n"+
 			"    --recipient-transport-id %s \\\n"+
@@ -193,45 +193,45 @@ func makeKey(keyFile, transportKeyFile, storeSpec string, force bool, stderr io.
 	var old keyStore
 	if existing, err := openStore(keyFile); err == nil {
 		if ok, err := existing.Exists(); err != nil && !force {
-			ui.Errorf(stderr, "cannot tell whether a key is already held by %s (%v); use --force to make a new one anyway\n", existing.Name(), err)
+			ui.Errorf(stderr, T("cannot tell whether a key is already held by %s (%v); use --force to make a new one anyway\n"), existing.Name(), err)
 			return nil, 1
 		} else if err != nil {
-			ui.Errorf(stderr, "could not check whether %s still holds the old key (%v): if it does, remove it yourself once it is reachable, because a replaced key left behind is one nobody remembers\n", existing.Name(), err)
+			ui.Errorf(stderr, T("could not check whether %s still holds the old key (%v): if it does, remove it yourself once it is reachable, because a replaced key left behind is one nobody remembers\n"), existing.Name(), err)
 		} else if ok {
 			if !force {
-				ui.Errorf(stderr, "a key is already held by %s, use --force to replace it\n", existing.Name())
+				ui.Errorf(stderr, T("a key is already held by %s, use --force to replace it\n"), existing.Name())
 				return nil, 1
 			}
 			old = existing
 		}
 	} else if !errors.Is(err, errNoKey) && !force {
-		ui.Errorf(stderr, "%v; use --force to make a new key anyway\n", err)
+		ui.Errorf(stderr, T("%v; use --force to make a new key anyway\n"), err)
 		return nil, 1
 	}
 
 	s, err := mrcore.P256().RandomScalar()
 	if err != nil {
-		ui.Errorf(stderr, "generating key: %v\n", err)
+		ui.Errorf(stderr, T("generating key: %v\n"), err)
 		return nil, 1
 	}
 	defer mrcore.Wipe(s)
 	pub, err := mrcore.P256().ScalarBaseMult(s)
 	if err != nil {
-		ui.Errorf(stderr, "computing public key: %v\n", err)
+		ui.Errorf(stderr, T("computing public key: %v\n"), err)
 		return nil, 1
 	}
 	if err := st.Save(s, force); err != nil {
 		ui.Errorf(stderr, "%v\n", err)
 		return nil, 1
 	}
-	debugf("saved the new key in %s (%s)\n", st.Name(), st.Location())
+	debugf(T("saved the new key in %s (%s)\n"), st.Name(), st.Location())
 	if err := writeStoreRecord(keyFile, st.Name(), hex.EncodeToString(pub)); err != nil {
-		ui.Errorf(stderr, "the key was saved, but its record could not be written: %v\n", err)
+		ui.Errorf(stderr, T("the key was saved, but its record could not be written: %v\n"), err)
 		return nil, 1
 	}
 	if old != nil && old.Name() != st.Name() {
 		if err := old.Delete(); err != nil {
-			ui.Errorf(stderr, "the old key could not be removed from %s: %v\n", old.Name(), err)
+			ui.Errorf(stderr, T("the old key could not be removed from %s: %v\n"), old.Name(), err)
 		}
 	}
 
@@ -260,11 +260,11 @@ func runExportPubkey(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if *keyFile == "" {
-		ui.Errorln(stderr, "--key-file is required (could not determine a default)")
+		ui.Errorln(stderr, T("--key-file is required (could not determine a default)"))
 		return 2
 	}
 	if *transportKeyFile == "" {
-		ui.Errorln(stderr, "--transport-key-file is required (could not determine a default)")
+		ui.Errorln(stderr, T("--transport-key-file is required (could not determine a default)"))
 		return 2
 	}
 
@@ -281,7 +281,7 @@ func runExportPubkey(args []string, stdout, stderr io.Writer) int {
 	}
 
 	fmt.Fprintf(stdout, "S: %s\n", pubHex)
-	fmt.Fprintf(stdout, "transport-id: %s\n", protocol.NewDeviceID(cert.Certificate[0]))
+	fmt.Fprintf(stdout, T("transport-id: %s\n"), protocol.NewDeviceID(cert.Certificate[0]))
 	return 0
 }
 
@@ -290,18 +290,18 @@ func runUnlock(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs.SetOutput(gnuflag.Writer(stderr))
 	keyFile := keyFileFlag(fs)
 	transportKeyFile := transportKeyFileFlag(fs)
-	directAddr := fs.String("direct-addr", "", "dial this address directly, bypassing relay and discovery (testing only)")
-	yes := fs.Bool("yes", false, "skip the approval prompt")
-	timeout := fs.Duration("timeout", defaultUnlockTimeout, "give up dialling the machine after this long")
-	discovery := fs.String("discovery", "", "discovery server URL, instead of the public one; the machine must announce to the same one")
-	discoveryAnnounce := fs.String("discovery-announce", "", "discovery announce URL, if it differs from --discovery")
+	directAddr := fs.String("direct-addr", "", T("dial this address directly, bypassing relay and discovery (testing only)"))
+	yes := fs.Bool("yes", false, T("skip the approval prompt"))
+	timeout := fs.Duration("timeout", defaultUnlockTimeout, T("give up dialling the machine after this long"))
+	discovery := fs.String("discovery", "", T("discovery server URL, instead of the public one; the machine must announce to the same one"))
+	discoveryAnnounce := fs.String("discovery-announce", "", T("discovery announce URL, if it differs from --discovery"))
 	machinesFile := machinesFileFlag(fs)
-	configFile := fs.String("config", "", "file with discovery and discovery-announce settings (default: synctang-keyholder/config in the user config directory)")
+	configFile := fs.String("config", "", T("file with discovery and discovery-announce settings (default: synctang-keyholder/config in the user config directory)"))
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if *machinesFile == "" {
-		ui.Errorln(stderr, "--machines-file is required (could not determine a default)")
+		ui.Errorln(stderr, T("--machines-file is required (could not determine a default)"))
 		return 2
 	}
 	which := ""
@@ -314,22 +314,22 @@ func runUnlock(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			ui.Errorf(stderr, "%v\n", err)
 			return 2
 		case len(known) == 0:
-			ui.Errorln(stderr, "no machine is named yet, so there is nothing to unlock without naming it: pair with one (synctang-keyholder pair '<link>'), "+
-				"or give the machine's transport id")
+			ui.Errorln(stderr, T("no machine is named yet, so there is nothing to unlock without naming it: pair with one (synctang-keyholder pair '<link>'), "+
+				"or give the machine's transport id"))
 			return 2
 		case len(known) > 1:
 			names := make([]string, len(known))
 			for i, m := range known {
 				names[i] = m.Name
 			}
-			ui.Errorf(stderr, "which machine? %s: synctang-keyholder unlock <name>\n", strings.Join(names, ", "))
+			ui.Errorf(stderr, T("which machine? %s: synctang-keyholder unlock <name>\n"), strings.Join(names, ", "))
 			return 2
 		}
 		which = known[0].Name
 	case 1:
 		which = fs.Arg(0)
 	default:
-		ui.Errorln(stderr, "unlock takes one machine, by name or transport id")
+		ui.Errorln(stderr, T("unlock takes one machine, by name or transport id"))
 		return 2
 	}
 	target, err := resolveMachine(*machinesFile, which)
@@ -349,7 +349,7 @@ func runUnlock(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	network, err := loadNetworkConfig(configPath, explicitConfig, *discovery, *discoveryAnnounce)
 	if err != nil {
-		ui.Errorf(stderr, "network settings: %v\n", err)
+		ui.Errorf(stderr, T("network settings: %v\n"), err)
 		return 2
 	}
 	if s := network.Summary(); s != "" {
@@ -357,11 +357,11 @@ func runUnlock(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 
 	if *keyFile == "" {
-		ui.Errorln(stderr, "--key-file is required (could not determine a default)")
+		ui.Errorln(stderr, T("--key-file is required (could not determine a default)"))
 		return 2
 	}
 	if *transportKeyFile == "" {
-		ui.Errorln(stderr, "--transport-key-file is required (could not determine a default)")
+		ui.Errorln(stderr, T("--transport-key-file is required (could not determine a default)"))
 		return 2
 	}
 
@@ -405,7 +405,7 @@ func runUnlock(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		select {
 		case <-ctx.Done():
 			status.Stop()
-			ui.Errorf(stderr, "%v (last attempt: %v)\n", ctx.Err(), lastErr)
+			ui.Errorf(stderr, T("%v (last attempt: %v)\n"), ctx.Err(), lastErr)
 			var dial *dialError
 			if *directAddr == "" && errors.As(lastErr, &dial) {
 				if hint := dialFailureHint(machineID, network.Discovery, time.Now); hint != "" {

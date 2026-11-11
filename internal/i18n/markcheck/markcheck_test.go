@@ -69,6 +69,8 @@ func TestWhatIsAlreadyMarkedIsNotReported(t *testing.T) {
 	fs.String("name", "", T("the name"))
 	_ = errors.New(T("boom"))
 	fmt.Fprintf(stdout, T("a "+"b %s\n"), x)
+	_ = i18n.T("a message with several words")
+	return fmt.Errorf(i18n.T("reading %s: %w"), p, err)
 }`
 	if got := found(t, body); len(got) != 0 {
 		t.Errorf("reported %v", got)
@@ -126,5 +128,17 @@ func TestOffsetsCoverExactlyTheMessage(t *testing.T) {
 	}
 	if got := src[units[0].Start:units[0].End]; got != "\"ab \"+\n\t\"cd\\n\"" {
 		t.Errorf("covered %q", got)
+	}
+}
+
+func TestAMarkWithSomethingThatIsNotAConstantIsReported(t *testing.T) {
+	dir := t.TempDir()
+	src := "package main\n\nfunc f() { _ = T(\"fine\"); _ = T(\"fine \" + \"too\"); _ = T(name); _ = i18n.T(fmt.Sprint(1)) }\n"
+	if err := os.WriteFile(filepath.Join(dir, "x.go"), []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Dynamic(dir)
+	if err != nil || len(got) != 2 {
+		t.Errorf("%v %v", got, err)
 	}
 }

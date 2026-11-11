@@ -36,7 +36,7 @@ func blockDevices(procPartitions string) []string {
 func findMr1Devices() ([]string, error) {
 	data, err := os.ReadFile("/proc/partitions")
 	if err != nil {
-		return nil, fmt.Errorf("enumerating block devices: %w", err)
+		return nil, fmt.Errorf(T("enumerating block devices: %w"), err)
 	}
 
 	candidates := blockDevices(string(data))
@@ -111,7 +111,7 @@ func askIDDevice(id string) string {
 func chooseMr1Device(candidates, requestIDs []string, resolve func(string) string) (string, error) {
 	switch len(candidates) {
 	case 0:
-		return "", fmt.Errorf("no block device carries an %s token", mrTokenType)
+		return "", fmt.Errorf(T("no block device carries an %s token"), mrTokenType)
 	case 1:
 		return candidates[0], nil
 	}
@@ -126,10 +126,10 @@ func chooseMr1Device(candidates, requestIDs []string, resolve func(string) strin
 			return c, nil
 		}
 	}
-	pending := "no password request is pending yet"
+	pending := T("no password request is pending yet")
 	if len(requestIDs) > 0 {
-		pending = "the pending password request(s) are for " + strings.Join(requestIDs, ", ")
+		pending = T("the pending password request(s) are for ") + strings.Join(requestIDs, ", ")
 	}
-	return "", fmt.Errorf("several block devices carry an %s token (%s) and %s, so none can be told apart from the others; pass --device",
+	return "", fmt.Errorf(T("several block devices carry an %s token (%s) and %s, so none can be told apart from the others; pass --device"),
 		mrTokenType, strings.Join(candidates, ", "), pending)
 }

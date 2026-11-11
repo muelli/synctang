@@ -19,7 +19,7 @@ const configDirName = "synctang-keyholder"
 func configDir() (string, error) {
 	dir, err := os.UserConfigDir()
 	if err != nil {
-		return "", fmt.Errorf("finding config directory: %w", err)
+		return "", fmt.Errorf(T("finding config directory: %w"), err)
 	}
 	return filepath.Join(dir, configDirName), nil
 }
@@ -56,7 +56,7 @@ func defaultTransportKeyFile() (string, error) {
 func generateAndSave(keyFile string, force bool) ([]byte, error) {
 	s, err := mrcore.P256().RandomScalar()
 	if err != nil {
-		return nil, fmt.Errorf("generating key: %w", err)
+		return nil, fmt.Errorf(T("generating key: %w"), err)
 	}
 	if err := newFileStore(keyFile).Save(s, force); err != nil {
 		mrcore.Wipe(s)
@@ -73,10 +73,10 @@ func loadPrivateKey(keyFile string) ([]byte, error) {
 	}
 	s, err := st.Load()
 	if err != nil {
-		debugf("could not read the key from %s (%s): %v\n", st.Name(), st.Location(), err)
+		debugf(T("could not read the key from %s (%s): %v\n"), st.Name(), st.Location(), err)
 		return nil, err
 	}
-	debugf("read the key from %s (%s)\n", st.Name(), st.Location())
+	debugf(T("read the key from %s (%s)\n"), st.Name(), st.Location())
 	if err := verifyKey(keyFile, st, s); err != nil {
 		mrcore.Wipe(s)
 		return nil, err
@@ -95,7 +95,7 @@ func publicKeyHex(keyFile string) (string, error) {
 
 	S, err := mrcore.P256().ScalarBaseMult(s)
 	if err != nil {
-		return "", fmt.Errorf("computing public key: %w", err)
+		return "", fmt.Errorf(T("computing public key: %w"), err)
 	}
 
 	return hex.EncodeToString(S), nil

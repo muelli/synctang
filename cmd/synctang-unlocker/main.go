@@ -34,7 +34,7 @@ import (
 	"github.com/syncthing/syncthing/lib/protocol"
 )
 
-const usage = `usage: synctang-unlocker <command> [flags]
+var usage = T(`usage: synctang-unlocker <command> [flags]
        synctang-unlocker --version
 
 commands:
@@ -53,7 +53,7 @@ commands:
   completion  print a shell completion script (bash, zsh or fish)
 
 --color=auto|always|never works anywhere on the line (NO_COLOR is honoured).
-`
+`)
 
 // defaultMachineKeyFile is where this machine's own persistent transport
 // identity lives, unless overridden. It must exist at the same path both
@@ -116,7 +116,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "open":
 		return runOpen(args[1:], stdout, stderr)
 	default:
-		ui.Errorf(stderr, "unknown command %q%s\n%s", args[0], completion.DidYouMean(args[0], usage), completion.Reflow(usage, wrap.Width(stderr)))
+		ui.Errorf(stderr, T("unknown command %q%s\n%s"), args[0], completion.DidYouMean(args[0], usage), completion.Reflow(usage, wrap.Width(stderr)))
 		return 2
 	}
 }
@@ -144,40 +144,40 @@ func markPositionals(p *completion.Program) {
 func runEnrol(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("enrol", flag.ContinueOnError)
 	fs.SetOutput(gnuflag.Writer(stderr))
-	device := fs.String("device", "", "LUKS2 device or image to enrol (\"synctang-unlocker devices\" lists them)")
-	pubkeyHex := fs.String("pubkey", "", "recipient's public key, hex-encoded (from synctang-keyholder export-pubkey)")
-	passphraseFile := fs.String("existing-passphrase-file", "", "file containing an existing valid LUKS passphrase (- for stdin)")
-	name := fs.String("name", "", "this machine's name, shown to the key holder (default: this machine's hostname, for a volume with no name yet)")
-	transportID := fs.String("transport-id", "", "this machine's transport identity")
-	recipientTransportID := fs.String("recipient-transport-id", "", "the recipient's own transport identity (from synctang-keyholder export-pubkey), if known")
-	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, "path to this machine's persistent transport identity")
-	rebuild := fs.Bool("rebuild-initrd", false, "after enrolling, run dracut --force if the initrd does not carry this machine's identity and network.conf")
+	device := fs.String("device", "", T("LUKS2 device or image to enrol (\"synctang-unlocker devices\" lists them)"))
+	pubkeyHex := fs.String("pubkey", "", T("recipient's public key, hex-encoded (from synctang-keyholder export-pubkey)"))
+	passphraseFile := fs.String("existing-passphrase-file", "", T("file containing an existing valid LUKS passphrase (- for stdin)"))
+	name := fs.String("name", "", T("this machine's name, shown to the key holder (default: this machine's hostname, for a volume with no name yet)"))
+	transportID := fs.String("transport-id", "", T("this machine's transport identity"))
+	recipientTransportID := fs.String("recipient-transport-id", "", T("the recipient's own transport identity (from synctang-keyholder export-pubkey), if known"))
+	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, T("path to this machine's persistent transport identity"))
+	rebuild := fs.Bool("rebuild-initrd", false, T("after enrolling, run dracut --force if the initrd does not carry this machine's identity and network.conf"))
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 
 	if *device == "" {
-		ui.Errorf(stderr, "--device is required: %s\n", deviceHint())
+		ui.Errorf(stderr, T("--device is required: %s\n"), deviceHint())
 		return 2
 	}
 
 	if *device == "" || *pubkeyHex == "" || *passphraseFile == "" {
-		ui.Errorln(stderr, "--device, --pubkey and --existing-passphrase-file are all required")
+		ui.Errorln(stderr, T("--device, --pubkey and --existing-passphrase-file are all required"))
 		return 2
 	}
 
 	pubkey, err := hex.DecodeString(*pubkeyHex)
 	if err != nil {
-		ui.Errorf(stderr, "--pubkey: %v\n", err)
+		ui.Errorf(stderr, T("--pubkey: %v\n"), err)
 		return 2
 	}
 
 	// An entry without the key holder's transport id can never be used: the agent tells key
 	// holders from strangers by it and refuses to listen when none has one.
 	if *recipientTransportID == "" {
-		ui.Errorln(stderr, "--recipient-transport-id is required: the key holder's transport id, "+
+		ui.Errorln(stderr, T("--recipient-transport-id is required: the key holder's transport id, "+
 			"which \"synctang-keyholder export-pubkey\" prints as \"transport-id:\" next to the public key. "+
-			"Without it the machine cannot tell this key holder from a stranger, so nothing was enrolled")
+			"Without it the machine cannot tell this key holder from a stranger, so nothing was enrolled"))
 		return 2
 	}
 
@@ -197,10 +197,10 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 	}
 
 	if outcome.Already {
-		fmt.Fprintf(stdout, "%s is already enrolled at keyslot %s on %s; nothing was added\n", *recipientTransportID, outcome.Keyslot, *device)
+		fmt.Fprintf(stdout, T("%s is already enrolled at keyslot %s on %s; nothing was added\n"), *recipientTransportID, outcome.Keyslot, *device)
 	} else {
 		look := ui.For(stdout)
-		fmt.Fprintln(stdout, look.Line(look.OK(""), fmt.Sprintf("enrolled a new recipient on %s", *device)))
+		fmt.Fprintln(stdout, look.Line(look.OK(""), fmt.Sprintf(T("enrolled a new recipient on %s"), *device)))
 	}
 
 	// The human doing this by hand needs this machine's own transport id
@@ -222,16 +222,16 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 
 	cert, err := transport.LoadOrCreateCert(*machineKeyFile)
 	if err != nil {
-		ui.Errorf(stderr, "loading this machine's transport identity: %v\n", err)
+		ui.Errorf(stderr, T("loading this machine's transport identity: %v\n"), err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "this machine's transport id: %s\n", protocol.NewDeviceID(cert.Certificate[0]))
+	fmt.Fprintf(stdout, T("this machine's transport id: %s\n"), protocol.NewDeviceID(cert.Certificate[0]))
 	if shouldWarnAboutNewIdentity(machineIdentityIsNew, *machineKeyFile) {
 		fmt.Fprintf(stderr,
-			"synctang-unlocker: created a new transport identity at %s, so the id above is this host's.\n"+
+			T("synctang-unlocker: created a new transport identity at %s, so the id above is this host's.\n"+
 				"synctang-unlocker: if --device is a disk image for another machine, pass --machine-key-file pointing\n"+
 				"synctang-unlocker: into that image and re-run, or the key holder will pair against an id no machine\n"+
-				"synctang-unlocker: ever announces.\n",
+				"synctang-unlocker: ever announces.\n"),
 			*machineKeyFile)
 	}
 	// A machine that has just made its identity has an initrd that cannot carry it yet.
@@ -260,14 +260,14 @@ func shouldWarnAboutNewIdentity(isNew bool, keyFile string) bool {
 func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("agent", flag.ContinueOnError)
 	fs.SetOutput(gnuflag.Writer(stderr))
-	device := fs.String("device", "", "LUKS2 device to unlock (auto-discovered from /proc/partitions if omitted)")
-	name := fs.String("name", "", "this machine's name, shown to the key holder")
-	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, "path to this machine's persistent transport identity")
-	askPasswordDir := fs.String("ask-password-dir", defaultAskPasswordDir, "systemd ask-password directory")
-	directAddr := fs.String("direct-addr", "", "listen on this address directly, bypassing relay and discovery (testing only)")
-	logLevelFlag := fs.String("log-level", string(logLevelInfo), "logging level: trace, debug, info, warn, error")
-	journalFlag := fs.String("journal", string(journalAuto), "write the log to the systemd journal: auto (when its socket exists), on, off")
-	networkConf := fs.String("network-conf", defaultNetworkConfFile, "file naming the relay pool and discovery servers to use instead of the public ones (the kernel arguments rd.synctang.relay= and rd.synctang.discovery= override it)")
+	device := fs.String("device", "", T("LUKS2 device to unlock (auto-discovered from /proc/partitions if omitted)"))
+	name := fs.String("name", "", T("this machine's name, shown to the key holder"))
+	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, T("path to this machine's persistent transport identity"))
+	askPasswordDir := fs.String("ask-password-dir", defaultAskPasswordDir, T("systemd ask-password directory"))
+	directAddr := fs.String("direct-addr", "", T("listen on this address directly, bypassing relay and discovery (testing only)"))
+	logLevelFlag := fs.String("log-level", string(logLevelInfo), T("logging level: trace, debug, info, warn, error"))
+	journalFlag := fs.String("journal", string(journalAuto), T("write the log to the systemd journal: auto (when its socket exists), on, off"))
+	networkConf := fs.String("network-conf", defaultNetworkConfFile, T("file naming the relay pool and discovery servers to use instead of the public ones (the kernel arguments rd.synctang.relay= and rd.synctang.discovery= override it)"))
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -284,7 +284,7 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 	}
 	journalChoice, err := parseJournalMode(*journalFlag)
 	if err != nil {
-		ui.Errorf(stderr, "--journal: %v\n", err)
+		ui.Errorf(stderr, T("--journal: %v\n"), err)
 		return 2
 	}
 	logger := newLogger(logLevel, journalChoice, journal.DefaultSocket, os.Stderr)
@@ -296,7 +296,7 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	ui.Infof(stdout, "waiting for a key holder, transport id %s\n", protocol.NewDeviceID(cert.Certificate[0]))
+	ui.Infof(stdout, T("waiting for a key holder, transport id %s\n"), protocol.NewDeviceID(cert.Certificate[0]))
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer cancel()
@@ -346,7 +346,7 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 			transport.ListenOptions{DirectAddr: *directAddr}, tr)
 		switch {
 		case err == nil:
-			ui.Successln(stdout, "unlocked")
+			ui.Successln(stdout, T("unlocked"))
 			logger.Info("recovery attempt succeeded")
 		case ctx.Err() != nil:
 			// Shutting down; the error is just ctx being cancelled mid-attempt.
@@ -413,11 +413,11 @@ func readPassphrase(path string) ([]byte, error) {
 		if stdinIsTerminal() {
 			// A person typing it: not shown, and it ends at Enter, as any passphrase does, instead of
 			// being read to the end of the stream (which would want Ctrl-D, and show every key).
-			fmt.Fprint(passphraseNotice, "synctang-unlocker: LUKS passphrase (typing is hidden; press Enter when done): ")
+			fmt.Fprint(passphraseNotice, T("synctang-unlocker: LUKS passphrase (typing is hidden; press Enter when done): "))
 			data, err = readTerminalPassword()
 			fmt.Fprintln(passphraseNotice)
 		} else {
-			ui.Errorln(passphraseNotice, "reading the passphrase from standard input")
+			ui.Errorln(passphraseNotice, T("reading the passphrase from standard input"))
 			data, err = io.ReadAll(passphraseStdin)
 		}
 	} else {
@@ -427,8 +427,8 @@ func readPassphrase(path string) ([]byte, error) {
 		// A process substitution given to a command run through sudo: sudo closes
 		// every descriptor but the first three, so bash's /dev/fd/N is gone.
 		if strings.HasPrefix(path, "/dev/fd/") && errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("%w (%s is a process substitution, and sudo closes it before the command runs: "+
-				"run the command from a root shell (sudo -i), or send the passphrase on stdin with --existing-passphrase-file -)", err, path)
+			return nil, fmt.Errorf(T("%w (%s is a process substitution, and sudo closes it before the command runs: "+
+				"run the command from a root shell (sudo -i), or send the passphrase on stdin with --existing-passphrase-file -)"), err, path)
 		}
 		return nil, err
 	}
@@ -436,11 +436,11 @@ func readPassphrase(path string) ([]byte, error) {
 	data = bytes.TrimSuffix(data, []byte("\r"))
 	if len(data) == 0 {
 		// Not handed on: cryptsetup would answer "Nothing to read on input", which does not say what was empty.
-		what := "the passphrase read from standard input"
+		what := T("the passphrase read from standard input")
 		if path != "-" {
-			what = "the passphrase file " + path
+			what = T("the passphrase file ") + path
 		}
-		return nil, fmt.Errorf("%s is empty", what)
+		return nil, fmt.Errorf(T("%s is empty"), what)
 	}
 	return data, nil
 }

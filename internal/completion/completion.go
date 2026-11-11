@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/muelli/synctang/internal/gnuflag"
+	"github.com/muelli/synctang/internal/i18n"
 	"github.com/muelli/synctang/internal/ui"
 	"github.com/muelli/synctang/internal/wrap"
 	"io"
@@ -136,7 +137,7 @@ func Generate(shell string, p Program) (string, error) {
 	case "fish":
 		return fish(p), nil
 	}
-	return "", fmt.Errorf("unknown shell %q: want bash, zsh or fish", shell)
+	return "", fmt.Errorf(i18n.T("unknown shell %q: want bash, zsh or fish"), shell)
 }
 
 const header = `Written by "%s completion %s" from the program's own usage and flag help, so it
@@ -344,7 +345,7 @@ func Run(name, usage string, helpOf func(command string) string, tweak func(*Pro
 		return 2
 	}
 	if fs.NArg() != 1 {
-		fmt.Fprintf(stderr, "usage: %s completion bash|zsh|fish\n%s: completion needs one shell: bash, zsh or fish\n", name, name)
+		fmt.Fprintf(stderr, i18n.T("usage: %s completion bash|zsh|fish\n%s: completion needs one shell: bash, zsh or fish\n"), name, name)
 		return 2
 	}
 	p := Build(name, usage, helpOf)
@@ -450,7 +451,7 @@ func DidYouMean(word, usage string) string {
 		names = append(names, c.Name)
 	}
 	if m, ok := ui.Closest(word, names); ok {
-		return fmt.Sprintf(", did you mean %q?", m)
+		return fmt.Sprintf(i18n.T(", did you mean %q?"), m)
 	}
 	return ""
 }

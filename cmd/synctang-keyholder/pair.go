@@ -34,11 +34,11 @@ type pairLink struct {
 
 func parsePairingLink(text string) (pairLink, error) {
 	bad := func(why string) (pairLink, error) {
-		return pairLink{}, fmt.Errorf("that is not a pairing link (%s): it is the synctang://pair?... link that \"synctang-unlocker pair\" prints under its QR code", why)
+		return pairLink{}, fmt.Errorf(T("that is not a pairing link (%s): it is the synctang://pair?... link that \"synctang-unlocker pair\" prints under its QR code"), why)
 	}
 	u, err := url.Parse(text)
 	if err != nil || u.Scheme != "synctang" || u.Host != "pair" {
-		return bad("it does not start with synctang://pair")
+		return bad(T("it does not start with synctang://pair"))
 	}
 	q := u.Query()
 	// A link is somebody's word: a setting this program does not know, or one given twice, could mean one thing
@@ -50,16 +50,16 @@ func parsePairingLink(text string) (pairLink, error) {
 			return bad("it has a setting this program does not know: " + mrcore.SafeLabel(key, 32))
 		}
 		if len(values) != 1 {
-			return bad("it gives " + key + " more than once")
+			return bad("it gives " + key + T(" more than once"))
 		}
 	}
 	l := pairLink{Machine: q.Get("machine"), Name: q.Get("name"), Discovery: q.Get("discovery"), Code: q.Get("psk")}
 	if l.Machine == "" || l.Code == "" {
-		return bad("it has no machine or no code")
+		return bad(T("it has no machine or no code"))
 	}
 	id, err := protocol.DeviceIDFromString(l.Machine)
 	if err != nil {
-		return bad("the machine in it is not a transport id")
+		return bad(T("the machine in it is not a transport id"))
 	}
 	l.Machine = id.String()
 	if err := checkDiscoveryURL(l.Discovery); err != nil {
@@ -67,7 +67,7 @@ func parsePairingLink(text string) (pairLink, error) {
 	}
 	secret, err := mrcore.DecodePairingSecret(l.Code)
 	if err != nil {
-		return bad("the code in it is not valid")
+		return bad(T("the code in it is not valid"))
 	}
 	mrcore.Wipe(secret)
 	return l, nil
@@ -93,7 +93,7 @@ func pairOnce(ctx context.Context, wait time.Duration, cert tls.Certificate, lin
 	tr := newDialTransport(cert, directAddr, network)
 	conn, err := tr.Dial(ctx, transport.DialOptions{PeerID: link.Machine, DirectAddr: directAddr})
 	if err != nil {
-		return &dialError{fmt.Errorf("dialing %s: %w", link.Machine, err)}
+		return &dialError{fmt.Errorf(T("dialing %s: %w"), link.Machine, err)}
 	}
 	defer conn.Close()
 	// Reads have no deadline: closing the connection is what interrupts one.
@@ -103,17 +103,17 @@ func pairOnce(ctx context.Context, wait time.Duration, cert tls.Certificate, lin
 	// The key holder speaks first: it says which key it wants enrolled, and the machine chooses the nonce after
 	// that, which is what keeps anyone from fitting a key to the short code (see mrcore.PairSAS).
 	if err := mrcore.WriteMessage(conn, mrcore.PairRequest{PubKey: pub, Name: name}); err != nil {
-		return fmt.Errorf("sending the pairing request: %w", err)
+		return fmt.Errorf(T("sending the pairing request: %w"), err)
 	}
 	var challenge mrcore.PairChallenge
 	if err := mrcore.ReadMessage(conn, &challenge); err != nil {
-		return fmt.Errorf("reading the pairing challenge: %w", err)
+		return fmt.Errorf(T("reading the pairing challenge: %w"), err)
 	}
 	if len(challenge.Nonce) < mrcore.PairMinNonceLen {
-		return &pairFinal{fmt.Errorf("the machine sent a nonce of %d bytes, which is too short to bind anything to (it should be %d)", len(challenge.Nonce), mrcore.PairNonceLen)}
+		return &pairFinal{fmt.Errorf(T("the machine sent a nonce of %d bytes, which is too short to bind anything to (it should be %d)"), len(challenge.Nonce), mrcore.PairNonceLen)}
 	}
 	if err := mrcore.WriteMessage(conn, mrcore.PairResponse{Proof: mrcore.PairProof(secret, link.Machine, selfID, pub, challenge.Nonce)}); err != nil {
-		return fmt.Errorf("sending the proof of the pairing code: %w", err)
+		return fmt.Errorf(T("sending the proof of the pairing code: %w"), err)
 	}
 	stop()
 
@@ -127,9 +127,9 @@ func pairOnce(ctx context.Context, wait time.Duration, cert tls.Certificate, lin
 	var result mrcore.PairResult
 	if err := mrcore.ReadMessage(conn, &result); err != nil {
 		if waitCtx.Err() != nil {
-			return &pairFinal{fmt.Errorf("the machine did not answer within %s", wait)}
+			return &pairFinal{fmt.Errorf(T("the machine did not answer within %s"), wait)}
 		}
-		return &pairFinal{fmt.Errorf("the machine had the pairing request but its answer did not arrive: %w", err)}
+		return &pairFinal{fmt.Errorf(T("the machine had the pairing request but its answer did not arrive: %w"), err)}
 	}
 	if !result.OK {
 		return &pairFinal{pairRefusal(result.Error)}
@@ -141,16 +141,16 @@ func pairOnce(ctx context.Context, wait time.Duration, cert tls.Certificate, lin
 func pairRefusal(reason string) error {
 	switch reason {
 	case mrcore.PairRefusedCodeMismatch:
-		return errors.New("the machine did not accept the pairing code: it is wrong, was already used, or has expired " +
-			"(a code is good for one pairing and five minutes). Run \"synctang-unlocker pair\" on the machine again for a new link")
+		return errors.New(T("the machine did not accept the pairing code: it is wrong, was already used, or has expired " +
+			"(a code is good for one pairing and five minutes). Run \"synctang-unlocker pair\" on the machine again for a new link"))
 	case mrcore.PairRefusedDeclined:
-		return errors.New("the person at the machine declined the pairing. If the code they were shown was not the one above, " +
-			"somebody else used the pairing link first: run \"synctang-unlocker pair\" again")
+		return errors.New(T("the person at the machine declined the pairing. If the code they were shown was not the one above, " +
+			"somebody else used the pairing link first: run \"synctang-unlocker pair\" again"))
 	case "":
-		return errors.New("the machine refused the pairing")
+		return errors.New(T("the machine refused the pairing"))
 	}
 	// What the machine says is whatever the machine says, and the machine is whoever the link names.
-	return fmt.Errorf("the machine refused the pairing: %s", mrcore.SafeLabel(reason, 200))
+	return fmt.Errorf(T("the machine refused the pairing: %s"), mrcore.SafeLabel(reason, 200))
 }
 
 const (
@@ -166,20 +166,20 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 	keyFile := keyFileFlag(fs)
 	transportKeyFile := transportKeyFileFlag(fs)
 	machinesFile := machinesFileFlag(fs)
-	storeSpec := fs.String("store", "auto", "if there is no key yet, where to keep the one made: "+storeNames)
-	name := fs.String("name", "", "the name this key holder gives itself, shown on the machine (default: this computer's host name)")
-	force := fs.Bool("force", false, "let the name stand for this machine even if it names another one now")
-	as := fs.String("as", "", "the name to unlock this machine by (default: the name in the link)")
-	directAddr := fs.String("direct-addr", "", "dial this address directly, bypassing relay and discovery (testing only)")
-	timeout := fs.Duration("timeout", defaultPairTimeout, "give up reaching the machine after this long")
-	wait := fs.Duration("wait", defaultPairWait, "how long to wait for the person at the machine to confirm")
-	discovery := fs.String("discovery", "", "discovery server URL, instead of the one in the link or the public one")
-	configFile := fs.String("config", "", "file with discovery settings (default: synctang-keyholder/config in the user config directory)")
+	storeSpec := fs.String("store", "auto", T("if there is no key yet, where to keep the one made: ")+storeNames)
+	name := fs.String("name", "", T("the name this key holder gives itself, shown on the machine (default: this computer's host name)"))
+	force := fs.Bool("force", false, T("let the name stand for this machine even if it names another one now"))
+	as := fs.String("as", "", T("the name to unlock this machine by (default: the name in the link)"))
+	directAddr := fs.String("direct-addr", "", T("dial this address directly, bypassing relay and discovery (testing only)"))
+	timeout := fs.Duration("timeout", defaultPairTimeout, T("give up reaching the machine after this long"))
+	wait := fs.Duration("wait", defaultPairWait, T("how long to wait for the person at the machine to confirm"))
+	discovery := fs.String("discovery", "", T("discovery server URL, instead of the one in the link or the public one"))
+	configFile := fs.String("config", "", T("file with discovery settings (default: synctang-keyholder/config in the user config directory)"))
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		ui.Errorln(stderr, "pair wants one argument, the pairing link that \"synctang-unlocker pair\" prints under its QR code (in quotes)")
+		ui.Errorln(stderr, T("pair wants one argument, the pairing link that \"synctang-unlocker pair\" prints under its QR code (in quotes)"))
 		return 2
 	}
 	link, err := parsePairingLink(fs.Arg(0))
@@ -188,7 +188,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if *keyFile == "" || *transportKeyFile == "" || *machinesFile == "" {
-		ui.Errorln(stderr, "--key-file, --transport-key-file and --machines-file are required (no default could be determined)")
+		ui.Errorln(stderr, T("--key-file, --transport-key-file and --machines-file are required (no default could be determined)"))
 		return 2
 	}
 	// Only a name the person gave is an error when it cannot be used. The name in a link is the machine's word, and a
@@ -216,7 +216,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		}
 		for _, m := range ms {
 			if m.Name == alias && m.ID != link.Machine {
-				ui.Errorf(stderr, "%s already names %s, and this link is for %s: use --force to make it name this machine instead, or --as to give this one another name\n", alias, m.ID, link.Machine)
+				ui.Errorf(stderr, T("%s already names %s, and this link is for %s: use --force to make it name this machine instead, or --as to give this one another name\n"), alias, m.ID, link.Machine)
 				return 1
 			}
 		}
@@ -229,7 +229,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 	chosenDiscovery := cmp.Or(*discovery, link.Discovery)
 	network, err := loadNetworkConfig(configPath, explicitConfig, chosenDiscovery, "")
 	if err != nil {
-		ui.Errorf(stderr, "network settings: %v\n", err)
+		ui.Errorf(stderr, T("network settings: %v\n"), err)
 		return 2
 	}
 
@@ -240,7 +240,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		if made == nil {
 			return code
 		}
-		fmt.Fprintf(stdout, "made a new key, held by %s\n%s\n\n", made.store.Name(), wrap.Paragraph(made.store.Describe(), "  ", wrap.Width(stdout)))
+		fmt.Fprintf(stdout, T("made a new key, held by %s\n%s\n\n"), made.store.Name(), wrap.Paragraph(made.store.Describe(), "  ", wrap.Width(stdout)))
 		if made.note != "" {
 			ui.Notef(stderr, "%s\n", made.note)
 		}
@@ -276,16 +276,16 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 	status.Set(func() string { return fmt.Sprintf("looking for %s (%s)", machineName, elapsed(started)) })
 	announce := func(sas string) {
 		status.Stop()
-		fmt.Fprintf(stdout, "\nAsking %s to enrol this key holder. The machine shows its operator a code,\n"+
+		fmt.Fprintf(stdout, T("\nAsking %s to enrol this key holder. The machine shows its operator a code,\n"+
 			"and it must be the same as this one:\n\n%s\n\n"+
-			"If it is different, answer n on the machine: somebody else used the pairing link first.\n",
+			"If it is different, answer n on the machine: somebody else used the pairing link first.\n"),
 			machineName, ui.CodeBox(look, "    ", sas))
 		if !status.Live() {
-			fmt.Fprintf(stdout, "Waiting for the person at the machine to confirm (up to %s)...\n", (*wait).Round(time.Second))
+			fmt.Fprintf(stdout, T("Waiting for the person at the machine to confirm (up to %s)...\n"), (*wait).Round(time.Second))
 		}
 		asked := time.Now()
 		status.Set(func() string {
-			return fmt.Sprintf("waiting for the machine's operator (%s of %s)", elapsed(asked), clock(*wait))
+			return fmt.Sprintf(T("waiting for the machine's operator (%s of %s)"), elapsed(asked), clock(*wait))
 		})
 	}
 
@@ -303,34 +303,34 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		}
 		select {
 		case <-ctx.Done():
-			ui.Errorf(stderr, "could not reach the machine to pair: %v (last attempt: %v)\n", ctx.Err(), err)
+			ui.Errorf(stderr, T("could not reach the machine to pair: %v (last attempt: %v)\n"), ctx.Err(), err)
 			return 1
 		case <-time.After(unlockRetryInterval):
 		}
 	}
 
 	status.Stop()
-	fmt.Fprintf(stdout, "\n%s\n", look.Line(look.OK(""), look.Emoji("🤝", "")+"paired: "+look.Bold(machineName)+" has enrolled this key holder."))
+	fmt.Fprintf(stdout, "\n%s\n", look.Line(look.OK(""), look.Emoji("🤝", "")+T("paired: ")+look.Bold(machineName)+T(" has enrolled this key holder.")))
 	if alias == "" {
-		fmt.Fprintf(stdout, "Unlock it with: %s\n", look.Cyan("synctang-keyholder unlock "+link.Machine))
+		fmt.Fprintf(stdout, T("Unlock it with: %s\n"), look.Cyan("synctang-keyholder unlock "+link.Machine))
 		if unusableLinkName != "" {
-			fmt.Fprintf(stdout, "(the name it gave, %s, cannot be used as a name here; name it with: synctang-keyholder machines add <name> %s, or pair again with --as <name>)\n",
+			fmt.Fprintf(stdout, T("(the name it gave, %s, cannot be used as a name here; name it with: synctang-keyholder machines add <name> %s, or pair again with --as <name>)\n"),
 				mrcore.SafeLabel(unusableLinkName, 64), link.Machine)
 		} else {
-			fmt.Fprintf(stdout, "(give it a name with: synctang-keyholder machines add <name> %s)\n", link.Machine)
+			fmt.Fprintf(stdout, T("(give it a name with: synctang-keyholder machines add <name> %s)\n"), link.Machine)
 		}
 		return 0
 	}
 	previous, replaced, err := putMachine(*machinesFile, machine{Name: alias, ID: link.Machine, Discovery: chosenDiscovery}, true)
 	if err != nil {
-		fmt.Fprintf(stdout, "Unlock it with: %s\n", look.Cyan("synctang-keyholder unlock "+link.Machine))
-		ui.Errorf(stderr, "paired, but the name %q could not be saved: %v\n", alias, err)
+		fmt.Fprintf(stdout, T("Unlock it with: %s\n"), look.Cyan("synctang-keyholder unlock "+link.Machine))
+		ui.Errorf(stderr, T("paired, but the name %q could not be saved: %v\n"), alias, err)
 		return 1
 	}
 	if replaced && previous.ID != link.Machine {
-		fmt.Fprintf(stdout, "(the name %s used to mean %s; it now means this machine)\n", alias, previous.ID)
+		fmt.Fprintf(stdout, T("(the name %s used to mean %s; it now means this machine)\n"), alias, previous.ID)
 	}
-	fmt.Fprintf(stdout, "Unlock it with: %s\n", look.Cyan("synctang-keyholder unlock "+alias))
+	fmt.Fprintf(stdout, T("Unlock it with: %s\n"), look.Cyan("synctang-keyholder unlock "+alias))
 	return 0
 }
 

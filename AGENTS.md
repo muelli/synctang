@@ -24,6 +24,18 @@
 - The README is short and written in ASD-STE100 (Simplified Technical English): short active sentences
   (20 words or fewer for an instruction, 25 for a description), one instruction in a sentence, no
   contractions. The full usage guide is `docs/usage.md`.
+- A message that a Go program shows to a person is wrapped in `T("...")` (`internal/i18n`; `i18n.T` in
+  the packages under `internal/`), which returns its text unchanged: it only marks the message, so that
+  it can be collected for translation later. There is no catalogue yet. The name is `T` because `_`
+  cannot be called in Go. A test in each program (`TestEveryMessageShownToAPersonIsMarked`, using
+  `internal/i18n/markcheck`) fails for a message that is printed without it: text passed to `ui.Errorf`
+  and its relatives, `fmt.Fprint*`, `fmt.Errorf`, `errors.New`, a flag's description, a table's
+  headers, and any string that reads as a sentence (three words or more). Not for a person, and so
+  not marked: log lines for the journal, text compared with or searched for in other text, command
+  lines shown as examples (a line with `i18n:skip` in it, or before it, is left alone). `T` takes a
+  string constant, so that it can be collected; a format with nothing to format is not marked with `T`
+  inside `Sprintf` (use `T(...)` alone, `errors.New`, `fmt.Fprint` or the `ui.*ln` functions), since
+  `go vet` reports a non-constant format string. Android has string resources already.
 - The README is for installing and using the software. Design notes go
   in `docs/`, conventions and gotchas here, current state in
   `STATUS.md`, release and publishing mechanics in `docs/releasing.md`.

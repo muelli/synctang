@@ -37,7 +37,7 @@ const mrTokenType = "mr-1"
 func enrolRecipient(device string, existingPassphrase, recipientPublicKey []byte, machineName, transportID, recipientTransportID string) error {
 	dump, err := runCommand(nil, "cryptsetup", "luksDump", device)
 	if err != nil {
-		return fmt.Errorf("reading LUKS header: %w%s", err, permissionHint(err))
+		return fmt.Errorf(T("reading LUKS header: %w%s"), err, permissionHint(err))
 	}
 
 	tok, existingTokenID, err := loadToken(string(dump), device, machineName, transportID)
@@ -52,19 +52,19 @@ func enrolRecipient(device string, existingPassphrase, recipientPublicKey []byte
 
 	slot, err := lowestFreeKeyslot(string(dump))
 	if err != nil {
-		return fmt.Errorf("choosing a keyslot: %w", err)
+		return fmt.Errorf(T("choosing a keyslot: %w"), err)
 	}
 
 	P, rec, err := mrcore.Enrol(mrcore.P256(), recipientPublicKey)
 	if err != nil {
-		return fmt.Errorf("mrcore enrol: %w", err)
+		return fmt.Errorf(T("mrcore enrol: %w"), err)
 	}
 	defer mrcore.Wipe(P)
 
 	if recipientTransportID != "" {
 		rec.Transport, err = recipientTransportBlob(recipientTransportID)
 		if err != nil {
-			return fmt.Errorf("--recipient-transport-id: %w", err)
+			return fmt.Errorf(T("--recipient-transport-id: %w"), err)
 		}
 	}
 
@@ -94,7 +94,7 @@ func enrolRecipient(device string, existingPassphrase, recipientPublicKey []byte
 		},
 	)
 	if err != nil {
-		return fmt.Errorf("adding keyslot: %w", err)
+		return fmt.Errorf(T("adding keyslot: %w"), err)
 	}
 
 	tok.Keyslots = append(tok.Keyslots, strconv.Itoa(slot))
@@ -102,13 +102,13 @@ func enrolRecipient(device string, existingPassphrase, recipientPublicKey []byte
 
 	tokenJSON, err := json.Marshal(tok)
 	if err != nil {
-		return fmt.Errorf("encoding token: %w", err)
+		return fmt.Errorf(T("encoding token: %w"), err)
 	}
 
 	if existingTokenID >= 0 {
 		if _, err := runCommand(nil, "cryptsetup", "token", "remove",
 			"--token-id", strconv.Itoa(existingTokenID), device); err != nil {
-			return fmt.Errorf("removing the previous token version: %w", err)
+			return fmt.Errorf(T("removing the previous token version: %w"), err)
 		}
 	}
 
@@ -118,7 +118,7 @@ func enrolRecipient(device string, existingPassphrase, recipientPublicKey []byte
 	}
 	importArgs = append(importArgs, device)
 	if _, err := runCommand(tokenJSON, "cryptsetup", importArgs...); err != nil {
-		return fmt.Errorf("writing token: %w", err)
+		return fmt.Errorf(T("writing token: %w"), err)
 	}
 
 	return nil
@@ -189,8 +189,8 @@ func enrolOnce(device string, existingPassphrase, recipientPublicKey []byte, mac
 		case planAlready:
 			return enrolOutcome{Already: true, Keyslot: plan.Existing.Keyslot}, nil
 		case planReplace:
-			return enrolOutcome{}, fmt.Errorf("transport id %s is already enrolled with a different key (keyslot %s, key %s); "+
-				"to change its key use: synctang-unlocker rotate --device %s --pubkey <new public key> %s ...",
+			return enrolOutcome{}, fmt.Errorf(T("transport id %s is already enrolled with a different key (keyslot %s, key %s); "+
+				"to change its key use: synctang-unlocker rotate --device %s --pubkey <new public key> %s ..."),
 				recipientTransportID, plan.Existing.Keyslot, shortKid(plan.Existing.Kid), device, recipientTransportID)
 		}
 	}
@@ -216,7 +216,7 @@ type enrolPlan struct {
 func planEnrolment(device string, publicKey []byte, transportID string) (enrolPlan, error) {
 	dump, err := runCommand(nil, "cryptsetup", "luksDump", device)
 	if err != nil {
-		return enrolPlan{}, fmt.Errorf("reading LUKS header: %w%s", err, permissionHint(err))
+		return enrolPlan{}, fmt.Errorf(T("reading LUKS header: %w%s"), err, permissionHint(err))
 	}
 	tok, tokenID, err := loadToken(string(dump), device, "", "")
 	if err != nil {
@@ -237,8 +237,8 @@ func planEnrolment(device string, publicKey []byte, transportID string) (enrolPl
 		}
 		return enrolPlan{Kind: planReplace, Existing: existing}, nil
 	default:
-		return enrolPlan{}, fmt.Errorf("transport id %s is enrolled more than once (%s); remove all but one first, with "+
-			"synctang-unlocker revoke --keyslot <n> (see synctang-unlocker status)",
+		return enrolPlan{}, fmt.Errorf(T("transport id %s is enrolled more than once (%s); remove all but one first, with "+
+			"synctang-unlocker revoke --keyslot <n> (see synctang-unlocker status)"),
 			transportID, describeRecipients(tok, idxs))
 	}
 }
@@ -281,13 +281,13 @@ func removeRecipientByKeyslot(device string, existingPassphrase []byte, keyslot 
 		}
 	}
 	if len(tok.Keyslots) == 0 {
-		return fmt.Errorf("keyslot %s holds no enrolled key holder: no key holder is enrolled on this device", keyslot)
+		return fmt.Errorf(T("keyslot %s holds no enrolled key holder: no key holder is enrolled on this device"), keyslot)
 	}
 	where := "keyslot " + tok.Keyslots[0]
 	if len(tok.Keyslots) > 1 {
 		where = "keyslots " + strings.Join(tok.Keyslots, ", ")
 	}
-	return fmt.Errorf("keyslot %s holds no enrolled key holder (key holders are enrolled in %s)", keyslot, where)
+	return fmt.Errorf(T("keyslot %s holds no enrolled key holder (key holders are enrolled in %s)"), keyslot, where)
 }
 
 // loadEnrolledToken reads device's mr-1 token and insists it actually
@@ -299,7 +299,7 @@ func removeRecipientByKeyslot(device string, existingPassphrase []byte, keyslot 
 func loadEnrolledToken(device string) (mrcore.Token, int, error) {
 	dump, err := runCommand(nil, "cryptsetup", "luksDump", device)
 	if err != nil {
-		return mrcore.Token{}, -1, fmt.Errorf("reading LUKS header: %w%s", err, permissionHint(err))
+		return mrcore.Token{}, -1, fmt.Errorf(T("reading LUKS header: %w%s"), err, permissionHint(err))
 	}
 
 	tok, existingTokenID, err := loadToken(string(dump), device, "", "")
@@ -307,10 +307,10 @@ func loadEnrolledToken(device string) (mrcore.Token, int, error) {
 		return mrcore.Token{}, -1, err
 	}
 	if existingTokenID < 0 {
-		return mrcore.Token{}, -1, fmt.Errorf("%s has no enrolled mr-1 recipients", device)
+		return mrcore.Token{}, -1, fmt.Errorf(T("%s has no enrolled mr-1 recipients"), device)
 	}
 	if len(tok.Keyslots) != len(tok.Recipients) {
-		return mrcore.Token{}, -1, fmt.Errorf("token integrity check failed: %d keyslots for %d recipients, refusing to guess which is which",
+		return mrcore.Token{}, -1, fmt.Errorf(T("token integrity check failed: %d keyslots for %d recipients, refusing to guess which is which"),
 			len(tok.Keyslots), len(tok.Recipients))
 	}
 	return tok, existingTokenID, nil
@@ -328,7 +328,7 @@ func recipientIndexByTransportID(tok mrcore.Token, recipientTransportID string) 
 func selectRecipient(tok mrcore.Token, recipientTransportID, keyslot string) (int, error) {
 	idxs := recipientsByTransportID(tok, recipientTransportID)
 	if len(idxs) == 0 {
-		return -1, fmt.Errorf("no enrolled recipient with transport id %s", recipientTransportID)
+		return -1, fmt.Errorf(T("no enrolled recipient with transport id %s"), recipientTransportID)
 	}
 	if keyslot != "" {
 		for _, i := range idxs {
@@ -336,11 +336,11 @@ func selectRecipient(tok mrcore.Token, recipientTransportID, keyslot string) (in
 				return i, nil
 			}
 		}
-		return -1, fmt.Errorf("keyslot %s holds no entry for transport id %s (it has: %s)",
+		return -1, fmt.Errorf(T("keyslot %s holds no entry for transport id %s (it has: %s)"),
 			keyslot, recipientTransportID, describeRecipients(tok, idxs))
 	}
 	if len(idxs) > 1 {
-		return -1, fmt.Errorf("transport id %s is enrolled more than once (%s), so it cannot tell which you mean; name one with --keyslot <n>",
+		return -1, fmt.Errorf(T("transport id %s is enrolled more than once (%s), so it cannot tell which you mean; name one with --keyslot <n>"),
 			recipientTransportID, describeRecipients(tok, idxs))
 	}
 	return idxs[0], nil
@@ -359,7 +359,7 @@ func removeRecipientAt(device string, existingPassphrase []byte, tok mrcore.Toke
 		func(paths []string) []string {
 			return []string{"luksKillSlot", "--batch-mode", device, keyslot, "--key-file=" + paths[0]}
 		}); err != nil {
-		return fmt.Errorf("destroying keyslot %s: %w", keyslot, err)
+		return fmt.Errorf(T("destroying keyslot %s: %w"), keyslot, err)
 	}
 
 	tok.Keyslots = append(tok.Keyslots[:idx], tok.Keyslots[idx+1:]...)
@@ -367,16 +367,16 @@ func removeRecipientAt(device string, existingPassphrase []byte, tok mrcore.Toke
 
 	tokenJSON, err := json.Marshal(tok)
 	if err != nil {
-		return fmt.Errorf("encoding token: %w", err)
+		return fmt.Errorf(T("encoding token: %w"), err)
 	}
 
 	if _, err := runCommand(nil, "cryptsetup", "token", "remove",
 		"--token-id", strconv.Itoa(tokenID), device); err != nil {
-		return fmt.Errorf("removing the previous token version: %w", err)
+		return fmt.Errorf(T("removing the previous token version: %w"), err)
 	}
 	if _, err := runCommand(tokenJSON, "cryptsetup", "token", "import",
 		"--token-id", strconv.Itoa(tokenID), device); err != nil {
-		return fmt.Errorf("writing token: %w", err)
+		return fmt.Errorf(T("writing token: %w"), err)
 	}
 
 	return nil
@@ -418,19 +418,19 @@ func replaceRecipient(device string, existingPassphrase, newPublicKey []byte, ol
 	// identity the first enrolment recorded rather than taking a new
 	// one from a later caller.
 	if err := enrolRecipient(device, existingPassphrase, newPublicKey, "", "", newRecipientTransportID); err != nil {
-		return fmt.Errorf("enrolling the replacement key (nothing was revoked, the old key still works): %w", err)
+		return fmt.Errorf(T("enrolling the replacement key (nothing was revoked, the old key still works): %w"), err)
 	}
 
 	tok, tokenID, err := loadEnrolledToken(device)
 	if err != nil {
-		return fmt.Errorf("re-reading the token after enrolling the replacement key: %w", err)
+		return fmt.Errorf(T("re-reading the token after enrolling the replacement key: %w"), err)
 	}
 	idx = slices.Index(tok.Keyslots, oldKeyslot)
 	if idx < 0 {
-		return fmt.Errorf("the replacement key is enrolled, but keyslot %s (the old key) is no longer in the token, so it was not revoked", oldKeyslot)
+		return fmt.Errorf(T("the replacement key is enrolled, but keyslot %s (the old key) is no longer in the token, so it was not revoked"), oldKeyslot)
 	}
 	if err := removeRecipientAt(device, existingPassphrase, tok, tokenID, idx); err != nil {
-		return fmt.Errorf("the replacement key is enrolled and works, but revoking the old key in keyslot %s failed, so %s can currently be opened by either key: %w",
+		return fmt.Errorf(T("the replacement key is enrolled and works, but revoking the old key in keyslot %s failed, so %s can currently be opened by either key: %w"),
 			oldKeyslot, device, err)
 	}
 
@@ -475,12 +475,12 @@ func loadToken(dump, device, machineName, transportID string) (mrcore.Token, int
 		}
 	}
 	if err != nil {
-		return mrcore.Token{}, -1, fmt.Errorf("reading the existing token: %w", err)
+		return mrcore.Token{}, -1, fmt.Errorf(T("reading the existing token: %w"), err)
 	}
 
 	var tok mrcore.Token
 	if err := json.Unmarshal(exported, &tok); err != nil {
-		return mrcore.Token{}, -1, fmt.Errorf("decoding the existing token: %w", err)
+		return mrcore.Token{}, -1, fmt.Errorf(T("decoding the existing token: %w"), err)
 	}
 	return tok, id, nil
 }

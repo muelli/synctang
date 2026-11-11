@@ -89,7 +89,7 @@ func dnsFromNetworkdState(content string) []string {
 func resolvConfFromNetworkdState(content string) string {
 	var b strings.Builder
 	for _, server := range dnsFromNetworkdState(content) {
-		fmt.Fprintf(&b, "nameserver %s\n", server)
+		fmt.Fprintf(&b, T("nameserver %s\n"), server)
 	}
 	return b.String()
 }

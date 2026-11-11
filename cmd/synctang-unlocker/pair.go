@@ -104,7 +104,7 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 
 	conn, err := tr.Listen(ctx, listenOpts)
 	if err != nil {
-		return fmt.Errorf("synctang-unlocker: waiting for a key holder to pair: %w", err)
+		return fmt.Errorf(T("synctang-unlocker: waiting for a key holder to pair: %w"), err)
 	}
 	defer conn.Close()
 
@@ -125,10 +125,10 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 	if err != nil {
 		stopOnWindowEnd()
 		if requestTimedOut.Load() {
-			return fmt.Errorf("synctang-unlocker: the peer %s did not send its pairing request within %s (is it a phone that was started to unlock, not to pair?)",
+			return fmt.Errorf(T("synctang-unlocker: the peer %s did not send its pairing request within %s (is it a phone that was started to unlock, not to pair?)"),
 				conn.PeerID(), pairRequestTimeout)
 		}
-		return fmt.Errorf("synctang-unlocker: reading the pairing request: %w", err)
+		return fmt.Errorf(T("synctang-unlocker: reading the pairing request: %w"), err)
 	}
 
 	// Rejected here, before anything else is spent on it, so that a key that can never work does not first
@@ -140,10 +140,10 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 
 	nonce := make([]byte, mrcore.PairNonceLen)
 	if _, err := rand.Read(nonce); err != nil {
-		return fmt.Errorf("synctang-unlocker: generating a pairing nonce: %w", err)
+		return fmt.Errorf(T("synctang-unlocker: generating a pairing nonce: %w"), err)
 	}
 	if err := mrcore.WriteMessage(conn, mrcore.PairChallenge{Nonce: nonce, Name: opts.machineName}); err != nil {
-		return fmt.Errorf("synctang-unlocker: sending the pairing challenge: %w", err)
+		return fmt.Errorf(T("synctang-unlocker: sending the pairing challenge: %w"), err)
 	}
 
 	var responseTimedOut atomic.Bool
@@ -155,9 +155,9 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 	stopOnWindowEnd()
 	if err != nil {
 		if responseTimedOut.Load() {
-			return fmt.Errorf("synctang-unlocker: the peer %s did not send the proof of the pairing code within %s", conn.PeerID(), pairRequestTimeout)
+			return fmt.Errorf(T("synctang-unlocker: the peer %s did not send the proof of the pairing code within %s"), conn.PeerID(), pairRequestTimeout)
 		}
-		return fmt.Errorf("synctang-unlocker: reading the proof of the pairing code: %w", err)
+		return fmt.Errorf(T("synctang-unlocker: reading the proof of the pairing code: %w"), err)
 	}
 
 	// PeerID is the identity from the completed TLS handshake, not
@@ -180,7 +180,7 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 	if err != nil {
 		_ = mrcore.WriteMessage(conn, mrcore.PairResult{Error: mrcore.PairRefusedEnrolFailed})
 		waitForPeerClose(conn, resultLingerTimeout)
-		return fmt.Errorf("synctang-unlocker: %w", err)
+		return fmt.Errorf(T("synctang-unlocker: %w"), err)
 	}
 	notify := opts.notify
 	if notify == nil {
@@ -190,7 +190,7 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 	case planAlready:
 		notify(fmt.Sprintf("%s is already enrolled at keyslot %s with this key; nothing was added", peerID, plan.Existing.Keyslot))
 		if err := mrcore.WriteMessage(conn, mrcore.PairResult{OK: true}); err != nil {
-			return fmt.Errorf("synctang-unlocker: %s was already enrolled, but telling it so failed: %w", peerID, err)
+			return fmt.Errorf(T("synctang-unlocker: %s was already enrolled, but telling it so failed: %w"), peerID, err)
 		}
 		waitForPeerClose(conn, resultLingerTimeout)
 		return nil
@@ -203,10 +203,10 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 		if err := replaceRecipient(opts.device, opts.existingPassphrase, req.PubKey, peerID, peerID, plan.Existing.Keyslot); err != nil {
 			_ = mrcore.WriteMessage(conn, mrcore.PairResult{Error: mrcore.PairRefusedEnrolFailed})
 			waitForPeerClose(conn, resultLingerTimeout)
-			return fmt.Errorf("synctang-unlocker: replacing the paired key holder's key: %w", err)
+			return fmt.Errorf(T("synctang-unlocker: replacing the paired key holder's key: %w"), err)
 		}
 		if err := mrcore.WriteMessage(conn, mrcore.PairResult{OK: true}); err != nil {
-			return fmt.Errorf("synctang-unlocker: %s's key was replaced, but telling it so failed: %w", peerID, err)
+			return fmt.Errorf(T("synctang-unlocker: %s's key was replaced, but telling it so failed: %w"), peerID, err)
 		}
 		waitForPeerClose(conn, resultLingerTimeout)
 		return nil
@@ -222,13 +222,13 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 		// to whoever is holding the phone than a timeout.
 		_ = mrcore.WriteMessage(conn, mrcore.PairResult{Error: mrcore.PairRefusedEnrolFailed})
 		waitForPeerClose(conn, resultLingerTimeout)
-		return fmt.Errorf("synctang-unlocker: enrolling the paired key holder: %w", err)
+		return fmt.Errorf(T("synctang-unlocker: enrolling the paired key holder: %w"), err)
 	}
 
 	if err := mrcore.WriteMessage(conn, mrcore.PairResult{OK: true}); err != nil {
 		// The enrolment happened and stands; only the acknowledgement
 		// was lost, so say so rather than implying nothing changed.
-		return fmt.Errorf("synctang-unlocker: %s was enrolled, but telling it so failed: %w", peerID, err)
+		return fmt.Errorf(T("synctang-unlocker: %s was enrolled, but telling it so failed: %w"), peerID, err)
 	}
 	waitForPeerClose(conn, resultLingerTimeout)
 	return nil
@@ -241,7 +241,7 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 func refusePairing(conn io.ReadWriter, reason string) error {
 	_ = mrcore.WriteMessage(conn, mrcore.PairResult{Error: reason})
 	waitForPeerClose(conn, resultLingerTimeout)
-	return fmt.Errorf("synctang-unlocker: pairing refused: %s", reason)
+	return fmt.Errorf(T("synctang-unlocker: pairing refused: %s"), reason)
 }
 
 // defaultPairWindow is how long a pairing code stays good for. Long
@@ -258,30 +258,30 @@ const defaultPairWindow = 5 * time.Minute
 func runPair(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("pair", flag.ContinueOnError)
 	fs.SetOutput(gnuflag.Writer(stderr))
-	device := fs.String("device", "", "LUKS2 device or image to enrol the key holder on (\"synctang-unlocker devices\" lists them)")
-	passphraseFile := fs.String("existing-passphrase-file", "", "file containing an existing valid LUKS passphrase (- for stdin)")
-	name := fs.String("name", "", "this machine's name, shown to the key holder (default: the name already on the volume, else this machine's hostname)")
-	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, "path to this machine's persistent transport identity")
-	window := fs.Duration("timeout", defaultPairWindow, "how long to accept a pairing for")
-	yes := fs.Bool("yes", false, "enrol whoever answers the code without asking, which skips the code check that catches a leaked link")
-	rebuild := fs.Bool("rebuild-initrd", false, "after enrolling, run dracut --force if the initrd does not carry this machine's identity and network.conf")
-	directAddr := fs.String("direct-addr", "", "listen on this address directly, bypassing relay and discovery (testing only)")
-	networkConf := fs.String("network-conf", defaultNetworkConfFile, "file naming the relay pool and discovery servers to use instead of the public ones (the kernel arguments rd.synctang.relay= and rd.synctang.discovery= override it)")
-	qrMode := fs.String("qr", "auto", "how to draw the QR code: "+strings.Join(qrModes, ", ")+"; auto uses an image where the terminal is known to show one")
+	device := fs.String("device", "", T("LUKS2 device or image to enrol the key holder on (\"synctang-unlocker devices\" lists them)"))
+	passphraseFile := fs.String("existing-passphrase-file", "", T("file containing an existing valid LUKS passphrase (- for stdin)"))
+	name := fs.String("name", "", T("this machine's name, shown to the key holder (default: the name already on the volume, else this machine's hostname)"))
+	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, T("path to this machine's persistent transport identity"))
+	window := fs.Duration("timeout", defaultPairWindow, T("how long to accept a pairing for"))
+	yes := fs.Bool("yes", false, T("enrol whoever answers the code without asking, which skips the code check that catches a leaked link"))
+	rebuild := fs.Bool("rebuild-initrd", false, T("after enrolling, run dracut --force if the initrd does not carry this machine's identity and network.conf"))
+	directAddr := fs.String("direct-addr", "", T("listen on this address directly, bypassing relay and discovery (testing only)"))
+	networkConf := fs.String("network-conf", defaultNetworkConfFile, T("file naming the relay pool and discovery servers to use instead of the public ones (the kernel arguments rd.synctang.relay= and rd.synctang.discovery= override it)"))
+	qrMode := fs.String("qr", "auto", T("how to draw the QR code: ")+strings.Join(qrModes, ", ")+T("; auto uses an image where the terminal is known to show one"))
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if !validQRMode(*qrMode) {
-		ui.Errorf(stderr, "--qr: unknown mode %q, want one of %s\n", *qrMode, strings.Join(qrModes, ", "))
+		ui.Errorf(stderr, T("--qr: unknown mode %q, want one of %s\n"), *qrMode, strings.Join(qrModes, ", "))
 		return 2
 	}
 
 	if *device == "" {
-		ui.Errorf(stderr, "--device is required: %s\n", deviceHint())
+		ui.Errorf(stderr, T("--device is required: %s\n"), deviceHint())
 		return 2
 	}
 	if *passphraseFile == "" {
-		ui.Errorln(stderr, "--existing-passphrase-file is required")
+		ui.Errorln(stderr, T("--existing-passphrase-file is required"))
 		return 2
 	}
 	// Found out now, before the passphrase is read and the window opens, not when a key
@@ -310,7 +310,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 	// person had confirmed it. Before the identity is made, too, so a
 	// refused run leaves nothing behind.
 	if err := verifyPassphrase(*device, passphrase); err != nil {
-		ui.Errorf(stderr, "that passphrase does not open %s (%v); nothing was changed\n", *device, err)
+		ui.Errorf(stderr, T("that passphrase does not open %s (%v); nothing was changed\n"), *device, err)
 		return 1
 	}
 
@@ -333,7 +333,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		// Not fatal: the printed values below are enough to pair by
 		// hand, and a machine whose terminal cannot show a QR code is
 		// exactly the case they exist for.
-		ui.Errorf(stderr, "could not draw the QR code (%v); use the link below\n", err)
+		ui.Errorf(stderr, T("could not draw the QR code (%v); use the link below\n"), err)
 	} else {
 		fmt.Fprintln(stdout)
 		fmt.Fprint(stdout, qrCode)
@@ -355,7 +355,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 	started := time.Now()
 	showWaiting := func() {
 		status.Set(func() string {
-			return fmt.Sprintf("waiting for a key holder (%s of %s)", clock(time.Since(started)), clock(*window))
+			return fmt.Sprintf(T("waiting for a key holder (%s of %s)"), clock(time.Since(started)), clock(*window))
 		})
 	}
 	showWaiting()
@@ -392,17 +392,17 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		status.Stop()
 		if err == nil {
 			look := ui.For(stdout)
-			fmt.Fprintln(stdout, look.Line(look.OK(""), look.Emoji("🤝", "")+"paired. The key holder can now unlock this volume."))
+			fmt.Fprintln(stdout, look.Line(look.OK(""), look.Emoji("🤝", "")+T("paired. The key holder can now unlock this volume.")))
 			fmt.Fprintln(stdout, rehearsalHint(*device))
 			// The first pairing on a machine makes its identity, which the initrd built
 			// before then does not carry.
 			return afterEnrolmentFor(stdout, stderr, *machineKeyFile, *networkConf, *rebuild)
 		}
 		if ctx.Err() != nil {
-			ui.Errorf(stderr, "nobody paired within %s\n", *window)
+			ui.Errorf(stderr, T("nobody paired within %s\n"), *window)
 			return 1
 		}
-		ui.Notef(stderr, "%v (still waiting)\n", err)
+		ui.Notef(stderr, T("%v (still waiting)\n"), err)
 		showWaiting()
 	}
 }
@@ -426,8 +426,8 @@ func confirmationInput(passphraseFile string, assumeYes bool, stdin io.Reader) (
 	}
 	tty, err := openTTY()
 	if err != nil {
-		return nil, nil, fmt.Errorf("the passphrase is read from stdin, so the confirmation question has to be asked on a terminal, "+
-			"and none could be opened (%v); use --yes to enrol whoever answers the code without asking (that skips the code check that catches a leaked link)", err)
+		return nil, nil, fmt.Errorf(T("the passphrase is read from stdin, so the confirmation question has to be asked on a terminal, "+
+			"and none could be opened (%v); use --yes to enrol whoever answers the code without asking (that skips the code check that catches a leaked link)"), err)
 	}
 	return tty, tty, nil
 }
@@ -436,20 +436,20 @@ func confirmationInput(passphraseFile string, assumeYes bool, stdin io.Reader) (
 // a new key holder and for one that is already enrolled.
 func printPeer(stdout io.Writer, p pairPeer) {
 	kid := sha256.Sum256(p.PubKey)
-	fmt.Fprintf(stdout, "  transport id:  %s\n", p.ID)
+	fmt.Fprintf(stdout, T("  transport id:  %s\n"), p.ID)
 	if p.Name != "" {
-		fmt.Fprintf(stdout, "  it calls itself: %s (it chose that itself, and it proves nothing)\n", p.Name)
+		fmt.Fprintf(stdout, T("  it calls itself: %s (it chose that itself, and it proves nothing)\n"), p.Name)
 	}
-	fmt.Fprintf(stdout, "  key id:        %s\n", shortKid(kid[:]))
+	fmt.Fprintf(stdout, T("  key id:        %s\n"), shortKid(kid[:]))
 	if look := ui.For(stdout); look.Unicode {
-		fmt.Fprintf(stdout, "  code:\n%s\n\n", ui.CodeBox(look, "      ", p.SAS))
+		fmt.Fprintf(stdout, T("  code:\n%s\n\n"), ui.CodeBox(look, "      ", p.SAS))
 	} else {
-		fmt.Fprintf(stdout, "  code:          %s\n\n", p.SAS)
+		fmt.Fprintf(stdout, T("  code:          %s\n\n"), p.SAS)
 	}
 	// The pairing code only proves that whoever answered had it, and a code that was photographed or pasted
 	// somewhere is had by more than one party: the comparison is what tells them apart.
 	fmt.Fprintf(stdout, "%s\n\n",
-		wrap.Paragraph("A laptop (synctang-keyholder pair) and the phone app show the same code: enrol it only if they are the same.", "", wrap.Width(stdout)))
+		wrap.Paragraph(T("A laptop (synctang-keyholder pair) and the phone app show the same code: enrol it only if they are the same."), "", wrap.Width(stdout)))
 }
 
 // pairConfirmer builds the confirmation step. Possession of the code is
@@ -468,15 +468,15 @@ func pairConfirmer(assumeYes bool, stdout io.Writer, stdin io.Reader) func(pairP
 	}
 	reader := bufio.NewReader(stdin)
 	return func(p pairPeer) bool {
-		fmt.Fprintf(stdout, "\na key holder answered the pairing code:\n\n")
+		fmt.Fprint(stdout, T("\na key holder answered the pairing code:\n\n"))
 		printPeer(stdout, p)
-		fmt.Fprint(stdout, "enrol it on this volume? [y/N] ")
+		fmt.Fprint(stdout, T("enrol it on this volume? [y/N] "))
 
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			// No console to ask, or stdin already spent on the
 			// passphrase. Refusing is the safe reading of silence.
-			fmt.Fprintln(stdout, "\nno answer, so not enrolling (use --yes to skip this question)")
+			fmt.Fprintln(stdout, T("\nno answer, so not enrolling (use --yes to skip this question)"))
 			return false
 		}
 		answer := strings.ToLower(strings.TrimSpace(line))
@@ -494,14 +494,14 @@ func pairReplaceConfirmer(assumeYes bool, stdout io.Writer, stdin io.Reader) fun
 	}
 	reader := bufio.NewReader(stdin)
 	return func(p pairPeer, existing existingRecipient, newKid []byte) bool {
-		fmt.Fprintf(stdout, "\na key holder that is already enrolled answered the pairing code:\n\n")
+		fmt.Fprint(stdout, T("\na key holder that is already enrolled answered the pairing code:\n\n"))
 		printPeer(stdout, p)
-		fmt.Fprintf(stdout, "replace the existing entry for this key holder (keyslot %s, key %s) with this one (key %s)? [y/N] ",
+		fmt.Fprintf(stdout, T("replace the existing entry for this key holder (keyslot %s, key %s) with this one (key %s)? [y/N] "),
 			existing.Keyslot, shortKid(existing.Kid), shortKid(newKid))
 
 		line, err := reader.ReadString('\n')
 		if err != nil {
-			fmt.Fprintln(stdout, "\nno answer, so not replacing (use --yes to skip this question)")
+			fmt.Fprintln(stdout, T("\nno answer, so not replacing (use --yes to skip this question)"))
 			return false
 		}
 		answer := strings.ToLower(strings.TrimSpace(line))
@@ -536,16 +536,16 @@ func pairingURL(machineID, name, encodedSecret string, network transport.Network
 // person with, so it has to be sufficient on its own.
 func pairingInstructions(machineID, name, encodedSecret string, network transport.NetworkConfig, window time.Duration) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Scan this with the synctang app to pair it with %s.\n\n", cmp.Or(name, "this machine"))
-	b.WriteString("If the camera cannot scan it, paste this link into the app's\n")
-	b.WriteString("device ID field instead (the QR code carries exactly this):\n\n")
+	fmt.Fprintf(&b, T("Scan this with the synctang app to pair it with %s.\n\n"), cmp.Or(name, "this machine"))
+	b.WriteString(T("If the camera cannot scan it, paste this link into the app's\n"))
+	b.WriteString(T("device ID field instead (the QR code carries exactly this):\n\n"))
 	link := pairingURL(machineID, name, encodedSecret, network)
 	fmt.Fprintf(&b, "  %s\n\n", link)
-	b.WriteString("To pair a laptop instead, run this on it (the quotes matter):\n\n")
-	fmt.Fprintf(&b, "  synctang-keyholder pair '%s'\n\n", link)
-	fmt.Fprintf(&b, "The pairing code works until one key holder is enrolled or %s are over.\n", window)
-	b.WriteString("Anyone who can read it off this screen, or off a photograph of\n")
-	b.WriteString("it, can ask to be enrolled, so you will be shown which key\n")
-	b.WriteString("holder is asking before anything is written to the volume.\n")
+	b.WriteString(T("To pair a laptop instead, run this on it (the quotes matter):\n\n"))
+	fmt.Fprintf(&b, T("  synctang-keyholder pair '%s'\n\n"), link)
+	fmt.Fprintf(&b, T("The pairing code works until one key holder is enrolled or %s are over.\n"), window)
+	b.WriteString(T("Anyone who can read it off this screen, or off a photograph of\n"))
+	b.WriteString(T("it, can ask to be enrolled, so you will be shown which key\n"))
+	b.WriteString(T("holder is asking before anything is written to the volume.\n"))
 	return b.String()
 }

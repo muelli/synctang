@@ -7,6 +7,7 @@
 package gnuflag
 
 import (
+	"github.com/muelli/synctang/internal/i18n"
 	"io"
 	"regexp"
 	"strings"
@@ -33,9 +34,9 @@ var (
 
 // rewrite spells the options in text the way GNU tools do.
 func rewrite(text string, width int) string {
-	text = unknown.ReplaceAllString(text, "unrecognised option '--$1'")
-	text = needsArgument.ReplaceAllString(text, "option '--$1' requires an argument")
-	text = badValue.ReplaceAllString(text, "$1 for option '--$2'")
+	text = unknown.ReplaceAllString(text, i18n.T("unrecognised option '--$1'"))
+	text = needsArgument.ReplaceAllString(text, i18n.T("option '--$1' requires an argument"))
+	text = badValue.ReplaceAllString(text, i18n.T("$1 for option '--$2'"))
 	text = optionLine.ReplaceAllString(text, "$1--$2")
 	return descriptionLine.ReplaceAllStringFunc(text, func(line string) string {
 		return wrap(strings.TrimPrefix(line, "    \t"), width)

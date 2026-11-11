@@ -28,47 +28,47 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if *keyFile == "" || *transportKeyFile == "" {
-		ui.Errorln(stderr, "--key-file and --transport-key-file are required (could not determine a default)")
+		ui.Errorln(stderr, T("--key-file and --transport-key-file are required (could not determine a default)"))
 		return 2
 	}
 
 	st, err := openStore(*keyFile)
 	if err != nil {
 		if errors.Is(err, errNoKey) {
-			ui.Errorf(stderr, "%v; make one with: synctang-keyholder init\n", err)
+			ui.Errorf(stderr, T("%v; make one with: synctang-keyholder init\n"), err)
 		} else {
 			ui.Errorf(stderr, "%v\n", err)
 		}
 		return 1
 	}
 	look := ui.For(stdout)
-	fmt.Fprintf(stdout, "%skey: held by %s\n", look.Emoji("🔑", ""), look.Bold(st.Name()))
-	fmt.Fprintf(stdout, "  where: %s\n", st.Location())
+	fmt.Fprintf(stdout, T("%skey: held by %s\n"), look.Emoji("🔑", ""), look.Bold(st.Name()))
+	fmt.Fprintf(stdout, T("  where: %s\n"), st.Location())
 	fmt.Fprintf(stdout, "%s\n", look.Dim(wrap.Paragraph(st.Describe(), "  ", wrap.Width(stdout))))
 
 	// Loaded to say whether it can be, and wiped at once. For a keyring this may ask for the
 	// login password, which is the information: it is what an unlock will ask too.
 	if s, err := st.Load(); err != nil {
-		debugf("could not read the key from %s (%s): %v\n", st.Name(), st.Location(), err)
+		debugf(T("could not read the key from %s (%s): %v\n"), st.Name(), st.Location(), err)
 		fmt.Fprintln(stdout, look.Line(look.Fail(""), look.Red(fmt.Sprintf("readable: no (%v)", err))))
 	} else {
-		debugf("read the key from %s (%s)\n", st.Name(), st.Location())
+		debugf(T("read the key from %s (%s)\n"), st.Name(), st.Location())
 		verr := verifyKey(*keyFile, st, s)
 		mrcore.Wipe(s)
 		if verr != nil {
 			fmt.Fprintln(stdout, look.Line(look.Fail(""), look.Red(fmt.Sprintf("readable: no (%v)", verr))))
 		} else {
-			fmt.Fprintln(stdout, look.Line(look.OK(""), "readable: yes"))
+			fmt.Fprintln(stdout, look.Line(look.OK(""), T("readable: yes")))
 			if _, recorded, _, _ := readRecord(*keyFile); recorded != "" {
-				fmt.Fprintln(stdout, look.Dim("  it matches the public key recorded when it was made"))
+				fmt.Fprintln(stdout, look.Dim(T("  it matches the public key recorded when it was made")))
 			} else {
-				fmt.Fprintln(stdout, look.Dim("  no public key was recorded, so a replaced key would not be noticed"))
+				fmt.Fprintln(stdout, look.Dim(T("  no public key was recorded, so a replaced key would not be noticed")))
 			}
 		}
 	}
 
 	if _, err := os.Stat(*transportKeyFile); err != nil {
-		fmt.Fprintf(stdout, "transport identity: not created yet (%s)\n", *transportKeyFile)
+		fmt.Fprintf(stdout, T("transport identity: not created yet (%s)\n"), *transportKeyFile)
 		return 0
 	}
 	cert, err := transport.LoadOrCreateCert(*transportKeyFile)
@@ -76,6 +76,6 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 		ui.Errorf(stderr, "%v\n", err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "transport identity: %s\n", look.Dim(protocol.NewDeviceID(cert.Certificate[0]).String()))
+	fmt.Fprintf(stdout, T("transport identity: %s\n"), look.Dim(protocol.NewDeviceID(cert.Certificate[0]).String()))
 	return 0
 }

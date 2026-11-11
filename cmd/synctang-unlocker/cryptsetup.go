@@ -87,7 +87,7 @@ func secretFDPath(n int) string {
 // /proc/self/fd entries pointing at them.
 func runCommandWithSecrets(secrets [][]byte, name string, buildArgs func(paths []string) []string) ([]byte, error) {
 	if _, err := os.Stat("/proc/self/fd"); err != nil {
-		return nil, fmt.Errorf("%s: passing secrets needs /proc mounted: %w", name, err)
+		return nil, fmt.Errorf(T("%s: passing secrets needs /proc mounted: %w"), name, err)
 	}
 
 	paths := make([]string, len(secrets))
@@ -109,7 +109,7 @@ func runCommandWithSecrets(secrets [][]byte, name string, buildArgs func(paths [
 					f.Close()
 				}
 			}
-			return nil, fmt.Errorf("%s: creating a pipe for a secret: %w", name, err)
+			return nil, fmt.Errorf(T("%s: creating a pipe for a secret: %w"), name, err)
 		}
 		readEnds[i], writeEnds[i] = r, w
 		paths[i] = secretFDPath(i)

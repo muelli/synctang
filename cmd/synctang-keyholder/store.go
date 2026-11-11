@@ -17,7 +17,7 @@ import (
 )
 
 // errNoKey says there is no key in the store yet, as opposed to a key that could not be read.
-var errNoKey = errors.New("there is no key")
+var errNoKey = errors.New(T("there is no key"))
 
 // keyStore is where the long-term scalar s lives. Which store holds it decides what a copy of the
 // key holder's files is worth to somebody who is not its owner, so each says, in its Describe,
@@ -49,11 +49,11 @@ func scalarFromHex(text []byte, where string) ([]byte, error) {
 	n, err := hex.Decode(s, text)
 	if err != nil {
 		mrcore.Wipe(s)
-		return nil, fmt.Errorf("%s does not contain a valid hex scalar: %w", where, err)
+		return nil, fmt.Errorf(T("%s does not contain a valid hex scalar: %w"), where, err)
 	}
 	if n != 32 {
 		mrcore.Wipe(s)
-		return nil, fmt.Errorf("%s contains a %d-byte scalar, want 32", where, n)
+		return nil, fmt.Errorf(T("%s contains a %d-byte scalar, want 32"), where, n)
 	}
 	return s[:n], nil
 }
@@ -76,9 +76,9 @@ func (f *fileStore) Name() string { return "file" }
 func (f *fileStore) Location() string { return "file " + f.path }
 
 func (f *fileStore) Describe() string {
-	return "a plain file (" + f.path + ", mode 0600). It keeps out other users of this laptop and nothing else: " +
-		"a copy of the file, from a backup or a synced folder or an image of the disk, is the key, " +
-		"and software running as you can read it"
+	return "a plain file (" + f.path + T(", mode 0600). It keeps out other users of this laptop and nothing else: ") +
+		T("a copy of the file, from a backup or a synced folder or an image of the disk, is the key, ") +
+		T("and software running as you can read it")
 }
 
 func (f *fileStore) Exists() (bool, error) {
@@ -95,10 +95,10 @@ func (f *fileStore) Exists() (bool, error) {
 func (f *fileStore) Load() ([]byte, error) {
 	data, err := os.ReadFile(f.path)
 	if os.IsNotExist(err) {
-		return nil, fmt.Errorf("reading key file %s: %w", f.path, errNoKey)
+		return nil, fmt.Errorf(T("reading key file %s: %w"), f.path, errNoKey)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("reading key file: %w", err)
+		return nil, fmt.Errorf(T("reading key file: %w"), err)
 	}
 	defer mrcore.Wipe(data)
 	return scalarFromHex(data, "key file "+f.path)
@@ -106,7 +106,7 @@ func (f *fileStore) Load() ([]byte, error) {
 
 func (f *fileStore) Save(scalar []byte, overwrite bool) error {
 	if err := os.MkdirAll(filepath.Dir(f.path), 0o700); err != nil {
-		return fmt.Errorf("creating key directory: %w", err)
+		return fmt.Errorf(T("creating key directory: %w"), err)
 	}
 	text := append(hexBytes(scalar), '\n')
 	defer mrcore.Wipe(text)
@@ -114,17 +114,17 @@ func (f *fileStore) Save(scalar []byte, overwrite bool) error {
 		// O_EXCL: the check and the creation are one step.
 		out, err := os.OpenFile(f.path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 		if os.IsExist(err) {
-			return fmt.Errorf("%s already exists, use --force to overwrite", f.path)
+			return fmt.Errorf(T("%s already exists, use --force to overwrite"), f.path)
 		}
 		if err != nil {
-			return fmt.Errorf("writing key file: %w", err)
+			return fmt.Errorf(T("writing key file: %w"), err)
 		}
 		if _, err := out.Write(text); err != nil {
 			out.Close()
-			return fmt.Errorf("writing key file: %w", err)
+			return fmt.Errorf(T("writing key file: %w"), err)
 		}
 		if err := out.Close(); err != nil {
-			return fmt.Errorf("writing key file: %w", err)
+			return fmt.Errorf(T("writing key file: %w"), err)
 		}
 		return nil
 	}
@@ -132,18 +132,18 @@ func (f *fileStore) Save(scalar []byte, overwrite bool) error {
 	// crash leaves the old key or the new one and never half of either.
 	tmp, err := os.CreateTemp(filepath.Dir(f.path), ".key-")
 	if err != nil {
-		return fmt.Errorf("writing key file: %w", err)
+		return fmt.Errorf(T("writing key file: %w"), err)
 	}
 	_, werr := tmp.Write(text)
 	serr := tmp.Sync()
 	cerr := tmp.Close()
 	if err := errors.Join(werr, serr, cerr); err != nil {
 		os.Remove(tmp.Name())
-		return fmt.Errorf("writing key file: %w", err)
+		return fmt.Errorf(T("writing key file: %w"), err)
 	}
 	if err := os.Rename(tmp.Name(), f.path); err != nil {
 		os.Remove(tmp.Name())
-		return fmt.Errorf("writing key file: %w", err)
+		return fmt.Errorf(T("writing key file: %w"), err)
 	}
 	return nil
 }
@@ -209,7 +209,7 @@ var debugOut io.Writer = io.Discard
 func debugf(format string, args ...any) { ui.Debugf(debugOut, format, args...) }
 
 // errWrongKey is a key that a store holds and that is not the one this key holder was made with.
-var errWrongKey = errors.New("is not the key this key holder was made with")
+var errWrongKey = errors.New(T("is not the key this key holder was made with"))
 
 // verifyKey checks the scalar s that st returned against the public key recorded when the key was made. No
 // recorded public key (a record without one) is nothing to check against, and passes.
@@ -219,19 +219,19 @@ func verifyKey(keyFile string, st keyStore, s []byte) error {
 		return err
 	}
 	if recorded == "" {
-		debugf("no public key is recorded in %s, so the key cannot be compared with one\n", storeRecordPath(keyFile))
+		debugf(T("no public key is recorded in %s, so the key cannot be compared with one\n"), storeRecordPath(keyFile))
 		return nil
 	}
 	pub, err := mrcore.P256().ScalarBaseMult(s)
 	if err != nil {
-		return fmt.Errorf("computing the public key of the key %s holds: %w", st.Name(), err)
+		return fmt.Errorf(T("computing the public key of the key %s holds: %w"), st.Name(), err)
 	}
 	if got := hex.EncodeToString(pub); got != recorded {
 		short := func(h string) string { return h[:min(len(h), 12)] + "..." }
-		return fmt.Errorf("the key held by %s %w: its public key is %s, and %s says %s. Another program may have replaced it, "+
-			"or the item belongs to another key file", st.Name(), errWrongKey, short(got), storeRecordPath(keyFile), short(recorded))
+		return fmt.Errorf(T("the key held by %s %w: its public key is %s, and %s says %s. Another program may have replaced it, "+
+			"or the item belongs to another key file"), st.Name(), errWrongKey, short(got), storeRecordPath(keyFile), short(recorded))
 	}
-	debugf("its public key matches the one recorded in %s\n", storeRecordPath(keyFile))
+	debugf(T("its public key matches the one recorded in %s\n"), storeRecordPath(keyFile))
 	return nil
 }
 
@@ -247,7 +247,7 @@ func storeFromSpec(spec, keyFile string) (keyStore, error) {
 	case "systemd-creds:tpm2":
 		return newCredStore(credBlobPath(keyFile, true), true), nil
 	}
-	return nil, fmt.Errorf("unknown store %q (named in %s)", spec, storeRecordPath(keyFile))
+	return nil, fmt.Errorf(T("unknown store %q (named in %s)"), spec, storeRecordPath(keyFile))
 }
 
 // credBlobPath is where a credential store's blob lives. The two variants have their own, so that
@@ -267,15 +267,15 @@ func openStore(keyFile string) (keyStore, error) {
 		return nil, err
 	}
 	if recorded {
-		debugf("%s names the store %q for the key file %s\n", storeRecordPath(keyFile), spec, keyFile)
+		debugf(T("%s names the store %q for the key file %s\n"), storeRecordPath(keyFile), spec, keyFile)
 		return storeFromSpec(spec, keyFile)
 	}
-	debugf("there is no record %s, so the key is looked for in the plain file %s\n", storeRecordPath(keyFile), keyFile)
+	debugf(T("there is no record %s, so the key is looked for in the plain file %s\n"), storeRecordPath(keyFile), keyFile)
 	f := newFileStore(keyFile)
 	if ok, err := f.Exists(); err != nil {
 		return nil, err
 	} else if !ok {
-		return nil, fmt.Errorf("%w at %s", errNoKey, keyFile)
+		return nil, fmt.Errorf(T("%w at %s"), errNoKey, keyFile)
 	}
 	return f, nil
 }
@@ -285,7 +285,7 @@ func openStore(keyFile string) (keyStore, error) {
 var keyringAvailable = secretServiceAvailable
 
 // storeNames are what --store accepts, in the order they are offered.
-const storeNames = "auto, file, secret-service, systemd-creds, systemd-creds:tpm2"
+const storeNames = "auto, file, secret-service, systemd-creds, systemd-creds:tpm2" // i18n:skip names, not a message
 
 // chooseStore is the store init puts a new key in. "auto" is the keyring when there is one and a
 // plain file when there is not, and says so: the person is told what was chosen and why, and a
@@ -296,13 +296,13 @@ func chooseStore(spec, keyFile string) (keyStore, string, error) {
 		return newFileStore(keyFile), "", nil
 	case "secret-service":
 		if err := keyringAvailable(); err != nil {
-			return nil, "", fmt.Errorf("--store secret-service was asked for, but there is no keyring to ask: %s", keyringReason(err))
+			return nil, "", fmt.Errorf(T("--store secret-service was asked for, but there is no keyring to ask: %s"), keyringReason(err))
 		}
 		return newSecretServiceStore(keyFile), "", nil
 	case "systemd-creds", "systemd-creds:tpm2":
 		tpm := spec == "systemd-creds:tpm2"
 		if err := credsAvailable(tpm); err != nil {
-			return nil, "", fmt.Errorf("--store %s was asked for, but it cannot work here: %w", spec, err)
+			return nil, "", fmt.Errorf(T("--store %s was asked for, but it cannot work here: %w"), spec, err)
 		}
 		return newCredStore(credBlobPath(keyFile, tpm), tpm), "", nil
 	case "auto":
@@ -311,5 +311,5 @@ func chooseStore(spec, keyFile string) (keyStore, string, error) {
 		}
 		return newSecretServiceStore(keyFile), "", nil
 	}
-	return nil, "", fmt.Errorf("unknown store %q for --store: want one of %s", spec, storeNames)
+	return nil, "", fmt.Errorf(T("unknown store %q for --store: want one of %s"), spec, storeNames)
 }

@@ -72,7 +72,7 @@ func validQRMode(mode string) bool {
 func qrPNG(content string, scale int) ([]byte, error) {
 	code, err := qr.Encode(content, qr.M)
 	if err != nil {
-		return nil, fmt.Errorf("encoding the QR code: %w", err)
+		return nil, fmt.Errorf(T("encoding the QR code: %w"), err)
 	}
 	modules := code.Size + 2*quietZone
 	img := image.NewPaletted(image.Rect(0, 0, modules*scale, modules*scale),
@@ -201,7 +201,7 @@ func renderPairingQR(content, mode string, getenv func(string) string, isTermina
 		}
 		return renderQRCode(content)
 	}
-	return "", fmt.Errorf("unknown QR mode %q, want one of %s", mode, strings.Join(qrModes, ", "))
+	return "", fmt.Errorf(T("unknown QR mode %q, want one of %s"), mode, strings.Join(qrModes, ", "))
 }
 
 // isTerminal reports whether w is a terminal, as opposed to a pipe or a file.

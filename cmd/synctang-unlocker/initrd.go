@@ -144,9 +144,9 @@ func checkInitrd(identityPath, networkConfPath string) initrdStatus {
 	}
 	if !compare(initrdIdentity, identityPath, identity, idErr, func(inInitrd, differs bool) string {
 		if differs {
-			return fmt.Sprintf("carries a different machine identity from %s, so a key holder paired now would look for a machine that the next boot does not announce", identityPath)
+			return fmt.Sprintf(T("carries a different machine identity from %s, so a key holder paired now would look for a machine that the next boot does not announce"), identityPath)
 		}
-		return fmt.Sprintf("does not contain this machine's identity (%s), so at boot the agent makes a new one that no key holder knows, and none can find this machine", identityPath)
+		return fmt.Sprintf(T("does not contain this machine's identity (%s), so at boot the agent makes a new one that no key holder knows, and none can find this machine"), identityPath)
 	}) {
 		return st
 	}
@@ -157,7 +157,7 @@ func checkInitrd(identityPath, networkConfPath string) initrdStatus {
 		case inInitrd:
 			return fmt.Sprintf("still carries a network.conf that no longer exists (%s), so at boot the agent would use servers that are no longer configured", networkConfPath)
 		}
-		return fmt.Sprintf("does not contain the current %s, so at boot the agent would not use the relay and discovery servers it names", networkConfPath)
+		return fmt.Sprintf(T("does not contain the current %s, so at boot the agent would not use the relay and discovery servers it names"), networkConfPath)
 	}) {
 		return st
 	}
@@ -173,15 +173,15 @@ func printInitrdStatus(w io.Writer, identityPath, networkConfPath string) {
 		fmt.Fprintln(w, look.Line(look.Warn(""), fmt.Sprintf("initrd: could not be checked (%s)", st.Reason)))
 	case len(st.Problems) == 0:
 		if _, err := os.Stat(identityPath); err != nil {
-			fmt.Fprintln(w, "initrd: nothing to carry yet, this machine has no identity")
+			fmt.Fprintln(w, T("initrd: nothing to carry yet, this machine has no identity"))
 			return
 		}
-		fmt.Fprintln(w, look.Line(look.OK(""), "initrd: carries this machine's identity"+map[bool]string{true: " and the current network.conf", false: ""}[fileExists(networkConfPath)]))
+		fmt.Fprintln(w, look.Line(look.OK(""), T("initrd: carries this machine's identity")+map[bool]string{true: " and the current network.conf", false: ""}[fileExists(networkConfPath)]))
 	default:
 		for _, p := range st.Problems {
 			fmt.Fprintln(w, look.Line(look.Fail(""), look.Red(fmt.Sprintf("initrd: %s", p))))
 		}
-		fmt.Fprintln(w, "initrd: fix it with: "+look.Cyan("dracut --force")+" (as root; it rebuilds the initrd of the running kernel)")
+		fmt.Fprintln(w, T("initrd: fix it with: ")+look.Cyan("dracut --force")+T(" (as root; it rebuilds the initrd of the running kernel)"))
 	}
 }
 
@@ -218,23 +218,23 @@ func afterEnrolment(stdout, stderr io.Writer, o initrdOptions) int {
 		return 0
 	}
 	if !st.Checked && !o.Rebuild {
-		ui.Errorf(stderr, "could not check whether the initrd carries this machine's identity (%s); "+
-			"after the first pairing run dracut --force, or this machine may not be found at boot\n", st.Reason)
+		ui.Errorf(stderr, T("could not check whether the initrd carries this machine's identity (%s); "+
+			"after the first pairing run dracut --force, or this machine may not be found at boot\n"), st.Reason)
 		return 0
 	}
 	if st.Checked {
 		for _, p := range st.Problems {
-			ui.Notef(stderr, "warning: the initrd %s\n", p)
+			ui.Notef(stderr, T("warning: the initrd %s\n"), p)
 		}
 		if !o.Rebuild {
-			ui.Errorln(stderr, "fix it with: dracut --force (as root), or repeat this command with --rebuild-initrd")
+			ui.Errorln(stderr, T("fix it with: dracut --force (as root), or repeat this command with --rebuild-initrd"))
 			return 0
 		}
 	}
 
-	fmt.Fprintln(stdout, "rebuilding the initrd: dracut --force")
+	fmt.Fprintln(stdout, T("rebuilding the initrd: dracut --force"))
 	if err := rebuildInitrd(stdout, stderr); err != nil {
-		ui.Errorf(stderr, "the key holder was enrolled, but the initrd could not be rebuilt: %v; run dracut --force yourself\n", err)
+		ui.Errorf(stderr, T("the key holder was enrolled, but the initrd could not be rebuilt: %v; run dracut --force yourself\n"), err)
 		return 1
 	}
 	after := checkInitrd(o.Identity, o.NetworkConf)
@@ -246,6 +246,6 @@ func afterEnrolment(stdout, stderr io.Writer, o initrdOptions) int {
 	if after.Checked {
 		reason = strings.Join(after.Problems, "; ")
 	}
-	ui.Errorf(stderr, "the key holder was enrolled and dracut ran, but the initrd still does not match: %s\n", reason)
+	ui.Errorf(stderr, T("the key holder was enrolled and dracut ran, but the initrd still does not match: %s\n"), reason)
 	return 1
 }

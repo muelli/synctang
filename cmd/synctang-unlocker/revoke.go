@@ -35,27 +35,27 @@ func parseInterleaved(fs *flag.FlagSet, args []string) ([]string, error) {
 func runRevoke(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("revoke", flag.ContinueOnError)
 	fs.SetOutput(gnuflag.Writer(stderr))
-	device := fs.String("device", "", "LUKS2 device or image to revoke the key holder on (\"synctang-unlocker devices\" lists them)")
-	passphraseFile := fs.String("existing-passphrase-file", "", "file containing an existing valid LUKS passphrase (- for stdin)")
-	keyslot := fs.String("keyslot", "", "the keyslot of the entry to revoke: needed when several entries share the transport id, and the way to revoke one that has none (\"status\" says which)")
+	device := fs.String("device", "", T("LUKS2 device or image to revoke the key holder on (\"synctang-unlocker devices\" lists them)"))
+	passphraseFile := fs.String("existing-passphrase-file", "", T("file containing an existing valid LUKS passphrase (- for stdin)"))
+	keyslot := fs.String("keyslot", "", T("the keyslot of the entry to revoke: needed when several entries share the transport id, and the way to revoke one that has none (\"status\" says which)"))
 	positional, err := parseInterleaved(fs, args)
 	if err != nil {
 		return 2
 	}
 	if len(positional) > 1 {
-		ui.Errorf(stderr, "revoke takes one key holder, by its transport id (or --keyslot), not %d\n", len(positional))
+		ui.Errorf(stderr, T("revoke takes one key holder, by its transport id (or --keyslot), not %d\n"), len(positional))
 		return 2
 	}
 	if *device == "" {
-		ui.Errorf(stderr, "--device is required: %s\n", deviceHint())
+		ui.Errorf(stderr, T("--device is required: %s\n"), deviceHint())
 		return 2
 	}
 	if *passphraseFile == "" {
-		ui.Errorln(stderr, "--existing-passphrase-file is required")
+		ui.Errorln(stderr, T("--existing-passphrase-file is required"))
 		return 2
 	}
 	if len(positional) == 0 && *keyslot == "" {
-		ui.Errorln(stderr, "revoke wants the key holder's transport id or --keyslot (\"synctang-unlocker status\" lists them)")
+		ui.Errorln(stderr, T("revoke wants the key holder's transport id or --keyslot (\"synctang-unlocker status\" lists them)"))
 		return 2
 	}
 	passphrase, err := readPassphrase(*passphraseFile)
@@ -71,14 +71,14 @@ func runRevoke(args []string, stdout, stderr io.Writer) int {
 			ui.Errorf(stderr, "%v\n", err)
 			return 1
 		}
-		fmt.Fprintln(stdout, look.Line(look.OK(""), fmt.Sprintf("revoked the key holder in keyslot %s on %s", *keyslot, *device)))
+		fmt.Fprintln(stdout, look.Line(look.OK(""), fmt.Sprintf(T("revoked the key holder in keyslot %s on %s"), *keyslot, *device)))
 		return 0
 	}
 	if err := removeRecipient(*device, passphrase, positional[0], *keyslot); err != nil {
 		ui.Errorf(stderr, "%v\n", err)
 		return 1
 	}
-	fmt.Fprintln(stdout, look.Line(look.OK(""), fmt.Sprintf("revoked recipient %s on %s", positional[0], *device)))
+	fmt.Fprintln(stdout, look.Line(look.OK(""), fmt.Sprintf(T("revoked recipient %s on %s"), positional[0], *device)))
 	return 0
 }
 
@@ -88,33 +88,33 @@ func runRevoke(args []string, stdout, stderr io.Writer) int {
 func runRotate(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("rotate", flag.ContinueOnError)
 	fs.SetOutput(gnuflag.Writer(stderr))
-	device := fs.String("device", "", "LUKS2 device or image the key holder is enrolled on (\"synctang-unlocker devices\" lists them)")
-	pubkeyHex := fs.String("pubkey", "", "the key holder's new public key, hex-encoded (from synctang-keyholder export-pubkey)")
-	passphraseFile := fs.String("existing-passphrase-file", "", "file containing an existing valid LUKS passphrase (- for stdin)")
-	keyslot := fs.String("keyslot", "", "the keyslot of the entry to rotate: needed when several entries share the transport id")
+	device := fs.String("device", "", T("LUKS2 device or image the key holder is enrolled on (\"synctang-unlocker devices\" lists them)"))
+	pubkeyHex := fs.String("pubkey", "", T("the key holder's new public key, hex-encoded (from synctang-keyholder export-pubkey)"))
+	passphraseFile := fs.String("existing-passphrase-file", "", T("file containing an existing valid LUKS passphrase (- for stdin)"))
+	keyslot := fs.String("keyslot", "", T("the keyslot of the entry to rotate: needed when several entries share the transport id"))
 	positional, err := parseInterleaved(fs, args)
 	if err != nil {
 		return 2
 	}
 	if *device == "" {
-		ui.Errorf(stderr, "--device is required: %s\n", deviceHint())
+		ui.Errorf(stderr, T("--device is required: %s\n"), deviceHint())
 		return 2
 	}
 	if *passphraseFile == "" {
-		ui.Errorln(stderr, "--existing-passphrase-file is required")
+		ui.Errorln(stderr, T("--existing-passphrase-file is required"))
 		return 2
 	}
 	if *pubkeyHex == "" {
-		ui.Errorln(stderr, "--pubkey is required: the key holder's new public key")
+		ui.Errorln(stderr, T("--pubkey is required: the key holder's new public key"))
 		return 2
 	}
 	if len(positional) != 1 {
-		ui.Errorln(stderr, "rotate wants one key holder, by its transport id (\"synctang-unlocker status\" lists them)")
+		ui.Errorln(stderr, T("rotate wants one key holder, by its transport id (\"synctang-unlocker status\" lists them)"))
 		return 2
 	}
 	pubkey, err := hex.DecodeString(*pubkeyHex)
 	if err != nil {
-		ui.Errorf(stderr, "--pubkey: %v\n", err)
+		ui.Errorf(stderr, T("--pubkey: %v\n"), err)
 		return 2
 	}
 	passphrase, err := readPassphrase(*passphraseFile)
@@ -129,6 +129,6 @@ func runRotate(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	look := ui.For(stdout)
-	fmt.Fprintln(stdout, look.Line(look.OK(""), fmt.Sprintf("rotated recipient %s on %s; its previous key no longer opens the device", positional[0], *device)))
+	fmt.Fprintln(stdout, look.Line(look.OK(""), fmt.Sprintf(T("rotated recipient %s on %s; its previous key no longer opens the device"), positional[0], *device)))
 	return 0
 }

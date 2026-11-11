@@ -55,43 +55,43 @@ func runUnlockOnce(ctx context.Context, s []byte, cert tls.Certificate, machineI
 	tr := newDialTransport(cert, directAddr, network)
 	conn, err := tr.Dial(ctx, transport.DialOptions{PeerID: machineID, DirectAddr: directAddr})
 	if err != nil {
-		return &dialError{fmt.Errorf("dialing %s: %w", machineID, err)}
+		return &dialError{fmt.Errorf(T("dialing %s: %w"), machineID, err)}
 	}
 	defer conn.Close()
 
 	var hello mrcore.Hello
 	if err := mrcore.ReadMessage(conn, &hello); err != nil {
-		return fmt.Errorf("reading hello: %w", err)
+		return fmt.Errorf(T("reading hello: %w"), err)
 	}
 
 	in := bufio.NewReader(stdin)
 
 	quiet() // whatever was shown while waiting goes before the next thing is printed
 	if !yes {
-		fmt.Fprintf(stdout, "%s wants to unlock. Press Enter to approve, Ctrl-C to abort: ", describeMachine(alias, hello.Name, machineID))
+		fmt.Fprintf(stdout, T("%s wants to unlock. Press Enter to approve, Ctrl-C to abort: "), describeMachine(alias, hello.Name, machineID))
 		if _, err := in.ReadString('\n'); err != nil && err != io.EOF {
-			return fmt.Errorf("reading approval: %w", err)
+			return fmt.Errorf(T("reading approval: %w"), err)
 		}
 	}
 
 	var req mrcore.RecoverRequest
 	if err := mrcore.ReadMessage(conn, &req); err != nil {
-		return fmt.Errorf("reading recover request: %w", err)
+		return fmt.Errorf(T("reading recover request: %w"), err)
 	}
 
 	// The machine chose this point, so check it before multiplying the
 	// long-term secret by it.
 	if err := mrcore.ValidateChallengePoint(mrcore.P256(), req.X); err != nil {
-		return fmt.Errorf("refusing the machine's challenge: %w", err)
+		return fmt.Errorf(T("refusing the machine's challenge: %w"), err)
 	}
 
 	Y, err := mrcore.P256().ScalarMult(req.X, s)
 	if err != nil {
-		return fmt.Errorf("computing response: %w", err)
+		return fmt.Errorf(T("computing response: %w"), err)
 	}
 
 	if err := mrcore.WriteMessage(conn, mrcore.RecoverResponse{Y: Y}); err != nil {
-		return fmt.Errorf("sending recover response: %w", err)
+		return fmt.Errorf(T("sending recover response: %w"), err)
 	}
 
 	// Wait to be told what came of it. "unlocked" used to be printed
@@ -100,10 +100,10 @@ func runUnlockOnce(ctx context.Context, s []byte, cert tls.Certificate, machineI
 	// delivers it nowhere.
 	var result mrcore.RecoverResult
 	if err := mrcore.ReadMessage(conn, &result); err != nil {
-		return fmt.Errorf("answer sent, but the machine did not report the outcome, so it may or may not have unlocked: %w", err)
+		return fmt.Errorf(T("answer sent, but the machine did not report the outcome, so it may or may not have unlocked: %w"), err)
 	}
 	if !result.OK {
-		return fmt.Errorf("the machine could not use the answer: %s", result.Error)
+		return fmt.Errorf(T("the machine could not use the answer: %s"), result.Error)
 	}
 
 	look := ui.For(stdout)

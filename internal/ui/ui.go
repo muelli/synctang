@@ -8,7 +8,9 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
+	"github.com/muelli/synctang/internal/i18n"
 	"io"
 	"os"
 	"regexp"
@@ -44,7 +46,7 @@ func ParseMode(s string) (Mode, error) {
 	case "never", "no", "none", "off":
 		return Never, nil
 	}
-	return Auto, fmt.Errorf("--color wants auto, always or never, not %q", s)
+	return Auto, fmt.Errorf(i18n.T("--color wants auto, always or never, not %q"), s)
 }
 
 // ExtractColorFlag takes --color (and -color) out of a command line, wherever it stands before a "--",
@@ -63,7 +65,7 @@ func ExtractColorFlag(args []string) (rest []string, m Mode, err error) {
 		}
 		if !hasValue {
 			if i+1 >= len(args) {
-				return nil, Auto, fmt.Errorf("option '--color' requires an argument: auto, always or never")
+				return nil, Auto, errors.New(i18n.T("option '--color' requires an argument: auto, always or never"))
 			}
 			i++
 			value = args[i]

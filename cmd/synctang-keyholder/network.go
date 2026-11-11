@@ -36,7 +36,7 @@ func loadNetworkConfig(path string, explicit bool, discovery, announce string) (
 		switch {
 		case errors.Is(err, fs.ErrNotExist) && !explicit:
 		case err != nil:
-			return transport.NetworkConfig{}, fmt.Errorf("reading %s: %w", path, err)
+			return transport.NetworkConfig{}, fmt.Errorf(T("reading %s: %w"), path, err)
 		default:
 			defer f.Close()
 			file, err = transport.ParseNetworkConfForDialer(f)

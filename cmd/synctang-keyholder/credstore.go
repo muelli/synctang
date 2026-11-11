@@ -26,9 +26,9 @@ var credsRun = func(stdin []byte, args ...string) ([]byte, error) {
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
 		if detail := strings.TrimSpace(stderr.String()); detail != "" {
-			return nil, fmt.Errorf("systemd-creds: %w: %s", err, detail)
+			return nil, fmt.Errorf(T("systemd-creds: %w: %s"), err, detail)
 		}
-		return nil, fmt.Errorf("systemd-creds: %w", err)
+		return nil, fmt.Errorf(T("systemd-creds: %w"), err)
 	}
 	return stdout.Bytes(), nil
 }
@@ -42,7 +42,7 @@ var credsAvailable = systemdCredsAvailable
 func systemdCredsAvailable(tpm2 bool) error {
 	if tpm2 {
 		if err := tpmPresent(); err != nil {
-			return fmt.Errorf("there is no usable TPM here, and systemd-creds would quietly seal to the machine key alone: %w", err)
+			return fmt.Errorf(T("there is no usable TPM here, and systemd-creds would quietly seal to the machine key alone: %w"), err)
 		}
 	}
 	probe := []byte("probe")
@@ -55,7 +55,7 @@ func systemdCredsAvailable(tpm2 bool) error {
 		return err
 	}
 	if !bytes.Equal(back, probe) {
-		return errors.New("systemd-creds did not return what it was given")
+		return errors.New(T("systemd-creds did not return what it was given"))
 	}
 	return nil
 }
@@ -65,7 +65,7 @@ func systemdCredsAvailable(tpm2 bool) error {
 // is asked first. A variable so that tests can say whether there is one.
 var tpmPresent = func() error {
 	if out, err := exec.Command("systemd-analyze", "has-tpm2", "-q").CombinedOutput(); err != nil {
-		return fmt.Errorf("systemd-analyze has-tpm2: %w: %s", err, strings.TrimSpace(string(out)))
+		return fmt.Errorf(T("systemd-analyze has-tpm2: %w: %s"), err, strings.TrimSpace(string(out)))
 	}
 	return nil
 }
@@ -98,14 +98,14 @@ func (c *credStore) Name() string {
 func (c *credStore) Location() string { return "sealed credential " + c.blob }
 
 func (c *credStore) Describe() string {
-	d := "a systemd credential (" + c.blob + "), sealed by systemd-creds in your own scope with a key systemd keeps for your account on this machine; " +
-		"user-scope credentials need systemd 256 or later. A copy of the blob alone is useless anywhere else. " +
-		"It does not need a desktop session or a D-Bus session, so it works over ssh. But root can unseal it, and software running as you " +
-		"can run systemd-creds itself, and the key that unseals it is on the same disk: an image of the whole disk of a laptop whose disk is not encrypted gives both"
+	d := "a systemd credential (" + c.blob + T("), sealed by systemd-creds in your own scope with a key systemd keeps for your account on this machine; ") +
+		T("user-scope credentials need systemd 256 or later. A copy of the blob alone is useless anywhere else. ") +
+		T("It does not need a desktop session or a D-Bus session, so it works over ssh. But root can unseal it, and software running as you ") +
+		T("can run systemd-creds itself, and the key that unseals it is on the same disk: an image of the whole disk of a laptop whose disk is not encrypted gives both")
 	if c.tpm2 {
-		d += ". It is also sealed to this machine's TPM, so a copy of the disk is useless without that TPM; " +
+		d += T(". It is also sealed to this machine's TPM, so a copy of the disk is useless without that TPM; " +
 			"the price is that the key cannot be moved to another machine and may be lost if the TPM or its measured state changes, " +
-			"so keep a backup of the key some other way"
+			"so keep a backup of the key some other way")
 	}
 	return d
 }
@@ -116,9 +116,9 @@ func (c *credStore) Describe() string {
 func credsUnusable(err error) error {
 	msg := err.Error()
 	if strings.Contains(msg, "Name in credential") || strings.Contains(msg, "Bad credential format") {
-		return fmt.Errorf("the file is not a credential this store sealed for this key (a wrong file, or one sealed under another name): %w", err)
+		return fmt.Errorf(T("the file is not a credential this store sealed for this key (a wrong file, or one sealed under another name): %w"), err)
 	}
-	return fmt.Errorf("systemd-creds could not be used (user-scope credentials need systemd 256 or later and a login session of your own): %w", err)
+	return fmt.Errorf(T("systemd-creds could not be used (user-scope credentials need systemd 256 or later and a login session of your own): %w"), err)
 }
 
 func (c *credStore) Exists() (bool, error) {
@@ -135,7 +135,7 @@ func (c *credStore) Exists() (bool, error) {
 func (c *credStore) Load() ([]byte, error) {
 	sealed, err := os.ReadFile(c.blob)
 	if os.IsNotExist(err) {
-		return nil, fmt.Errorf("%w at %s", errNoKey, c.blob)
+		return nil, fmt.Errorf(T("%w at %s"), errNoKey, c.blob)
 	}
 	if err != nil {
 		return nil, err
@@ -153,7 +153,7 @@ func (c *credStore) Save(scalar []byte, overwrite bool) error {
 		if ok, err := c.Exists(); err != nil {
 			return err
 		} else if ok {
-			return fmt.Errorf("%s already holds a key, use --force to overwrite", c.blob)
+			return fmt.Errorf(T("%s already holds a key, use --force to overwrite"), c.blob)
 		}
 	}
 	plain := hexBytes(scalar)

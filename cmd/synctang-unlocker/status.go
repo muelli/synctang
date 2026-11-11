@@ -34,8 +34,8 @@ import (
 func runStatus(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("status", flag.ContinueOnError)
 	fs.SetOutput(gnuflag.Writer(stderr))
-	device := fs.String("device", "", "LUKS2 device or image to inspect (auto-discovered from /proc/partitions if omitted)")
-	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, "path to this machine's persistent transport identity")
+	device := fs.String("device", "", T("LUKS2 device or image to inspect (auto-discovered from /proc/partitions if omitted)"))
+	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, T("path to this machine's persistent transport identity"))
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -50,17 +50,17 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 		activeDevice = found
 	}
 
-	fmt.Fprintf(stdout, "device: %s\n", activeDevice)
+	fmt.Fprintf(stdout, T("device: %s\n"), activeDevice)
 
 	// Read rather than load-or-create: see the comment above.
 	switch cert, err := readCertIfPresent(*machineKeyFile); {
 	case err != nil:
-		ui.Errorf(stderr, "reading %s: %v\n", *machineKeyFile, err)
+		ui.Errorf(stderr, T("reading %s: %v\n"), *machineKeyFile, err)
 		return 1
 	case cert == nil:
-		fmt.Fprintf(stdout, "this machine's transport id: not created yet (%s)\n", *machineKeyFile)
+		fmt.Fprintf(stdout, T("this machine's transport id: not created yet (%s)\n"), *machineKeyFile)
 	default:
-		fmt.Fprintf(stdout, "this machine's transport id: %s\n", protocol.NewDeviceID(cert.Certificate[0]))
+		fmt.Fprintf(stdout, T("this machine's transport id: %s\n"), protocol.NewDeviceID(cert.Certificate[0]))
 	}
 
 	// Whether the initrd that boots this machine carries that identity: a key holder can only
@@ -71,7 +71,7 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 
 	dump, err := runCommand(nil, "cryptsetup", "luksDump", activeDevice)
 	if err != nil {
-		ui.Errorf(stderr, "reading the LUKS2 header: %v%s\n", err, permissionHint(err))
+		ui.Errorf(stderr, T("reading the LUKS2 header: %v%s\n"), err, permissionHint(err))
 		return 1
 	}
 
@@ -81,15 +81,15 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	if tokenID < 0 || len(tok.Recipients) == 0 {
-		fmt.Fprintln(stdout, "no key holder is enrolled on this device")
+		fmt.Fprintln(stdout, T("no key holder is enrolled on this device"))
 		return 0
 	}
 
 	if tok.Machine.Name != "" {
-		fmt.Fprintf(stdout, "machine name shown to key holders: %s\n", tok.Machine.Name)
+		fmt.Fprintf(stdout, T("machine name shown to key holders: %s\n"), tok.Machine.Name)
 	}
-	fmt.Fprintf(stdout, "mr-1 token: %d\n", tokenID)
-	fmt.Fprintf(stdout, "enrolled key holders: %d\n", len(tok.Recipients))
+	fmt.Fprintf(stdout, T("mr-1 token: %d\n"), tokenID)
+	fmt.Fprintf(stdout, T("enrolled key holders: %d\n"), len(tok.Recipients))
 
 	look := ui.For(stdout)
 	var rows [][]string
@@ -99,14 +99,14 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 			// Worth saying rather than skipping: a recipient with no
 			// transport id can never be connected to, and cannot be
 			// named to "revoke" by id either.
-			id = "(none recorded: cannot be dialled, and is revoked by its keyslot)"
+			id = T("(none recorded: cannot be dialled, and is revoked by its keyslot)")
 		}
 		keyslot := "(unknown)"
 		if i < len(tok.Keyslots) {
 			keyslot = tok.Keyslots[i]
 		}
 		if look == (ui.Style{}) {
-			fmt.Fprintf(stdout, "  %s  keyslot %s  kid %s\n", id, keyslot, shortKid(rec.Kid))
+			fmt.Fprintf(stdout, T("  %s  keyslot %s  kid %s\n"), id, keyslot, shortKid(rec.Kid))
 			continue
 		}
 		idCell := id
@@ -116,7 +116,7 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 		rows = append(rows, []string{idCell, keyslot, shortKid(rec.Kid)})
 	}
 	if rows != nil {
-		fmt.Fprint(stdout, ui.Table([]string{"TRANSPORT ID", "KEYSLOT", "KEY"}, rows, look))
+		fmt.Fprint(stdout, ui.Table([]string{T("TRANSPORT ID"), T("KEYSLOT"), T("KEY")}, rows, look))
 	}
 
 	// An entry without a transport id is never answered, and if none has one the agent does not
@@ -130,13 +130,13 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 	for _, i := range withoutID {
 		slot := keyslotOf(tok, i)
 		printWarning(stdout,
-			fmt.Sprintf("the key holder in keyslot %s has no transport id, so the agent cannot tell it from a stranger and will never answer it. Remove it with:", slot),
-			[]string{fmt.Sprintf("synctang-unlocker revoke --device %s --keyslot %s \\", activeDevice, slot), "  --existing-passphrase-file ..."},
+			fmt.Sprintf(T("the key holder in keyslot %s has no transport id, so the agent cannot tell it from a stranger and will never answer it. Remove it with:"), slot),
+			[]string{fmt.Sprintf("synctang-unlocker revoke --device %s --keyslot %s \\", activeDevice, slot), "  --existing-passphrase-file ..."}, // i18n:skip a command, not a message
 			"Then enrol it again with --recipient-transport-id (\"synctang-keyholder export-pubkey\" prints it).")
 	}
 	if len(withoutID) == len(tok.Recipients) {
-		printWarning(stdout, "no enrolled key holder has a transport id, so the agent will not listen at all, at boot or for \"rehearse\"; "+
-			"enrol with --recipient-transport-id.", nil, "")
+		printWarning(stdout, T("no enrolled key holder has a transport id, so the agent will not listen at all, at boot or for \"rehearse\"; "+
+			"enrol with --recipient-transport-id."), nil, "")
 	}
 
 	// A transport id enrolled more than once leaves the agent unable to tell
@@ -151,9 +151,9 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 		seen[canonicalOrRaw(id)] = true
 		if idxs := recipientsByTransportID(tok, id); len(idxs) > 1 {
 			printWarning(stdout,
-				fmt.Sprintf("transport id %s is enrolled %d times (%s), so the agent will refuse to answer for it. "+
-					"Keep the entry whose key is current and remove each of the others with:", id, len(idxs), describeRecipients(tok, idxs)),
-				[]string{fmt.Sprintf("synctang-unlocker revoke --device %s --keyslot <n> \\", activeDevice), "  --existing-passphrase-file ..."},
+				fmt.Sprintf(T("transport id %s is enrolled %d times (%s), so the agent will refuse to answer for it. "+
+					"Keep the entry whose key is current and remove each of the others with:"), id, len(idxs), describeRecipients(tok, idxs)),
+				[]string{fmt.Sprintf("synctang-unlocker revoke --device %s --keyslot <n> \\", activeDevice), "  --existing-passphrase-file ..."}, // i18n:skip a command, not a message
 				"")
 		}
 	}

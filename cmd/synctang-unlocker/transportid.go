@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -18,11 +19,11 @@ import (
 func canonicalDeviceID(s string) (string, error) {
 	trimmed := strings.TrimSpace(s)
 	if trimmed == "" {
-		return "", fmt.Errorf("an empty string is not a Device ID")
+		return "", errors.New(T("an empty string is not a Device ID"))
 	}
 	id, err := protocol.DeviceIDFromString(trimmed)
 	if err != nil {
-		return "", fmt.Errorf("%q is not a Device ID: %w", s, err)
+		return "", fmt.Errorf(T("%q is not a Device ID: %w"), s, err)
 	}
 	return id.String(), nil
 }

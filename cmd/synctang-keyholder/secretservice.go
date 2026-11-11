@@ -33,15 +33,15 @@ func newSecretServiceStore(keyFile string) *secretServiceStore {
 func (s *secretServiceStore) Name() string { return "secret-service" }
 
 func (s *secretServiceStore) Location() string {
-	return "Secret Service item \"" + secretServiceName + "\" for " + s.account
+	return T("Secret Service item \"") + secretServiceName + "\" for " + s.account
 }
 
 func (s *secretServiceStore) Describe() string {
-	return "the desktop's keyring (the Secret Service, over D-Bus: GNOME Keyring), " +
-		"item " + secretServiceName + " for " + s.account + ". It is encrypted with a key that your login unlocks, " +
-		"so a copy of ~/.config, a backup or an image of the disk is useless without your login password, " +
-		"and so is another user of this laptop. It stays unlocked for the whole session, so software running as you " +
-		"can ask the keyring for it, and it needs a session bus: it does not work over plain ssh to the laptop"
+	return T("the desktop's keyring (the Secret Service, over D-Bus: GNOME Keyring), "+
+		"item ") + secretServiceName + " for " + s.account + T(". It is encrypted with a key that your login unlocks, ") +
+		T("so a copy of ~/.config, a backup or an image of the disk is useless without your login password, ") +
+		T("and so is another user of this laptop. It stays unlocked for the whole session, so software running as you ") +
+		T("can ask the keyring for it, and it needs a session bus: it does not work over plain ssh to the laptop")
 }
 
 // unreachable is an error from the keyring that is not "there is no such item": no bus, no
@@ -49,10 +49,10 @@ func (s *secretServiceStore) Describe() string {
 // to make a new one while theirs is simply out of reach.
 func unreachable(err error) error {
 	if errors.Is(err, errKeyringSilent) {
-		return fmt.Errorf("the keyring could not be reached: it did not answer within %s: a password prompt may be waiting on the desktop "+
-			"(unlock the login keyring there), or the Secret Service is stuck", keyringTimeout)
+		return fmt.Errorf(T("the keyring could not be reached: it did not answer within %s: a password prompt may be waiting on the desktop "+
+			"(unlock the login keyring there), or the Secret Service is stuck"), keyringTimeout)
 	}
-	return fmt.Errorf("the keyring could not be reached: %s", keyringReason(err))
+	return fmt.Errorf(T("the keyring could not be reached: %s"), keyringReason(err))
 }
 
 // The keyring calls, as variables so that tests can say what they do, and bounded: a locked keyring asks for its
@@ -63,7 +63,7 @@ var (
 	keyringDelete  = keyring.Delete
 	keyringTimeout = 2 * time.Minute
 
-	errKeyringSilent = errors.New("the keyring did not answer")
+	errKeyringSilent = errors.New(T("the keyring did not answer"))
 )
 
 // keyringCall runs f and gives up on it after keyringTimeout. The call itself cannot be stopped, and is left to
@@ -101,7 +101,7 @@ func (s *secretServiceStore) Exists() (bool, error) {
 func (s *secretServiceStore) Load() ([]byte, error) {
 	stored, err := keyringCall(func() (string, error) { return keyringGet(secretServiceName, s.account) })
 	if errors.Is(err, keyring.ErrNotFound) {
-		return nil, fmt.Errorf("%w in the keyring for %s", errNoKey, s.account)
+		return nil, fmt.Errorf(T("%w in the keyring for %s"), errNoKey, s.account)
 	}
 	if err != nil {
 		return nil, unreachable(err)
@@ -109,7 +109,7 @@ func (s *secretServiceStore) Load() ([]byte, error) {
 	// The library returned a string, which cannot be wiped; the copy made here can.
 	text := []byte(stored)
 	defer mrcore.Wipe(text)
-	return scalarFromHex(text, "the keyring item for "+s.account)
+	return scalarFromHex(text, T("the keyring item for ")+s.account)
 }
 
 func (s *secretServiceStore) Save(scalar []byte, overwrite bool) error {
@@ -119,7 +119,7 @@ func (s *secretServiceStore) Save(scalar []byte, overwrite bool) error {
 			return err
 		}
 		if ok {
-			return fmt.Errorf("the keyring already holds a key for %s, use --force to overwrite", s.account)
+			return fmt.Errorf(T("the keyring already holds a key for %s, use --force to overwrite"), s.account)
 		}
 	}
 	// The library takes a string, which Go cannot wipe: unlike the file store's, this copy of

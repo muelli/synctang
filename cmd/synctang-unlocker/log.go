@@ -49,7 +49,7 @@ func parseLogLevel(s string) (slog.Level, error) {
 	case logLevelError:
 		return slog.LevelError, nil
 	default:
-		return 0, fmt.Errorf("unknown log level %q, want one of trace, debug, info, warn, error", s)
+		return 0, fmt.Errorf(T("unknown log level %q, want one of trace, debug, info, warn, error"), s)
 	}
 }
 
@@ -90,7 +90,7 @@ func parseJournalMode(s string) (journalMode, error) {
 	case journalOff:
 		return journalOff, nil
 	}
-	return "", fmt.Errorf("unknown journal mode %q, want one of auto, on, off", s)
+	return "", fmt.Errorf(T("unknown journal mode %q, want one of auto, on, off"), s)
 }
 
 // journalIdentifier is the SYSLOG_IDENTIFIER of the agent's entries, so that
@@ -114,11 +114,11 @@ func newLogger(level slog.Level, mode journalMode, socket string, console io.Wri
 	}
 	conn, err := journal.Dial(socket, journalIdentifier)
 	if err != nil {
-		ui.Errorf(console, "the journal is unavailable (%v); logging to the console only\n", err)
+		ui.Errorf(console, T("the journal is unavailable (%v); logging to the console only\n"), err)
 		return newLoggerTo(level, nil, console)
 	}
 	return newLoggerWithJournal(level, conn, console, func(err error) {
-		ui.Errorf(console, "the journal is unavailable (%v); logging to the console only\n", err)
+		ui.Errorf(console, T("the journal is unavailable (%v); logging to the console only\n"), err)
 	})
 }
 
@@ -142,7 +142,7 @@ const consoleLevel = slog.LevelWarn
 // both choices can be tested without a systemd.
 func newLoggerTo(level slog.Level, conn *journal.Conn, console io.Writer) *slog.Logger {
 	return newLoggerWithJournal(level, conn, console, func(err error) {
-		ui.Errorf(console, "the journal is unavailable (%v); logging to the console only\n", err)
+		ui.Errorf(console, T("the journal is unavailable (%v); logging to the console only\n"), err)
 	})
 }
 
