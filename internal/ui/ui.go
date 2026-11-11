@@ -221,6 +221,9 @@ func Errorf(w io.Writer, format string, args ...any) {
 // Errorln is Errorf for a message that is not a format, and ends a line.
 func Errorln(w io.Writer, msg string) { Errorf(w, "%s\n", msg) }
 
+// Noteln is Notef for a message that is not a format, and ends a line.
+func Noteln(w io.Writer, msg string) { Notef(w, "%s\n", msg) }
+
 // Notef is Errorf for what is not an error but a person should read: yellow, with a warning sign.
 func Notef(w io.Writer, format string, args ...any) {
 	s := For(w)
@@ -247,6 +250,9 @@ func (s Style) Line(mark, text string) string {
 func Infof(w io.Writer, format string, args ...any) {
 	fmt.Fprint(w, program+": "+fmt.Sprintf(format, args...))
 }
+
+// Infoln is Infof for a message that is not a format, and ends a line.
+func Infoln(w io.Writer, msg string) { Infof(w, "%s\n", msg) }
 
 // Successln prints "program: message" as a line that went well: a check mark and green at a terminal.
 func Successln(w io.Writer, msg string) {

@@ -196,6 +196,28 @@ func TestErrorsAndNotesCarryTheProgramName(t *testing.T) {
 	}
 }
 
+// The ...ln forms are the formats with nothing to format, and a line ending of their own: the same text, so that a
+// message that has no arguments is not a non-constant format string once it is marked for translation.
+func TestTheLineFormsAreTheFormsWithALineEnding(t *testing.T) {
+	SetProgram("synctang-x")
+	defer SetProgram("")
+	var ln, f bytes.Buffer
+	Errorln(&ln, "bad thing")
+	Noteln(&ln, "a note")
+	Infoln(&ln, "for information")
+	Errorf(&f, "bad thing\n")
+	Notef(&f, "a note\n")
+	Infof(&f, "for information\n")
+	if ln.String() != f.String() {
+		t.Errorf("%q\nwant %q", ln.String(), f.String())
+	}
+	var pct bytes.Buffer
+	Noteln(&pct, "50% of it, %s and %%")
+	if want := "synctang-x: 50% of it, %s and %%\n"; pct.String() != want {
+		t.Errorf("a percent sign was taken for a verb: %q", pct.String())
+	}
+}
+
 func TestErrorsAreRedAndNotesYellowAtATerminal(t *testing.T) {
 	SetProgram("synctang-x")
 	defer SetProgram("")
