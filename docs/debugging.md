@@ -120,8 +120,12 @@ and a long press on the dot look at once, but a check never starts less than 10 
 the last one, nor while the server has asked to be left alone.
 The app never connects to the machine to find out: it serves one session, and a probe would use
 it up. A machine that is waiting (the agent in the initrd, or `synctang-unlocker open` or `pair`)
-republishes its record every minute, and the app calls a record at most 150 seconds old
-"waiting":
+republishes its record every minute for the first ten minutes, then less and less often (every
+two minutes, then four, eight and sixteen, and at most every thirty: a server that says how often
+it wants to be told, with Reannounce-After, caps that), and starts again at once when its address
+changes. The app calls a record at most 150 seconds old "waiting", so a machine that has been at its
+prompt for more than ten minutes or so shows amber, "announced N min ago", though it still waits; that
+is what the record says, and Unlock works all the same:
 
 | Dot and words | Meaning |
 | --- | --- |

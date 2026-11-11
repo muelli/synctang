@@ -16,8 +16,10 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/muelli/syncthing-socket/discovery"
@@ -106,7 +108,26 @@ const WaitingRecordMaxAge = 150 * time.Second
 // every minute, so at least twice inside the WaitingRecordMaxAge a record counts as waiting
 // (so one lost announcement does not make it look stale). One small POST a minute, only
 // while an agent, "open" or "pair" is actually listening, not for the life of the machine.
+//
+// That is the pace at first. A machine that has waited a long time is not likely to be looked
+// at this minute, and the servers are shared, so the pace halves every defaultAnnounceDecayStep
+// (see refreshAfter); the price is that a record then ages past WaitingRecordMaxAge while the
+// machine still waits, so the phone shows "announced N min ago" instead of "waiting".
 const defaultAnnounceRefresh = time.Minute
+
+const (
+	// defaultAnnounceDecayStep is how long a record goes on being refreshed at the same pace before the pace halves.
+	// A person who has just started the machine may look at their phone any minute; one who has not by now is less
+	// likely to this minute. So the refresh doubles after every ten minutes of waiting, up to
+	// defaultAnnounceRefreshMax, and starts again at the first interval when the address changes (a new relay is
+	// news). Over the first hour that is about twenty announcements, where a flat minute is sixty, and after it
+	// two an hour.
+	defaultAnnounceDecayStep = 10 * time.Minute
+
+	// defaultAnnounceRefreshMax is the slowest refresh, which is what syncthing-socket does for a server that is
+	// not waiting at a prompt, and well inside how long the public servers keep a record.
+	defaultAnnounceRefreshMax = 30 * time.Minute
+)
 
 // levelTrace sits below slog's own lowest built-in level (Debug, -4),
 // for detail below what a caller's --log-level debug would want by
@@ -169,8 +190,15 @@ type SyncthingRelay struct {
 	AnnounceInterval time.Duration
 
 	// AnnounceRefresh overrides how often an unchanged discovery
-	// record is republished. Zero means defaultAnnounceRefresh.
+	// record is republished at first. Zero means defaultAnnounceRefresh.
+	// It then slows: see AnnounceDecayStep.
 	AnnounceRefresh time.Duration
+
+	// AnnounceDecayStep overrides how long the refresh stays at one pace before it doubles; zero means
+	// defaultAnnounceDecayStep. AnnounceRefreshMax overrides the slowest pace; zero means
+	// defaultAnnounceRefreshMax.
+	AnnounceDecayStep  time.Duration
+	AnnounceRefreshMax time.Duration
 
 	// RelayLossGrace overrides how long Listen tolerates the relay
 	// client having no relay before failing the attempt so a fresh one
@@ -222,6 +250,10 @@ type SyncthingRelay struct {
 	// limitedUntil is, for each announce URL that answered HTTP 429, when it may be asked again.
 	limitMu      sync.Mutex
 	limitedUntil map[string]time.Time
+
+	// serverReannounce is the shortest Reannounce-After a discovery server has sent with an accepted announcement,
+	// in nanoseconds; zero if none has.
+	serverReannounce atomic.Int64
 }
 
 func (t *SyncthingRelay) phase(route Route, phase DialPhase) {
@@ -510,10 +542,45 @@ func sameAddresses(a, b []string) bool {
 	return slices.Equal(a, b)
 }
 
-// announceRefresh is how often an unchanged record is republished.
+// announceRefresh is how often an unchanged record is republished at first.
 // Zero means defaultAnnounceRefresh.
 func (t *SyncthingRelay) announceRefresh() time.Duration {
 	return cmp.Or(t.AnnounceRefresh, defaultAnnounceRefresh)
+}
+
+// refreshAfter is how long to wait before republishing an unchanged record, after waited with the same
+// address: announceRefresh, doubled for every announceDecayStep that has passed, up to the slowest pace, which
+// is AnnounceRefreshMax or, if a discovery server said how often it wants to be told (Reannounce-After), that
+// if it is less. A cap below the first interval does not speed it up.
+func (t *SyncthingRelay) refreshAfter(waited time.Duration) time.Duration {
+	first := t.announceRefresh()
+	slowest := cmp.Or(t.AnnounceRefreshMax, defaultAnnounceRefreshMax)
+	if asked := time.Duration(t.serverReannounce.Load()); asked > 0 {
+		slowest = min(slowest, asked)
+	}
+	slowest = max(slowest, first)
+	d := first
+	for i := 0; i < int(waited/cmp.Or(t.AnnounceDecayStep, defaultAnnounceDecayStep)) && d < slowest; i++ {
+		d *= 2
+	}
+	return min(d, slowest)
+}
+
+// setServerReannounce remembers how often a discovery server asked to be told, if that is less than what
+// another one asked.
+func (t *SyncthingRelay) setServerReannounce(d time.Duration) {
+	if d <= 0 {
+		return
+	}
+	for {
+		old := t.serverReannounce.Load()
+		if old != 0 && old <= int64(d) {
+			return
+		}
+		if t.serverReannounce.CompareAndSwap(old, int64(d)) {
+			return
+		}
+	}
 }
 
 func (t *SyncthingRelay) announceInterval() time.Duration {
@@ -967,6 +1034,9 @@ func (t *SyncthingRelay) announceLoop(ctx context.Context, addresses func() []st
 
 		var lastAnnounced []string
 		var lastAt time.Time
+		// since when the record has been the same: the refresh slows down with it (see refreshAfter), and
+		// starts again when the address changes.
+		sameSince := time.Now()
 		// After a failed announcement the next one waits: the loop looks often (see defaultAnnounceInterval)
 		// and must not turn each look into a request to a server that is refusing.
 		var notBefore time.Time
@@ -984,7 +1054,7 @@ func (t *SyncthingRelay) announceLoop(ctx context.Context, addresses func() []st
 				// success. watchRelayLoss is what acts on it; this is
 				// what makes it visible on the console.
 				t.logger().Warn("nothing to announce: no relay address available")
-			case !sameAddresses(addrs, lastAnnounced) || time.Since(lastAt) >= t.announceRefresh():
+			case !sameAddresses(addrs, lastAnnounced) || time.Since(lastAt) >= t.refreshAfter(time.Since(sameSince)):
 				if t.clockNow().Before(notBefore) {
 					break
 				}
@@ -1008,6 +1078,9 @@ func (t *SyncthingRelay) announceLoop(ctx context.Context, addresses func() []st
 						t.logger().Warn("announce failed", "error", err, "next attempt in", wait.Round(time.Second))
 					}
 				} else {
+					if !sameAddresses(addrs, lastAnnounced) {
+						sameSince = time.Now()
+					}
 					lastAnnounced = append(lastAnnounced[:0], addrs...)
 					lastAt = time.Now()
 					failures, notBefore = 0, time.Time{}
@@ -1134,6 +1207,11 @@ func (t *SyncthingRelay) postAnnounce(ctx context.Context, httpClient *http.Clie
 	}
 	if resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("announce to %s returned HTTP %d", announceURL, resp.StatusCode)
+	}
+	// The server says how often it wants to be told, in seconds. Read, and kept as the slowest pace if it is
+	// less than ours; never used to speed up.
+	if secs, err := strconv.ParseUint(strings.TrimSpace(resp.Header.Get("Reannounce-After")), 10, 32); err == nil && secs > 0 {
+		t.setServerReannounce(time.Duration(secs) * time.Second)
 	}
 	return nil
 }
