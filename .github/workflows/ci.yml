@@ -82,6 +82,7 @@ jobs:
       - run: ./scripts/test-manpages.sh
       - run: ./scripts/test-casts.sh
       - run: ./scripts/test-ci-fuzz.sh
+      - run: ./scripts/test-release-notes.sh
       - run: ./scripts/emulator-vm/test-idle-shutdown.sh
       - run: SKIP_REAL_AWS_CHECK=1 ./scripts/emulator-vm/test-emu-ctl.sh
 
@@ -445,11 +446,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          notes="Debian and Ubuntu packages, amd64 and arm64: synctang-unlocker and synctang-dracut for a machine whose disk is unlocked, synctang-keyholder for a laptop. The phone app is in the F-Droid repository; see the README. SHA256SUMS lists every file here. Each package has a build-provenance attestation (gh attestation verify <file> --repo ${GITHUB_REPOSITORY}) and a cosign bundle, <file>.sigstore.json (cosign verify-blob --bundle <file>.sigstore.json --certificate-identity-regexp '^https://github.com/${GITHUB_REPOSITORY}/\.github/workflows/ci\.yml@refs/tags/v[0-9]+$' --certificate-oidc-issuer https://token.actions.githubusercontent.com <file>)"
+          # The page's text is made from the phone app's release note for this version and from what is
+          # attached (scripts/release-notes.sh), and is written outside the directory the release is made
+          # from. A tag with no release note for it stops here.
+          scripts/release-notes.sh "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" \
+            "android/fastlane/metadata/android/en-US/changelogs/${GITHUB_REF_NAME#v}.txt" release > "$RUNNER_TEMP/notes.md"
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" release/* --clobber
           else
-            gh release create "$GITHUB_REF_NAME" release/* --verify-tag --title "$GITHUB_REF_NAME" --notes "$notes"
+            gh release create "$GITHUB_REF_NAME" release/* --verify-tag --title "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"
           fi
 
   build-apk:

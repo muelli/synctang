@@ -33,6 +33,9 @@ Make the first release a pre-release and check each step below on it.
    `SHA256SUMS` file and a cosign bundle for each. It also runs `publish-fdroid`, which
    publishes the release APK. `release-debs` needs `e2e`, so a release is only ever made of
    packages that unlocked a VM.
+   The text on the release page is made by `scripts/release-notes.sh` from the release note of step 3
+   and from the files that are attached (install commands, how to verify, a table of the files); a tag
+   with no release note for it stops the job. `./scripts/test-release-notes.sh` tests it.
 6. Check what was published: the release has the `.deb` files, their SBOMs, `SHA256SUMS` and a
    `.sigstore.json` for each, and nothing else (the release job refuses anything else); one file with
    `cosign verify-blob` and one with `gh attestation verify` (see below and
