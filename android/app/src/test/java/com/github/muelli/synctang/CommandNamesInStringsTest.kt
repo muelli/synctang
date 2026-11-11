@@ -21,8 +21,11 @@ class CommandNamesInStringsTest {
         assertEquals(emptyList<String>(), bare.findAll(strings).map { it.value }.toList())
     }
 
+    // "enrol --remove" was split into revoke and rotate; a text that still sends a person to it sends them to
+    // a flag the program no longer has.
     @Test
-    fun theRevokeCommandsAreTheNewOnes() {
-        assertTrue(strings.contains("synctang-unlocker enrol --remove"))
+    fun theRevokeCommandsAreTheCurrentOnes() {
+        assertTrue(strings.contains("synctang-unlocker revoke "))
+        assertEquals(emptyList<String>(), Regex("enrol --remove|--remove-keyslot").findAll(strings).map { it.value }.toList())
     }
 }

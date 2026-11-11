@@ -809,7 +809,11 @@ class UnlockFlow(
         }
         when (val plan = planPairing(scanned)) {
             PairingPlan.Invalid -> return false
-            is PairingPlan.Remember -> scope.launch { adopt(plan.machine) }
+            // Nothing was enrolled, so a machine that needed pairing again still does.
+            is PairingPlan.Remember -> scope.launch {
+                val marked = store.machine(plan.machine.deviceId)?.needsPairing ?: false
+                adopt(plan.machine.copy(needsPairing = marked))
+            }
             is PairingPlan.Enrol -> enrol(plan.machine, plan.code)
             // Shown as a failure rather than as "not a pairing link": it is one, and
             // the person needs to hear that this version of the app cannot honour it.
@@ -972,6 +976,11 @@ class UnlockFlow(
     }
 
     private fun connectTo(machine: Machine, gate: BiometricGate?) {
+        // Its machine has the phone's old key: a dial could only be refused. The screen says to pair again.
+        if ((store.machine(machine.deviceId) ?: machine).needsPairing) {
+            appLog.d { "connect dropped: the machine needs pairing again id=${machine.deviceId}" }
+            return
+        }
         appLog.d { "action connect machine=${machine.name} id=${machine.deviceId}" + if (gate != null) " one-tap" else "" }
         // The machine unlocked last comes first on the list, in the shortcuts and on the widget.
         store.markUsed(machine.deviceId)

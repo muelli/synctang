@@ -8,11 +8,12 @@ data class ShortcutSpec(val id: String, val deviceId: String, val label: String)
 internal const val SHORTCUT_LABEL_MAX = 24
 
 /**
- * The shortcuts to offer for [machines], in the order given, at most [limit] and one for each Device ID.
+ * The shortcuts to offer for [machines], in the order given, at most [limit] and one for each Device ID; none
+ * for a machine that needs pairing again, which cannot be unlocked.
  * The order is the caller's to choose (the machine used last first), because a launcher shows the first few.
  */
 fun shortcutSpecs(machines: List<Machine>, limit: Int): List<ShortcutSpec> =
-    machines.distinctBy { it.deviceId }.take(limit.coerceAtLeast(0)).map {
+    machines.filter { !it.needsPairing }.distinctBy { it.deviceId }.take(limit.coerceAtLeast(0)).map {
         ShortcutSpec("unlock-${it.deviceId}", it.deviceId, launcherLabel(it))
     }
 

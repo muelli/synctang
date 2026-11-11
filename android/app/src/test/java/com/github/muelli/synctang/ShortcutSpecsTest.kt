@@ -41,6 +41,11 @@ class ShortcutSpecsTest {
     }
 
     @Test
+    fun aMachineThatNeedsPairingAgainGetsNoShortcut() {
+        assertEquals(listOf("attic"), shortcutSpecs(listOf(a.copy(needsPairing = true), b), 4).map { it.label })
+    }
+
+    @Test
     fun aMachineListedTwiceGetsOneShortcut() {
         assertEquals(1, shortcutSpecs(listOf(a, a.copy(name = "again")), 4).size)
     }

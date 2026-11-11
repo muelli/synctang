@@ -43,9 +43,12 @@
     <string name="forget_message">This phone stops listing it. The machine still trusts this phone until you remove it there with synctang-unlocker revoke.</string>
     <string name="forget_confirm">Forget</string>
     <string name="forget_cancel">Keep it</string>
+    <string name="machine_needs_pairing">This phone has a new key since it was paired with this machine, so the machine does not know it. Pair with the machine again: scan its QR code.</string>
+    <string name="pair_this_again">Pair with it again</string>
     <string name="machines_title">Your machines</string>
     <string name="machines_hint">Unlock one of them, or pair another.</string>
     <string name="unlock_machine_named">Unlock %1$s</string>
+    <string name="pair_machine_again_named">Pair with %1$s again</string>
     <string name="pair_undo">Undo</string>
     <string name="pair_undo_dismiss">Dismiss</string>
 
@@ -174,7 +177,7 @@
     <string name="failure_protocol">The machine sent something this phone will not act on, so nothing was answered.</string>
     <string name="failure_other">Something unexpected went wrong. Try again; if it keeps happening, the details below help a bug report.</string>
     <string name="failure_key_timed_out">This phone\'s key did not answer, so nothing was sent to the machine. Try again. If it keeps happening, restart the phone.</string>
-    <string name="failure_key_replaced">This phone now has a new key, and the old one is gone. Pair with the machine again. On the machine, revoke this phone\'s old device ID, %1$s, with synctang-unlocker enrol --remove.</string>
+    <string name="failure_key_replaced">This phone now has a new key, and the old one is gone. Pair with the machine again. On the machine, revoke this phone\'s old device ID, %1$s, with synctang-unlocker revoke %1$s.</string>
     <string name="failure_key_refused_fingerprint">This phone\'s key refused the fingerprint it was given, so nothing was sent to the machine. Try again. If the key was invalidated, the next attempt will say so and make a new one.</string>
-    <string name="failure_key_invalidated">This phone\'s key stopped working because the fingerprints or faces enrolled on the phone, or its screen lock, changed, and the machine was not answered. The phone now has a new key: pair with the machine again. On the machine, revoke this phone\'s old device ID, %1$s, with synctang-unlocker enrol --remove.</string>
+    <string name="failure_key_invalidated">This phone\'s key stopped working because the fingerprints or faces enrolled on the phone, or its screen lock, changed, and the machine was not answered. The phone now has a new key: pair with the machine again. On the machine, revoke this phone\'s old device ID, %1$s, with synctang-unlocker revoke %1$s.</string>
 </resources>

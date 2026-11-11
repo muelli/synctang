@@ -19,7 +19,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import com.github.muelli.synctang.R
@@ -62,6 +64,31 @@ internal fun ReadyScreen(
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+    if (state.machine.needsPairing) {
+        // Nothing to look up and nothing to dial: the machine has this phone's old key.
+        Text(
+            stringResource(R.string.machine_needs_pairing),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+        )
+        Button(
+            onClick = onPairAgain,
+            modifier = Modifier
+                .heroAction()
+                .focusRequester(rememberAutoFocusRequester())
+                .shortcut(AppAction.PAIR_THIS_AGAIN, onInvoke = onPairAgain)
+                .focusRing(),
+        ) {
+            Text(stringResource(R.string.pair_this_again), style = MaterialTheme.typography.titleMedium)
+        }
+        TextButton(
+            onClick = { confirmForget = true },
+            modifier = Modifier.shortcut(AppAction.FORGET) { confirmForget = true }.focusRing(),
+        ) {
+            Text(stringResource(R.string.forget_action))
+        }
+        return
+    }
     ReadinessChip(state.readiness, onCheckNow = onCheckAgain)
     // Looks the machine up now. Never faster than the flow allows (it ignores a tap that comes
     // right after a check), and nothing else on the screen waits for it.

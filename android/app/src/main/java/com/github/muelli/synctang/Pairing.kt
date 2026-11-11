@@ -29,6 +29,9 @@ data class Machine(
     val deviceId: String,
     val name: String,
     val discovery: String = "",
+    // The phone's key was replaced after this machine enrolled it, so the machine has the old key: nothing
+    // can be unlocked until the phone is paired with it again.
+    val needsPairing: Boolean = false,
 )
 
 /**
@@ -80,7 +83,7 @@ class PairingStore(context: Context) : MachineStore {
             val array = JSONArray(json)
             (0 until array.length()).map { i ->
                 val o = array.getJSONObject(i)
-                Machine(o.getString("id"), o.optString("name"), o.optString("discovery"))
+                Machine(o.getString("id"), o.optString("name"), o.optString("discovery"), o.optBoolean("pairAgain"))
             }
         } catch (e: JSONException) {
             // A list that cannot be read is no list: the phone is paired again, which is what the file is
@@ -92,7 +95,9 @@ class PairingStore(context: Context) : MachineStore {
     private fun write(machines: List<Machine>) {
         val array = JSONArray()
         for (m in machines) {
-            array.put(JSONObject().put("id", m.deviceId).put("name", m.name).put("discovery", m.discovery))
+            array.put(
+                JSONObject().put("id", m.deviceId).put("name", m.name).put("discovery", m.discovery).put("pairAgain", m.needsPairing),
+            )
         }
         // commit(), not apply(): a list half written when the app dies would be no list.
         prefs.edit().putString(KEY_MACHINES, array.toString()).commit()
@@ -114,16 +119,16 @@ class PairingStore(context: Context) : MachineStore {
     }
 
     /**
-     * Drops this phone's transport identity and the paired machine, so
-     * that the next [identitySeed] is a fresh one. Only for a phone
-     * whose key has been invalidated, when the old identity is already
-     * of no use: every machine enrolled it alongside the dead key.
+     * Drops this phone's transport identity, so that the next [identitySeed]
+     * is a fresh one, and marks every paired machine as needing pairing
+     * again. Only for a phone whose key has been invalidated, when the old
+     * identity is already of no use: every machine enrolled it alongside
+     * the dead key. The machines stay on the list, with their names, so
+     * that each can be paired again.
      */
     fun startNewIdentity() {
-        prefs.edit()
-            .remove(KEY_SEED)
-            .remove(KEY_MACHINES)
-            .commit()
+        write(machines().map { it.copy(needsPairing = true) })
+        prefs.edit().remove(KEY_SEED).commit()
     }
 
     /**

@@ -54,6 +54,7 @@ internal fun MachinesScreen(
             readiness = state.readiness[machine.deviceId] ?: Readiness(),
             first = index == 0,
             onUnlock = { onUnlock(machine) },
+            onPairAgain = onPairAnother,
             onCheckAgain = { onCheckAgain(machine) },
             onForget = { onForget(machine) },
         )
@@ -72,6 +73,7 @@ private fun MachineRow(
     readiness: Readiness,
     first: Boolean,
     onUnlock: () -> Unit,
+    onPairAgain: () -> Unit,
     onCheckAgain: () -> Unit,
     onForget: () -> Unit,
 ) {
@@ -79,7 +81,10 @@ private fun MachineRow(
     if (confirmForget) {
         ForgetDialog(machine, onConfirm = { confirmForget = false; onForget() }, onDismiss = { confirmForget = false })
     }
-    val unlockFor = stringResource(R.string.unlock_machine_named, machine.label())
+    val unlockFor = stringResource(
+        if (machine.needsPairing) R.string.pair_machine_again_named else R.string.unlock_machine_named,
+        machine.label(),
+    )
     Column(
         verticalArrangement = Arrangement.spacedBy(Spacing.small),
         modifier = Modifier.testTag("machine_row_${machine.deviceId}"),
@@ -96,22 +101,33 @@ private fun MachineRow(
             fontFamily = FontFamily.Monospace,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        ReadinessChip(readiness, onCheckNow = onCheckAgain)
+        if (machine.needsPairing) {
+            Text(stringResource(R.string.machine_needs_pairing), style = MaterialTheme.typography.bodyMedium)
+        } else {
+            ReadinessChip(readiness, onCheckNow = onCheckAgain)
+        }
         Row {
-            val unlockModifier = if (first) {
-                Modifier
-                    .focusRequester(rememberAutoFocusRequester())
-                    .shortcut(AppAction.UNLOCK, onInvoke = onUnlock)
+            // Pairing again takes the place of Unlock for a machine that has this phone's old key.
+            val action = when {
+                machine.needsPairing && first -> AppAction.PAIR_THIS_AGAIN
+                first -> AppAction.UNLOCK
+                else -> AppAction.UNLOCK_THIS
+            }
+            val press = if (machine.needsPairing) onPairAgain else onUnlock
+            val buttonModifier = if (first) {
+                Modifier.focusRequester(rememberAutoFocusRequester()).shortcut(action, onInvoke = press)
             } else {
-                Modifier.shortcut(AppAction.UNLOCK_THIS, onInvoke = onUnlock)
+                Modifier.shortcut(action, onInvoke = press)
             }
             Button(
-                onClick = onUnlock,
-                modifier = unlockModifier.semantics { contentDescription = unlockFor }.focusRing(),
+                onClick = press,
+                modifier = buttonModifier.semantics { contentDescription = unlockFor }.focusRing(),
             ) {
-                Icon(Icons.Filled.Lock, contentDescription = null)
-                Spacer(Modifier.width(Spacing.small))
-                Text(stringResource(R.string.unlock_action))
+                if (!machine.needsPairing) {
+                    Icon(Icons.Filled.Lock, contentDescription = null)
+                    Spacer(Modifier.width(Spacing.small))
+                }
+                Text(stringResource(if (machine.needsPairing) R.string.pair_this_again else R.string.unlock_action))
             }
             Spacer(Modifier.width(Spacing.small))
             TextButton(

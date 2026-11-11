@@ -19,6 +19,12 @@ class WidgetContentTest {
     }
 
     @Test
+    fun theWidgetSkipsAMachineThatNeedsPairingAgain() {
+        assertEquals(WidgetContent.ForMachine(a.deviceId, "study"), widgetContent(listOf(b.copy(needsPairing = true), a)))
+        assertEquals(WidgetContent.NotPaired, widgetContent(listOf(b.copy(needsPairing = true))))
+    }
+
+    @Test
     fun theNameOnTheWidgetIsTheCleanedAndShortenedOne() {
         val hostile = a.copy(name = "st\u001b[2Judy" + "y".repeat(100))
         val shown = (widgetContent(listOf(hostile)) as WidgetContent.ForMachine).label

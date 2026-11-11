@@ -114,7 +114,8 @@ class UnlockFlowTest {
         resetIdentity = {
             identityResets++
             identityFails = null
-            store.saved = null
+            // The machines are kept, and every one of them has the old key enrolled: pair again.
+            store.machines = store.machines.map { it.copy(needsPairing = true) }
             "OLD-PHONE-ID"
         },
         approveWindowMillis = 1_500,
@@ -1011,6 +1012,62 @@ class UnlockFlowTest {
         assertEquals(listOf(machineA), sessionMachines.toList())
     }
 
+    // A machine that needs pairing again (the phone's key was retired, and the machine has the old one)
+
+    @Test
+    fun aMachineThatNeedsPairingAgainIsNotDialled() {
+        store.saved = machineA.copy(needsPairing = true)
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        onMain { flow.connect(countingGate) }
+
+        Thread.sleep(300)
+        assertTrue(flow.state.value is UnlockUiState.Ready)
+        assertTrue("a dial was started", sessions.isEmpty())
+    }
+
+    @Test
+    fun anUnlockAskedForFromOutsideLeavesAMachineThatNeedsPairingAgainAlone() {
+        store.saved = machineA.copy(needsPairing = true)
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        onMain { flow.unlockRequested(machineA.deviceId, countingGate) }
+
+        Thread.sleep(300)
+        assertTrue(sessions.isEmpty())
+        assertTrue(promptsSeen.isEmpty())
+    }
+
+    @Test
+    fun pairingAMachineAgainClearsTheMark() {
+        store.saved = machineA.copy(needsPairing = true)
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        onMain { flow.startPairing() }
+        await<UnlockUiState.NeedsPairing>()
+
+        onMain { flow.pair(payload(machineA)) }
+        pairings.awaitOne().finish()
+        val ready = awaitReady { !it.machine.needsPairing }
+        assertEquals(listOf(false), store.machines().map { it.needsPairing })
+        assertEquals(machineA.deviceId, ready.machine.deviceId)
+    }
+
+    @Test
+    fun aRetiredKeyKeepsTheMachineListAndMarksEveryMachine() {
+        store.machines = listOf(machineB, machineA)
+        onMain { flow.refresh() }
+        awaitMachines { true }
+        keyCheckFails = KeyInvalidated(RuntimeException("Key permanently invalidated"))
+        onMain { flow.returnedToForeground() }
+        await<UnlockUiState.Failed>()
+
+        assertEquals(listOf(machineB.deviceId, machineA.deviceId), store.machines().map { it.deviceId })
+        assertEquals(listOf(true, true), store.machines().map { it.needsPairing })
+        onMain { flow.startPairing() }
+        assertEquals(2, await<UnlockUiState.NeedsPairing>().kept.size)
+    }
+
     // Forgetting a machine, and taking it back
 
     @Test
@@ -1327,7 +1384,7 @@ class UnlockFlowTest {
         assertEquals("res:${R.string.failure_key_invalidated}(OLD-PHONE-ID)", failed.message)
         assertEquals(Retry.SCAN_AGAIN, failed.retry)
         assertEquals(1, identityResets)
-        assertNull(store.saved)
+        assertEquals("every machine is kept, to be paired again", listOf(true), store.machines().map { it.needsPairing })
         assertEquals(1, session.declines.size)
         assertFalse(session.answered)
         assertTrue("the session was never closed", awaitClosed(session))

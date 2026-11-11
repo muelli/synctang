@@ -23,7 +23,8 @@ sealed interface WidgetContent {
  * for yet, so every widget follows the current one.
  */
 fun widgetContent(machines: List<Machine>): WidgetContent =
-    machines.firstOrNull()?.let { WidgetContent.ForMachine(it.deviceId, launcherLabel(it)) } ?: WidgetContent.NotPaired
+    machines.firstOrNull { !it.needsPairing }?.let { WidgetContent.ForMachine(it.deviceId, launcherLabel(it)) }
+        ?: WidgetContent.NotPaired
 
 /**
  * The home screen widget: tap it and the phone unlocks the machine, as the Unlock button does (the dial, then

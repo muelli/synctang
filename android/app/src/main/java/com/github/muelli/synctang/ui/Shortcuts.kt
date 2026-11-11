@@ -76,6 +76,9 @@ internal enum class AppAction(val role: Role, val chord: Chord?, @StringRes val 
     SCAN_AGAIN(Role.PRIMARY, Chord.CTRL_ENTER, R.string.error_scan_again),
     PAIR(Role.PRIMARY, Chord.CTRL_ENTER, R.string.pair_manual_action),
 
+    /** The main action of a machine that needs pairing again: pair with it, as Unlock is for the others. */
+    PAIR_THIS_AGAIN(Role.PRIMARY, Chord.CTRL_ENTER, R.string.pair_this_again),
+
     CANCEL(Role.BACK, Chord.ESCAPE, R.string.busy_cancel),
     DECLINE(Role.BACK, Chord.ESCAPE, R.string.unlock_decline),
     KEEP_CURRENT(Role.BACK, Chord.ESCAPE, R.string.shortcut_keep_current),
