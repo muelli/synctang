@@ -170,6 +170,9 @@ private const val MAX_NAMES_SHOWN = 3
 interface MachineStore {
     fun machine(): Machine?
     fun saveMachine(machine: Machine)
+
+    /** The paired machine with this Device ID, if there is one. */
+    fun machine(deviceId: String): Machine? = machine()?.takeIf { it.deviceId == deviceId }
 }
 
 /**
@@ -353,6 +356,7 @@ class UnlockFlow(
                 flow.value = next
                 if (before != next) appLog.d { "state " + describeForLog(next) }
                 followReadiness(next)
+                startWaitingUnlock(next)
             }
 
         fun asStateFlow(): StateFlow<UnlockUiState> = flow.asStateFlow()
@@ -822,7 +826,61 @@ class UnlockFlow(
      * tap does the whole unlock; without one, the flow stops on the Approve screen.
      */
     fun connect(gate: BiometricGate? = null) {
-        val machine = store.machine() ?: return
+        connectTo(store.machine() ?: return, gate)
+    }
+
+    // An unlock asked for from outside the app, which came before the home screen was there.
+    private var waitingUnlock: Pair<String, BiometricGate>? = null
+    private var waitingUnlockAt = 0L
+    private var homeShown = false
+
+    /**
+     * An unlock asked for from outside the app (a shortcut, a widget): the one-tap unlock of the machine
+     * with this Device ID, which is a machine this phone is paired with and no other. It dials, and the
+     * fingerprint prompt is what lets the answer go, exactly as for the Unlock button.
+     *
+     * It does not interrupt anything: while a dial, a pairing or an approval is under way, or the key needs
+     * a decision, it is dropped (the app is in front showing what it was). Before the home screen is
+     * ready it waits for it, for [PENDING_UNLOCK_MILLIS] at most. From the home screen, a finished unlock, a
+     * failure and the pairing screen it starts at once.
+     */
+    fun unlockRequested(deviceId: String, gate: BiometricGate) {
+        appLog.d { "action unlock requested from outside id=$deviceId" }
+        if (!homeShown) {
+            waitingUnlock = deviceId to gate
+            waitingUnlockAt = clock()
+            return
+        }
+        when (_state.value) {
+            is UnlockUiState.Ready, is UnlockUiState.Done, is UnlockUiState.Failed, is UnlockUiState.NeedsPairing ->
+                startRequestedUnlock(deviceId, gate)
+            else -> appLog.d { "unlock requested from outside dropped: busy" }
+        }
+    }
+
+    private fun startRequestedUnlock(deviceId: String, gate: BiometricGate) {
+        val machine = store.machine(deviceId)
+        if (machine == null) {
+            appLog.d { "unlock requested from outside dropped: not a paired machine" }
+            return
+        }
+        connectTo(machine, gate)
+    }
+
+    /** The first state after the app started: what an unlock that came too early was waiting for. */
+    private fun startWaitingUnlock(next: UnlockUiState) {
+        if (homeShown) return
+        homeShown = true
+        val (deviceId, gate) = waitingUnlock ?: return
+        waitingUnlock = null
+        if (next !is UnlockUiState.Ready || clock() - waitingUnlockAt > PENDING_UNLOCK_MILLIS) {
+            appLog.d { "unlock requested from outside dropped: not ready in time" }
+            return
+        }
+        scope.launch { startRequestedUnlock(deviceId, gate) }
+    }
+
+    private fun connectTo(machine: Machine, gate: BiometricGate?) {
         appLog.d { "action connect machine=${machine.name} id=${machine.deviceId}" + if (gate != null) " one-tap" else "" }
         disarmApproveExpiry()
         val attempt = InFlight()

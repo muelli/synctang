@@ -1553,6 +1553,116 @@ class UnlockFlowTest {
         assertEquals("the prompt must name the machine", "res:${R.string.biometric_subtitle}(${machineA.name})", prompts.single())
     }
 
+    // An unlock asked for from outside the app (a shortcut, a widget). It is the one-tap unlock for the
+    // machine it names, nothing more: the fingerprint is still what lets the answer go.
+
+    private val promptsSeen = Collections.synchronizedList(mutableListOf<String>())
+    private val countingGate = BiometricGate { _, subtitle, _ ->
+        promptsSeen += subtitle
+        AuthOutcome.SUCCEEDED
+    }
+
+    @Test
+    fun anUnlockAskedForFromOutsideDialsThatMachineAndPromptsForTheFingerprint() {
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        nextSession = { FakeSession(connectReturnsAtOnce = true) }
+        onMain { flow.unlockRequested(machineA.deviceId, countingGate) }
+
+        await<UnlockUiState.Done>()
+        assertEquals(1, sessions.size)
+        assertEquals(listOf("res:${R.string.biometric_subtitle}(${machineA.name})"), promptsSeen.toList())
+    }
+
+    @Test
+    fun anUnlockAskedForAMachineThePhoneIsNotPairedWithDoesNothing() {
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        onMain { flow.unlockRequested(machineB.deviceId, countingGate) }
+
+        Thread.sleep(300)
+        assertTrue(flow.state.value is UnlockUiState.Ready)
+        assertTrue("a dial was started", sessions.isEmpty())
+        assertTrue(promptsSeen.isEmpty())
+    }
+
+    @Test
+    fun anUnlockAskedForWhileTheHomeScreenIsStillLoadingWaitsForIt() {
+        store.saved = machineA
+        nextSession = { FakeSession(connectReturnsAtOnce = true) }
+        onMain { flow.unlockRequested(machineA.deviceId, countingGate) }
+        assertTrue("nothing can be dialled before the phone is ready", sessions.isEmpty())
+        onMain { flow.refresh() }
+
+        await<UnlockUiState.Done>()
+        assertEquals(1, sessions.size)
+        assertEquals(1, promptsSeen.size)
+    }
+
+    @Test
+    fun anUnlockThatWaitedTooLongForTheHomeScreenIsDropped() {
+        store.saved = machineA
+        onMain { flow.unlockRequested(machineA.deviceId, countingGate) }
+        clockOffsetMillis.addAndGet(PENDING_UNLOCK_MILLIS + 1_000)
+        onMain { flow.refresh() }
+
+        await<UnlockUiState.Ready>()
+        Thread.sleep(300)
+        assertTrue(flow.state.value is UnlockUiState.Ready)
+        assertTrue(sessions.isEmpty())
+    }
+
+    @Test
+    fun anUnlockAskedForWhileAnotherIsUnderWayDoesNotStartASecondOrWaitForTheEndOfTheFirst() {
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        onMain { flow.connect(countingGate) }
+        await<UnlockUiState.Connecting>()
+        onMain { flow.unlockRequested(machineA.deviceId, countingGate) }
+        assertEquals(1, sessions.size)
+
+        onMain { flow.cancel() }
+        await<UnlockUiState.Ready>()
+        Thread.sleep(300)
+        assertTrue("the dropped request ran later", flow.state.value is UnlockUiState.Ready)
+        assertEquals(1, sessions.size)
+    }
+
+    @Test
+    fun anUnlockAskedForAfterAFailureOrAFinishedUnlockStartsAgain() {
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        nextSession = { FakeSession(failWith = Exception("mobile: not there")) }
+        onMain { flow.connect(countingGate) }
+        await<UnlockUiState.Failed>()
+
+        nextSession = { FakeSession(connectReturnsAtOnce = true) }
+        onMain { flow.unlockRequested(machineA.deviceId, countingGate) }
+        await<UnlockUiState.Done>()
+
+        nextSession = { FakeSession(connectReturnsAtOnce = true) }
+        onMain { flow.unlockRequested(machineA.deviceId, countingGate) }
+        awaitSessions(3)
+        await<UnlockUiState.Done>()
+    }
+
+    @Test
+    fun anUnlockAskedForNeverGetsPastAKeyThatNeedsReplacingOrRefusing() {
+        store.saved = machineA
+        identityFails = KeyNeedsReplacing(KeyProblem.FILES_DAMAGED)
+        onMain { flow.refresh() }
+        await<UnlockUiState.KeyNeedsReplacing>()
+        onMain { flow.unlockRequested(machineA.deviceId, countingGate) }
+
+        Thread.sleep(300)
+        assertTrue(flow.state.value is UnlockUiState.KeyNeedsReplacing)
+        assertTrue(sessions.isEmpty())
+    }
+
     @Test
     fun theOneTapPromptIsNeverShownForAMachineThatAskedNothing() {
         val prompts = AtomicInteger()
@@ -1822,6 +1932,12 @@ class UnlockFlowTest {
         assertEquals(BackAction.CANCEL, backAction(UnlockUiState.Pairing(m)))
         assertEquals(BackAction.CANCEL, backAction(UnlockUiState.Approve(m, "peer", "kid")))
         assertEquals(BackAction.IGNORE, backAction(UnlockUiState.Working(m)))
+    }
+
+    private fun awaitSessions(count: Int) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (sessions.size < count && System.nanoTime() < deadline) Thread.sleep(5)
+        assertEquals(count, sessions.size)
     }
 
     private fun <T> MutableList<T>.awaitOne(): T {
