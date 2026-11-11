@@ -242,8 +242,8 @@ which attempt it is on after the first.
 ### From the launcher and the home screen
 
 Two ways start the same one-tap unlock without opening the app first. A long press on the app's icon
-offers "Unlock <machine name>" for each machine the phone is paired with. The widget does the same
-with one tap: add "synctang" from the widget picker, and resize it as you like (one cell shows the
+offers "Unlock <machine name>" for each machine the phone is paired with (as many as the launcher shows,
+the one unlocked last first). The widget does the same for the machine unlocked last, with one tap: add "synctang" from the widget picker, and resize it as you like (one cell shows the
 padlock, wider ones add the name, taller ones give the name more room). Either opens the app,
 connects, and raises the fingerprint prompt naming the machine; the fingerprint is still what lets the
 answer go. They do nothing while an unlock, a pairing or an approval is already under way, or while the
@@ -329,7 +329,7 @@ token into the drive's own LUKS header: run `synctang-unlocker pair --device /de
 (or `enrol`) once, with the drive's passphrase, as for any other volume, and
 back its header up first. The token names key holders, not a machine, so the
 drive can be opened on any computer that runs `synctang-unlocker` and whose transport
-id the key holder knows. The phone app keeps one paired machine at a time; the
+id the key holder knows. The phone app can be paired with several machines; the
 laptop's `synctang-keyholder unlock <transport id>` takes any.
 
 ## Keyboard use of the app
@@ -343,8 +343,8 @@ shows the ones the current screen offers.
 | Key | Does |
 | --- | --- |
 | Ctrl+Enter | The main action of the screen: Unlock, Approve and unlock, Try again, Scan again, Pair, Unlock something again |
-| Esc | Back out, as the Back gesture does: Decline, Cancel, keep the machine already paired, close About, dismiss the undo bar |
-| Ctrl+P | Pair with a machine again |
+| Esc | Back out, as the Back gesture does: Decline, Cancel, go back to the machines already paired, close About, dismiss the undo bar |
+| Ctrl+P | Pair another machine |
 | Ctrl+R | Check again whether the machine is waiting |
 | Ctrl+I | About this phone |
 | Ctrl+E | Enrol by hand |
@@ -352,7 +352,7 @@ shows the ones the current screen offers.
 | Ctrl+T | Show or hide the technical details of an error |
 | Ctrl+1, Ctrl+2 | Show in full or less: the device ID, the key requested |
 | Ctrl+G, Ctrl+O | Allow the camera, open the app's settings |
-| Ctrl+Z | Undo a pairing that replaced a machine |
+| Ctrl+Z | Take back a machine that was just forgotten |
 
 "Use a software key on this phone" has no key, and is not focused when its
 screen opens: it weakens a protection, so it has to be reached and pressed on
@@ -376,9 +376,21 @@ before the old one is revoked, so it can open the volume throughout:
     synctang-unlocker rotate --device /dev/sdXN --pubkey <new public key> \
       --existing-passphrase-file <(printf %s "$PASS") <transport id>
 
-To pair the phone with a different machine, or with the same one again,
-use "Pair with a machine again" on the Unlock screen. The machine already
-paired stays paired until the new pairing has worked, and the Unlock
-screen then offers to undo the switch for a few seconds. To forget a machine
-on the phone altogether, clear the app's data in Android's settings, then
-revoke the phone on the machine.
+To pair the phone with another machine, use "Pair another machine" on the Unlock screen. It adds the machine
+to the phone's list: the machines already paired stay paired, whatever the new pairing does. Pairing the
+same machine again updates its name. To take a machine off the phone, use "Forget this machine" and answer
+the question; the app then offers to take it back for a few seconds. Forgetting only changes the phone: the
+machine still trusts the phone until you revoke it there (`synctang-unlocker revoke`).
+
+## Several machines on the phone
+
+With one machine the Unlock screen is as always. With two or more it is a list, the machine you unlocked last
+first. Each row shows the machine's name, the first group of its device ID (two machines can have the same
+name, because a machine chooses its own), what discovery last said of it, its own Unlock and its own Forget.
+Ctrl+Enter unlocks the first row. The status of the machines is looked up one at a time, each about once a
+minute and never more than three lookups a minute in all, and only while the list is on screen.
+
+If the phone's key is replaced (the app says so, and says which device ID to revoke on the machines), every
+machine on the list stays there, marked "pair again": the machine has the old key, so it cannot be unlocked
+until you pair with it again. The row's button then reads "Pair with it again", and scanning that machine's
+code clears the mark. A machine marked this way has no shortcut on the icon and is passed over by the widget.
