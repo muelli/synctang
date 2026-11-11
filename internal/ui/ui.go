@@ -217,7 +217,16 @@ func SetProgram(name string) { program = name }
 // A message that ends in a newline is a line; to anything but a terminal it is the same text as always.
 func Errorf(w io.Writer, format string, args ...any) {
 	s := For(w)
-	fmt.Fprint(w, s.Red(s.symbolPrefix("✗", program+":"))+" "+fmt.Sprintf(format, args...))
+	fmt.Fprint(w, s.Red(s.symbolPrefix("✗", program+":"))+" "+withoutProgram(fmt.Sprintf(format, args...)))
+}
+
+// withoutProgram takes a leading "program: " off a message: some errors carry it for the journal, and a message
+// printed with the program's name in front of it would then have the name twice.
+func withoutProgram(msg string) string {
+	if program != "" {
+		return strings.TrimPrefix(msg, program+": ")
+	}
+	return msg
 }
 
 // Errorln is Errorf for a message that is not a format, and ends a line.
@@ -229,7 +238,7 @@ func Noteln(w io.Writer, msg string) { Notef(w, "%s\n", msg) }
 // Notef is Errorf for what is not an error but a person should read: yellow, with a warning sign.
 func Notef(w io.Writer, format string, args ...any) {
 	s := For(w)
-	fmt.Fprint(w, s.Yellow(s.symbolPrefix("⚠", program+":"))+" "+fmt.Sprintf(format, args...))
+	fmt.Fprint(w, s.Yellow(s.symbolPrefix("⚠", program+":"))+" "+withoutProgram(fmt.Sprintf(format, args...)))
 }
 
 // symbolPrefix is the symbol and a space before text where symbols work, and text alone where they do not.
@@ -250,7 +259,7 @@ func (s Style) Line(mark, text string) string {
 
 // Infof is a line of ordinary output that carries the program's name: no colour, the same text as always.
 func Infof(w io.Writer, format string, args ...any) {
-	fmt.Fprint(w, program+": "+fmt.Sprintf(format, args...))
+	fmt.Fprint(w, program+": "+withoutProgram(fmt.Sprintf(format, args...)))
 }
 
 // Infoln is Infof for a message that is not a format, and ends a line.

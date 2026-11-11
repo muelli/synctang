@@ -47,6 +47,24 @@ func authorizedPeersFor(tok mrcore.Token) ([]string, error) {
 	return peers, nil
 }
 
+// whyNobodyCouldApprove says, before anything waits for an approval, why no key holder could give one on
+// device: nobody is enrolled, or the key holders enrolled have no transport id and the agent would answer none
+// of them. It returns "" if a key holder could. what is what the person was about to do ("opening it",
+// "a rehearsal").
+func whyNobodyCouldApprove(dump, device, what string) (string, error) {
+	tok, id, err := loadToken(dump, device, "", "")
+	if err != nil {
+		return "", err
+	}
+	if id < 0 {
+		return fmt.Sprintf(T("%s has no key holder enrolled, so nobody could approve %s; enrol one first with: synctang-unlocker pair --device %s --existing-passphrase-file ...\n"), device, what, device), nil
+	}
+	if _, err := authorizedPeersFor(tok); err != nil {
+		return fmt.Sprintf(T("%s has key holders enrolled, but none of them has a transport id, so the agent would not answer any of them and nobody could approve %s: enrol them again with --recipient-transport-id (\"synctang-unlocker status\" shows them)\n"), device, what), nil
+	}
+	return "", nil
+}
+
 // runAgentOnce performs one recovery attempt against device: it waits for
 // exactly one key holder to connect (via tr), runs the MR-1 recovery
 // exchange, verifies the recovered secret actually opens device before

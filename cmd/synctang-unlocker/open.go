@@ -141,11 +141,11 @@ func runOpen(args []string, stdout, stderr io.Writer) int {
 		ui.Errorf(stderr, T("reading the LUKS header of %s: %v%s\n"), device, err, permissionHint(err))
 		return 1
 	}
-	if _, id, err := loadToken(string(dump), device, "", ""); err != nil {
+	if why, err := whyNobodyCouldApprove(string(dump), device, T("opening it")); err != nil {
 		ui.Errorf(stderr, "%v\n", err)
 		return 1
-	} else if id < 0 {
-		ui.Errorf(stderr, T("%s has no key holder enrolled, so nobody could approve opening it; enrol one first with: synctang-unlocker pair --device %s --existing-passphrase-file ...\n"), device, device)
+	} else if why != "" {
+		ui.Errorf(stderr, "%s", why)
 		return 1
 	}
 	if name == "" {

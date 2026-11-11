@@ -353,11 +353,11 @@ func runRehearse(args []string, stdout, stderr io.Writer) int {
 		ui.Errorf(stderr, T("reading the LUKS header of %s: %v%s\n"), dev, err, permissionHint(err))
 		return 1
 	}
-	if _, id, err := loadToken(string(dump), dev, "", ""); err != nil {
+	if why, err := whyNobodyCouldApprove(string(dump), dev, T("a rehearsal")); err != nil {
 		ui.Errorf(stderr, "%v\n", err)
 		return 1
-	} else if id < 0 {
-		ui.Errorf(stderr, T("%s has no key holder enrolled, so nobody could approve a rehearsal; pair one first: synctang-unlocker pair --device %s\n"), dev, dev)
+	} else if why != "" {
+		ui.Errorf(stderr, "%s", why)
 		return 1
 	}
 	cert, err := transport.LoadOrCreateCert(*machineKeyFile)

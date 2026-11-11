@@ -13,6 +13,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/muelli/synctang/mrcore"
+	"github.com/muelli/synctang/mrcore/transport"
 )
 
 const lsinitrdSample = `Image: /boot/initramfs-6.12.0.img: 28M
@@ -348,5 +351,60 @@ func TestTheStaticChecksSayWhatTheyAreDoingAsTheyGo(t *testing.T) {
 		if !strings.Contains(steps[i], w) {
 			t.Errorf("step %d = %q, want it to mention %q", i, steps[i], w)
 		}
+	}
+}
+
+// A volume whose key holders were all enrolled without a transport id: the agent refuses to answer anyone (it could
+// not tell a key holder from a stranger), so waiting for an approval could never end well. It is said before the
+// wait, as a volume with nobody enrolled is.
+func newFixtureWithoutTransportIDs(t *testing.T) openFixture {
+	t.Helper()
+	passphrase := []byte("existing-test-passphrase")
+	device := formatLoopbackImage(t, passphrase)
+	g := mrcore.P256()
+	s, err := g.RandomScalar()
+	if err != nil {
+		t.Fatal(err)
+	}
+	S, err := g.ScalarBaseMult(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := enrolRecipient(device, passphrase, S, "the-machine", "MACHINE-ID", ""); err != nil {
+		t.Fatal(err)
+	}
+	machineKey := filepath.Join(t.TempDir(), "machine.pem")
+	if _, err := transport.LoadOrCreateCert(machineKey); err != nil {
+		t.Fatal(err)
+	}
+	return openFixture{device: device, machineKey: machineKey, addr: freeTestAddr(t), s: s}
+}
+
+func TestRehearseSaysAtOnceWhenNoEnrolledKeyHolderHasATransportId(t *testing.T) {
+	fakeOpener(t)
+	f := newFixtureWithoutTransportIDs(t)
+	withStaticChecks(t, nil)
+	start := time.Now()
+	r := waitFor(t, startOpen([]string{"rehearse", "--device", f.device, "--machine-key-file", f.machineKey, "--direct-addr", f.addr, "--timeout", "30s"}))
+	if r.code != 1 || time.Since(start) > 5*time.Second {
+		t.Fatalf("exit %d after %s:\n%s%s", r.code, time.Since(start), r.stdout, r.stderr)
+	}
+	for _, want := range []string{"none of them has a transport id", "--recipient-transport-id", "synctang-unlocker status"} {
+		if !strings.Contains(r.stderr, want) {
+			t.Errorf("stderr lacks %q:\n%s", want, r.stderr)
+		}
+	}
+	if strings.Contains(r.stdout, "waiting for a key holder") {
+		t.Errorf("nobody should be asked to approve:\n%s", r.stdout)
+	}
+}
+
+func TestOpenSaysAtOnceWhenNoEnrolledKeyHolderHasATransportId(t *testing.T) {
+	fakeOpener(t)
+	f := newFixtureWithoutTransportIDs(t)
+	start := time.Now()
+	r := waitFor(t, startOpen([]string{"open", "--machine-key-file", f.machineKey, "--direct-addr", f.addr, "--timeout", "30s", f.device}))
+	if r.code != 1 || time.Since(start) > 5*time.Second || !strings.Contains(r.stderr, "none of them has a transport id") {
+		t.Errorf("exit %d after %s:\n%s%s", r.code, time.Since(start), r.stdout, r.stderr)
 	}
 }

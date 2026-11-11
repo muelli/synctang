@@ -4,6 +4,7 @@ package ui
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -294,5 +295,21 @@ func TestVerboseCanComeFromTheEnvironment(t *testing.T) {
 	t.Setenv("SYNCTANG_DEBUG", "")
 	if VerboseFromEnv() {
 		t.Error("an empty SYNCTANG_DEBUG was taken")
+	}
+}
+
+// An error that already begins with the program's name (the agent's errors do, for the journal) is not shown with the
+// name twice.
+func TestAMessageThatAlreadyNamesTheProgramIsNotPrefixedTwice(t *testing.T) {
+	SetProgram("synctang-x")
+	defer SetProgram("")
+	var buf bytes.Buffer
+	Errorf(&buf, "%v\n", errors.New("synctang-x: reading the header"))
+	Notef(&buf, "%v (still waiting)\n", errors.New("synctang-x: no key holder"))
+	Infof(&buf, "synctang-x: said it itself\n")
+	Errorf(&buf, "another-program: is not ours\n")
+	want := "synctang-x: reading the header\nsynctang-x: no key holder (still waiting)\nsynctang-x: said it itself\nsynctang-x: another-program: is not ours\n"
+	if buf.String() != want {
+		t.Errorf("%q\nwant %q", buf.String(), want)
 	}
 }
