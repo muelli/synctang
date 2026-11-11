@@ -27,7 +27,7 @@ type RateLimitedError struct {
 }
 
 func (e *RateLimitedError) Error() string {
-	return fmt.Sprintf("discovery lookup returned HTTP 429: asked to wait %s", e.RetryAfter.Round(time.Second))
+	return fmt.Sprintf("discovery server returned HTTP 429: asked to wait %s", e.RetryAfter.Round(time.Second))
 }
 
 // ParseRetryAfter reads a Retry-After header, which is either a whole number of seconds or

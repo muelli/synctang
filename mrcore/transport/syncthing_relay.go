@@ -58,6 +58,37 @@ const relayLossPollInterval = time.Second
 // the machine up is handed an address it has left.
 const defaultAnnounceInterval = 2 * time.Second
 
+const (
+	// defaultAnnounceBackoffBase is the wait after the first failed announcement, doubled after each further one
+	// up to announceBackoffMax. The loop looks every defaultAnnounceInterval, and an announcement that failed used
+	// to be tried again at the next look, so a discovery server that was refusing was asked every two seconds.
+	defaultAnnounceBackoffBase = 2 * time.Second
+	announceBackoffMax         = 2 * time.Minute
+
+	// announceRetryAfterMax bounds how long a machine honours a discovery server's Retry-After. The public
+	// servers have asked for six to twenty minutes; a record older than the server's own Reannounce-After is
+	// gone, so a wait longer than this would only make the machine unfindable for no reason.
+	announceRetryAfterMax = 30 * time.Minute
+)
+
+// announceBackoff is the wait after the failures-th failure in a row (counted from 1): base, doubled each time
+// up to announceBackoffMax, moved by up to 20 percent according to r in [0, 1), and never above the maximum.
+func announceBackoff(failures int, base time.Duration, r float64) time.Duration {
+	d := base
+	for i := 1; i < failures && d < announceBackoffMax; i++ {
+		d *= 2
+	}
+	d = time.Duration(float64(d) * (1 + dialRetryJitter*(2*r-1)))
+	return min(d, announceBackoffMax)
+}
+
+func (t *SyncthingRelay) clockNow() time.Time {
+	if t.now != nil {
+		return t.now()
+	}
+	return time.Now()
+}
+
 // WaitingRecordMaxAge is how young a machine's discovery record has to be for a phone
 // to call the machine "waiting now": a machine at its unlock prompt keeps its record this
 // fresh, one older than this is stale. The phone's readiness check (mobile.CheckMachineStatus)
@@ -180,6 +211,17 @@ type SyncthingRelay struct {
 	// client, built fresh per call with InsecureSkipVerify (see
 	// announceOnce for why that is safe here).
 	httpClient *http.Client
+
+	// now is the clock the announce rate limits are kept by, which tests replace; nil means time.Now.
+	now func() time.Time
+
+	// announceBackoffBase is the first wait after an announcement failed for a reason that is not a rate
+	// limit; zero means defaultAnnounceBackoffBase.
+	announceBackoffBase time.Duration
+
+	// limitedUntil is, for each announce URL that answered HTTP 429, when it may be asked again.
+	limitMu      sync.Mutex
+	limitedUntil map[string]time.Time
 }
 
 func (t *SyncthingRelay) phase(route Route, phase DialPhase) {
@@ -925,6 +967,10 @@ func (t *SyncthingRelay) announceLoop(ctx context.Context, addresses func() []st
 
 		var lastAnnounced []string
 		var lastAt time.Time
+		// After a failed announcement the next one waits: the loop looks often (see defaultAnnounceInterval)
+		// and must not turn each look into a request to a server that is refusing.
+		var notBefore time.Time
+		failures := 0
 
 		for {
 			addrs := addresses()
@@ -939,19 +985,32 @@ func (t *SyncthingRelay) announceLoop(ctx context.Context, addresses func() []st
 				// what makes it visible on the console.
 				t.logger().Warn("nothing to announce: no relay address available")
 			case !sameAddresses(addrs, lastAnnounced) || time.Since(lastAt) >= t.announceRefresh():
+				if t.clockNow().Before(notBefore) {
+					break
+				}
 				if err := t.announceOnce(ctx, addrs); err != nil {
-					// Best effort: a failed announce is retried on the
-					// next tick rather than aborting the whole listen
-					// attempt. Logged, not discarded: a
-					// silently-forever-failing announce is
-					// indistinguishable from a silently succeeding one
-					// from the console, which is exactly how this used
-					// to POST to the wrong endpoint for a long time
-					// before anyone noticed.
-					t.logger().Warn("announce failed", "error", err)
+					var limited *RateLimitedError
+					if errors.As(err, &limited) {
+						// Not a failure to reach the server: it said how long to leave it alone, and that is
+						// how long this loop does. Said once, with the wait, not at every look.
+						wait := min(limited.RetryAfter, announceRetryAfterMax)
+						notBefore = t.clockNow().Add(wait)
+						t.logger().Warn("discovery asked to be left alone, not announcing until it is over", "wait", wait.Round(time.Second))
+					} else {
+						// Best effort: a failed announce is retried, after a wait that doubles, rather than
+						// aborting the whole listen attempt. Logged, not discarded: a silently-forever-failing
+						// announce is indistinguishable from a silently succeeding one from the console, which
+						// is exactly how this used to POST to the wrong endpoint for a long time before anyone
+						// noticed.
+						failures++
+						wait := announceBackoff(failures, cmp.Or(t.announceBackoffBase, defaultAnnounceBackoffBase), t.jitterValue())
+						notBefore = t.clockNow().Add(wait)
+						t.logger().Warn("announce failed", "error", err, "next attempt in", wait.Round(time.Second))
+					}
 				} else {
 					lastAnnounced = append(lastAnnounced[:0], addrs...)
 					lastAt = time.Now()
+					failures, notBefore = 0, time.Time{}
 				}
 			}
 
@@ -970,6 +1029,22 @@ func (t *SyncthingRelay) announceLoop(ctx context.Context, addresses func() []st
 		once.Do(func() { close(stop) })
 		<-done
 	}
+}
+
+// announceLimitLeft is how long the announce URL is to be left alone still, or 0.
+func (t *SyncthingRelay) announceLimitLeft(announceURL string, now time.Time) time.Duration {
+	t.limitMu.Lock()
+	defer t.limitMu.Unlock()
+	return max(t.limitedUntil[announceURL].Sub(now), 0)
+}
+
+func (t *SyncthingRelay) limitAnnounceUntil(announceURL string, until time.Time) {
+	t.limitMu.Lock()
+	defer t.limitMu.Unlock()
+	if t.limitedUntil == nil {
+		t.limitedUntil = map[string]time.Time{}
+	}
+	t.limitedUntil[announceURL] = until
 }
 
 // announceOnce POSTs one discovery announcement to every configured
@@ -995,12 +1070,32 @@ func (t *SyncthingRelay) announceOnce(ctx context.Context, addresses []string) e
 	httpClient := t.announceHTTPClient()
 
 	var lastErr error
+	// Servers that are asked to be left alone are not asked, and what is left of the shortest wait is what a
+	// caller that gets nothing but rate limits is told.
+	var waits []time.Duration
+	otherFailure := false
+	now := t.clockNow()
 	for _, announceURL := range t.announceURLs() {
-		if err := t.postAnnounce(ctx, httpClient, announceURL, payload); err != nil {
-			lastErr = err
+		if wait := t.announceLimitLeft(announceURL, now); wait > 0 {
+			waits = append(waits, wait)
 			continue
 		}
-		return nil
+		err := t.postAnnounce(ctx, httpClient, announceURL, payload)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		var limited *RateLimitedError
+		if errors.As(err, &limited) {
+			wait := min(limited.RetryAfter, announceRetryAfterMax)
+			t.limitAnnounceUntil(announceURL, now.Add(wait))
+			waits = append(waits, wait)
+			continue
+		}
+		otherFailure = true
+	}
+	if !otherFailure && len(waits) > 0 {
+		return &RateLimitedError{RetryAfter: slices.Min(waits)}
 	}
 	return fmt.Errorf("transport: announce failed on every URL, last error: %w", lastErr)
 }
@@ -1034,6 +1129,9 @@ func (t *SyncthingRelay) postAnnounce(ctx context.Context, httpClient *http.Clie
 		return fmt.Errorf("announce request to %s: %w", announceURL, err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return &RateLimitedError{RetryAfter: ParseRetryAfter(resp.Header.Get("Retry-After"), t.clockNow())}
+	}
 	if resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("announce to %s returned HTTP %d", announceURL, resp.StatusCode)
 	}
