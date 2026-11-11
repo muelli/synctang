@@ -16,6 +16,7 @@ import (
 
 	"github.com/muelli/synctang/mrcore"
 	"github.com/muelli/synctang/mrcore/transport"
+	"github.com/syncthing/syncthing/lib/protocol"
 )
 
 const lsinitrdSample = `Image: /boot/initramfs-6.12.0.img: 28M
@@ -406,5 +407,25 @@ func TestOpenSaysAtOnceWhenNoEnrolledKeyHolderHasATransportId(t *testing.T) {
 	r := waitFor(t, startOpen([]string{"open", "--machine-key-file", f.machineKey, "--direct-addr", f.addr, "--timeout", "30s", f.device}))
 	if r.code != 1 || time.Since(start) > 5*time.Second || !strings.Contains(r.stderr, "none of them has a transport id") {
 		t.Errorf("exit %d after %s:\n%s%s", r.code, time.Since(start), r.stdout, r.stderr)
+	}
+}
+
+// Revoking the last key holder leaves the token in the header with no recipients in it. "status" says that nobody
+// is enrolled; rehearse and open said the key holders had no transport id, which contradicts it.
+func TestRehearseAndOpenSayNobodyIsEnrolledWhenTheLastKeyHolderWasRevoked(t *testing.T) {
+	fakeOpener(t)
+	f := newOpenFixture(t)
+	withStaticChecks(t, nil)
+	if err := removeRecipient(f.device, []byte("existing-test-passphrase"), protocol.NewDeviceID(f.holderCert.Certificate[0]).String(), ""); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"rehearse", "--device", f.device, "--machine-key-file", f.machineKey, "--timeout", "30s"},
+		{"open", "--machine-key-file", f.machineKey, "--timeout", "30s", f.device},
+	} {
+		r := waitFor(t, startOpen(args))
+		if r.code != 1 || !strings.Contains(r.stderr, "has no key holder enrolled") || strings.Contains(r.stderr, "transport id") {
+			t.Errorf("%s: exit %d, stderr %q", args[0], r.code, r.stderr)
+		}
 	}
 }

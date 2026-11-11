@@ -40,6 +40,9 @@ func authorizedPeersFor(tok mrcore.Token) ([]string, error) {
 			peers = append(peers, canonicalOrRaw(id))
 		}
 	}
+	if len(tok.Recipients) == 0 {
+		return nil, errors.New(T("synctang-unlocker: no key holder is enrolled on this volume; pair one with \"synctang-unlocker pair\""))
+	}
 	if len(peers) == 0 {
 		return nil, errors.New(T("synctang-unlocker: no enrolled recipient has a transport id, so no key holder could be told apart from a stranger; " +
 			"enrol again with --recipient-transport-id (see 'synctang-unlocker status')"))
@@ -56,7 +59,8 @@ func whyNobodyCouldApprove(dump, device, what string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if id < 0 {
+	// A token with no recipients in it is what revoking the last key holder leaves: nobody is enrolled, as "status" says.
+	if id < 0 || len(tok.Recipients) == 0 {
 		return fmt.Sprintf(T("%s has no key holder enrolled, so nobody could approve %s; enrol one first with: synctang-unlocker pair --device %s --existing-passphrase-file ...\n"), device, what, device), nil
 	}
 	if _, err := authorizedPeersFor(tok); err != nil {
