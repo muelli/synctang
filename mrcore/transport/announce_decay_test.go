@@ -15,19 +15,18 @@ import (
 // started it may look any minute, one who has not by now is not likely to this minute. The public discovery
 // servers are shared, and syncthing-socket's own default is every thirty minutes.
 
-func TestTheRefreshIntervalDoublesEveryDecayStepUpToTheCap(t *testing.T) {
-	relay := &SyncthingRelay{AnnounceRefresh: time.Minute, AnnounceDecayStep: 10 * time.Minute, AnnounceRefreshMax: 30 * time.Minute}
+func TestTheRefreshIntervalGrowsFourfoldEveryDecayStepUpToTheCap(t *testing.T) {
+	relay := &SyncthingRelay{AnnounceRefresh: time.Minute, AnnounceDecayStep: 15 * time.Minute, AnnounceRefreshMax: 30 * time.Minute}
 	for _, tc := range []struct {
 		waited time.Duration
 		want   time.Duration
 	}{
 		{0, time.Minute},
-		{9 * time.Minute, time.Minute},
-		{10 * time.Minute, 2 * time.Minute},
-		{25 * time.Minute, 4 * time.Minute},
-		{35 * time.Minute, 8 * time.Minute},
-		{45 * time.Minute, 16 * time.Minute},
-		{55 * time.Minute, 30 * time.Minute},
+		{14 * time.Minute, time.Minute},
+		{15 * time.Minute, 4 * time.Minute},
+		{29 * time.Minute, 4 * time.Minute},
+		{30 * time.Minute, 16 * time.Minute},
+		{45 * time.Minute, 30 * time.Minute},
 		{24 * time.Hour, 30 * time.Minute},
 	} {
 		if got := relay.refreshAfter(tc.waited); got != tc.want {
@@ -36,16 +35,25 @@ func TestTheRefreshIntervalDoublesEveryDecayStepUpToTheCap(t *testing.T) {
 	}
 }
 
-func TestTheDefaultsAreAMinuteForTenMinutesAndThenLessAndLessUpToHalfAnHour(t *testing.T) {
+func TestTheDefaultsAreAMinuteForFifteenMinutesAndThenMuchLessUpToHalfAnHour(t *testing.T) {
 	relay := &SyncthingRelay{}
-	if relay.refreshAfter(0) != time.Minute || relay.refreshAfter(9*time.Minute) != time.Minute {
-		t.Errorf("the first ten minutes: %s", relay.refreshAfter(0))
+	if relay.refreshAfter(0) != time.Minute || relay.refreshAfter(14*time.Minute) != time.Minute {
+		t.Errorf("the first fifteen minutes: %s", relay.refreshAfter(0))
 	}
-	if relay.refreshAfter(10*time.Minute) != 2*time.Minute {
-		t.Errorf("then every two minutes: %s", relay.refreshAfter(10*time.Minute))
+	if relay.refreshAfter(15*time.Minute) != 4*time.Minute {
+		t.Errorf("then every four minutes: %s", relay.refreshAfter(15*time.Minute))
 	}
 	if relay.refreshAfter(10*time.Hour) != 30*time.Minute {
 		t.Errorf("in the end every half hour, as syncthing-socket does: %s", relay.refreshAfter(10*time.Hour))
+	}
+	// A waiting machine is announcing about twenty times in its first hour, not sixty.
+	total, at := 0, time.Duration(0)
+	for at < time.Hour {
+		total++
+		at += relay.refreshAfter(at)
+	}
+	if total < 15 || total > 25 {
+		t.Errorf("%d announcements in the first hour", total)
 	}
 }
 
@@ -71,7 +79,7 @@ func TestTheAnnounceLoopSlowsDownAndSpeedsUpAgainWhenTheAddressChanges(t *testin
 	defer srv.Close()
 	relay := &SyncthingRelay{
 		Cert: testCert(t), AnnounceURLs: []string{srv.URL}, AnnounceInterval: 5 * time.Millisecond,
-		AnnounceRefresh: 20 * time.Millisecond, AnnounceDecayStep: 100 * time.Millisecond, AnnounceRefreshMax: 160 * time.Millisecond,
+		AnnounceRefresh: 20 * time.Millisecond, AnnounceDecayStep: 100 * time.Millisecond, AnnounceRefreshMax: 320 * time.Millisecond,
 	}
 	relay.httpClient = srv.Client()
 	var addr atomic.Value
@@ -80,14 +88,14 @@ func TestTheAnnounceLoopSlowsDownAndSpeedsUpAgainWhenTheAddressChanges(t *testin
 	defer cancel()
 	stop := relay.announceLoop(ctx, func() []string { return []string{addr.Load().(string)} })
 	time.Sleep(300 * time.Millisecond)
-	early := posts.Load() // 20 ms for 100 ms (5), 40 ms for 100 ms (2-3), 80 ms after: about 9
-	time.Sleep(500 * time.Millisecond)
-	late := posts.Load() - early // at the 160 ms cap: about 3
-	if early < 6 {
+	early := posts.Load() // 20 ms for 100 ms (5), then 80 ms for 100 ms (1-2), then 320 ms (1): about 8
+	time.Sleep(700 * time.Millisecond)
+	late := posts.Load() - early // at the 320 ms cap: about 2
+	if early < 5 {
 		t.Errorf("only %d announcements in the first 300 ms at a 20 ms start", early)
 	}
-	if late > 5 {
-		t.Errorf("%d announcements in the next 500 ms, which should be at the 160 ms cap (about 3)", late)
+	if late > 4 {
+		t.Errorf("%d announcements in the next 700 ms, which should be at the 320 ms cap (about 2)", late)
 	}
 
 	// A new address is news: the pace starts again.

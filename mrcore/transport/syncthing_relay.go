@@ -110,19 +110,23 @@ const WaitingRecordMaxAge = 150 * time.Second
 // while an agent, "open" or "pair" is actually listening, not for the life of the machine.
 //
 // That is the pace at first. A machine that has waited a long time is not likely to be looked
-// at this minute, and the servers are shared, so the pace halves every defaultAnnounceDecayStep
-// (see refreshAfter); the price is that a record then ages past WaitingRecordMaxAge while the
+// at this minute, and the servers are shared, so the pace eases every defaultAnnounceDecayStep
+// (see refreshAfter); the price is that after fifteen minutes a record ages past WaitingRecordMaxAge while the
 // machine still waits, so the phone shows "announced N min ago" instead of "waiting".
 const defaultAnnounceRefresh = time.Minute
 
 const (
-	// defaultAnnounceDecayStep is how long a record goes on being refreshed at the same pace before the pace halves.
-	// A person who has just started the machine may look at their phone any minute; one who has not by now is less
-	// likely to this minute. So the refresh doubles after every ten minutes of waiting, up to
-	// defaultAnnounceRefreshMax, and starts again at the first interval when the address changes (a new relay is
-	// news). Over the first hour that is about twenty announcements, where a flat minute is sixty, and after it
-	// two an hour.
-	defaultAnnounceDecayStep = 10 * time.Minute
+	// defaultAnnounceDecayStep is how long a record goes on being refreshed at the same pace before the pace eases.
+	// A machine is meant to wait only a few minutes, and the first of them are when somebody is about to look, so
+	// for fifteen minutes it announces every minute, harder than a client that lives for days would. After that
+	// nobody is in a hurry: the refresh is four times as slow for the next fifteen minutes, four times as slow
+	// again for the next, and then at the slowest pace, defaultAnnounceRefreshMax. A new address (a new relay) is
+	// news and starts it again. Over the first hour that is about twenty announcements, where a flat minute is
+	// sixty, and after it two an hour.
+	defaultAnnounceDecayStep = 15 * time.Minute
+
+	// announceDecayFactor is how much slower the refresh gets after each decay step.
+	announceDecayFactor = 4
 
 	// defaultAnnounceRefreshMax is the slowest refresh, which is what syncthing-socket does for a server that is
 	// not waiting at a prompt, and well inside how long the public servers keep a record.
@@ -549,7 +553,7 @@ func (t *SyncthingRelay) announceRefresh() time.Duration {
 }
 
 // refreshAfter is how long to wait before republishing an unchanged record, after waited with the same
-// address: announceRefresh, doubled for every announceDecayStep that has passed, up to the slowest pace, which
+// address: announceRefresh, four times as slow for every announceDecayStep that has passed, up to the slowest pace, which
 // is AnnounceRefreshMax or, if a discovery server said how often it wants to be told (Reannounce-After), that
 // if it is less. A cap below the first interval does not speed it up.
 func (t *SyncthingRelay) refreshAfter(waited time.Duration) time.Duration {
@@ -561,7 +565,7 @@ func (t *SyncthingRelay) refreshAfter(waited time.Duration) time.Duration {
 	slowest = max(slowest, first)
 	d := first
 	for i := 0; i < int(waited/cmp.Or(t.AnnounceDecayStep, defaultAnnounceDecayStep)) && d < slowest; i++ {
-		d *= 2
+		d *= announceDecayFactor
 	}
 	return min(d, slowest)
 }
