@@ -239,6 +239,19 @@ for the machine, connected through a relay or on the local network and waiting f
 machine to ask, waiting for you to confirm on the machine), how long it has been, and
 which attempt it is on after the first.
 
+### From the launcher and the home screen
+
+Two ways start the same one-tap unlock without opening the app first. A long press on the app's icon
+offers "Unlock <machine name>" for each machine the phone is paired with. The widget does the same
+with one tap: add "synctang" from the widget picker, and resize it as you like (one cell shows the
+padlock, wider ones add the name, taller ones give the name more room). Either opens the app,
+connects, and raises the fingerprint prompt naming the machine; the fingerprint is still what lets the
+answer go. They do nothing while an unlock, a pairing or an approval is already under way, or while the
+phone's key needs a decision, and they only ever unlock a machine the phone is paired with. The
+widget shows no status of the machine and never asks the network on its own. The name on both is the
+one the machine gave itself, with control characters removed and cut to 24 characters, and it is
+readable on the launcher by anyone who holds the phone.
+
 The app's main screen shows a dot and a line of words saying whether the machine has announced
 itself to the discovery server lately (waiting, announced some minutes ago, not announced, or
 cannot check); it is what the machine published, not a promise that an unlock will work, and it

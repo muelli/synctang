@@ -22,6 +22,12 @@
     <string name="enrol_manual_title">Enrol by hand</string>
     <string name="enrol_manual_hint">Only for a machine that cannot show a pairing code. Run this on the machine, once, to let this phone unlock it.</string>
     <string name="shortcut_unlock">Unlock %1$s</string>
+    <string name="widget_description">Unlock a machine with one tap. Resize it to suit the home screen.</string>
+    <string name="widget_unlock_action">Unlock</string>
+    <string name="widget_unlock_for">Unlock %1$s</string>
+    <string name="widget_unpaired_name">Not paired yet</string>
+    <string name="widget_unpaired_for">Open synctang to pair a machine</string>
+    <string name="widget_preview_name">my-server</string>
     <string name="pair_copied">Copied to the clipboard.</string>
     <string name="pair_copy">Copy the enrolment command</string>
     <string name="pair_by_hand">No pairing code? Enrol by hand</string>

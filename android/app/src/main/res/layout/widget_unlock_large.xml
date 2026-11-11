@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- Two cells high or more: the padlock large, and the name allowed to wrap. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@android:id/background"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <ImageView
+        android:id="@+id/widget_icon"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:importantForAccessibility="no"
+        android:src="@drawable/ic_widget_unlock" />
+
+    <TextView
+        android:id="@+id/widget_action"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="@string/widget_unlock_action"
+        android:textColor="#FFE6E1E9"
+        android:textSize="20sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/widget_name"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:gravity="center"
+        android:maxLines="3"
+        android:textColor="#FFCAC4D0"
+        android:textSize="16sp" />
+</LinearLayout>

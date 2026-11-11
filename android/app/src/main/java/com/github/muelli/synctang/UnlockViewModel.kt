@@ -84,10 +84,14 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
         publishShortcuts()
     }
 
-    /** One launcher shortcut for each paired machine, off the main thread (it asks the system). */
+    /** What is published of the paired machines, the launcher's shortcuts and the widgets, off the main thread. */
     private fun publishShortcuts() {
         val app = getApplication<Application>()
-        viewModelScope.launch(Dispatchers.IO) { LauncherShortcuts.publish(app, store.machines()) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val machines = store.machines()
+            LauncherShortcuts.publish(app, machines)
+            UnlockWidgetProvider.refreshAll(app, machines)
+        }
     }
 
     private fun identity(): Identity {
