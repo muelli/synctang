@@ -60,8 +60,8 @@ func TestMachineStatusStates(t *testing.T) {
 		maxAge int
 	}{
 		{"announced seconds ago", seenAgo(10 * time.Second), StatusWaiting, 9, 12},
-		{"announced right at the limit", seenAgo(149 * time.Second), StatusWaiting, 148, 151},
-		{"announced a little too long ago", seenAgo(151 * time.Second), StatusStale, 150, 153},
+		{"announced right at the limit", seenAgo(89 * time.Second), StatusWaiting, 88, 91},
+		{"announced a little too long ago", seenAgo(91 * time.Second), StatusStale, 90, 93},
 		{"announced an hour ago", seenAgo(time.Hour), StatusStale, 3598, 3603},
 		{"a timestamp in the future counts as now", seenAgo(-2 * time.Hour), StatusWaiting, 0, 0},
 		{"a record with no timestamp", func() map[string]any { return map[string]any{"addresses": []string{"tcp://192.0.2.1:22000"}} }, StatusStale, -1, -1},

@@ -95,7 +95,13 @@ func (t *SyncthingRelay) clockNow() time.Time {
 // to call the machine "waiting now": a machine at its unlock prompt keeps its record this
 // fresh, one older than this is stale. The phone's readiness check (mobile.CheckMachineStatus)
 // and the machine's refresh interval (defaultAnnounceRefresh) are both measured against it.
-const WaitingRecordMaxAge = 150 * time.Second
+//
+// Ninety seconds against a refresh every sixty leaves thirty for what a lookup sees late: the
+// announcement has to reach the server that answers lookups, which syncthing-socket measured at
+// thirty to forty-five seconds. A slow server or one lost announcement turns the dot amber for a
+// moment. (It was 150 s, which tolerated one lost announcement; the dot is meant to say "waiting
+// now", and ninety is the tighter claim.)
+const WaitingRecordMaxAge = 90 * time.Second
 
 // defaultAnnounceRefresh is how often an unchanged record is republished while the
 // machine waits.
@@ -105,8 +111,7 @@ const WaitingRecordMaxAge = 150 * time.Second
 // somebody else's free infrastructure. But a record that old cannot tell a phone whether
 // the machine is waiting now or was an hour ago, and that is exactly what the phone shows
 // a person before they walk to the machine: so while it waits, the machine republishes
-// every minute, so at least twice inside the WaitingRecordMaxAge a record counts as waiting
-// (so one lost announcement does not make it look stale). One small POST a minute, only
+// every minute, inside the WaitingRecordMaxAge a record counts as waiting. One small POST a minute, only
 // while an agent, "open" or "pair" is actually listening, not for the life of the machine.
 //
 // That is the pace at first. A machine that has waited a long time is not likely to be looked

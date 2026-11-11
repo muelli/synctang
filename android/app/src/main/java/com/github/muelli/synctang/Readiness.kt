@@ -97,7 +97,7 @@ private fun luminance(argb: Long): Double {
 /**
  * How often the Ready screen asks, while it is showing and the app is in the foreground:
  * every minute, give or take [READINESS_JITTER]. The machine announces itself every 60 s and
- * a record counts as fresh for 150 s, so asking more often cannot tell anything new, and
+ * a record counts as fresh for 90 s, so asking more often cannot tell anything new, and
  * the public discovery server is shared: it answers a client that asks every few seconds
  * with HTTP 429 and a Retry-After of minutes. There is also one check at once when the
  * screen appears or the app comes back, and a person may ask by hand (the Check again
@@ -167,12 +167,12 @@ fun unreachableHeadline(r: Readiness): UnreachableHeadline? = when (r.state) {
     ReadinessState.NO_NETWORK, ReadinessState.CHECKING -> null
 }
 
-/** How long a record counts as "waiting": the Go side's WaitingRecordMaxAge, 150 s. */
-internal const val WAITING_MAX_AGE_SECONDS = 150
+/** How long a record counts as "waiting": the Go side's WaitingRecordMaxAge, 90 s. */
+internal const val WAITING_MAX_AGE_SECONDS = 90
 
 /**
  * A status seen [elapsedSeconds] ago, as it would read now: a record keeps ageing, and a
- * waiting one that passes 150 s is stale. Unchanged when it has no age to grow.
+ * waiting one that passes 90 s is stale. Unchanged when it has no age to grow.
  */
 fun agedSince(r: Readiness, elapsedSeconds: Int): Readiness {
     if ((r.state != ReadinessState.WAITING && r.state != ReadinessState.STALE) || r.ageSeconds < 0) return r

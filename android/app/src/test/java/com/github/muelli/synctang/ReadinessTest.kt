@@ -158,9 +158,9 @@ class ReadinessTest {
     @Test
     fun aStatusAsLastSeenGrowsOlderWithTheTimeSince() {
         assertEquals(r(ReadinessState.WAITING, 52), agedSince(r(ReadinessState.WAITING, 42), 10))
-        // A waiting record that has passed its 150 s is stale now.
-        assertEquals(r(ReadinessState.STALE, 151), agedSince(r(ReadinessState.WAITING, 140), 11))
-        assertEquals(r(ReadinessState.WAITING, 150), agedSince(r(ReadinessState.WAITING, 140), 10))
+        // A waiting record that has passed its 90 s is stale now.
+        assertEquals(r(ReadinessState.STALE, 91), agedSince(r(ReadinessState.WAITING, 80), 11))
+        assertEquals(r(ReadinessState.WAITING, 90), agedSince(r(ReadinessState.WAITING, 80), 10))
         assertEquals(r(ReadinessState.STALE, 3_660), agedSince(r(ReadinessState.STALE, 3_600), 60))
         // Nothing to age: no age known, or not a record.
         assertEquals(r(ReadinessState.STALE, -1), agedSince(r(ReadinessState.STALE, -1), 60))

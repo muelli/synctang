@@ -19,8 +19,13 @@ func TestTheDefaultRefreshKeepsAWaitingRecordYoung(t *testing.T) {
 	if defaultAnnounceRefresh != time.Minute {
 		t.Errorf("defaultAnnounceRefresh = %s, want a minute", defaultAnnounceRefresh)
 	}
-	if 2*defaultAnnounceRefresh >= WaitingRecordMaxAge {
-		t.Errorf("a refresh every %s is not twice inside the %s a record counts as waiting", defaultAnnounceRefresh, WaitingRecordMaxAge)
+	// The record is as old as the time since the last refresh, and a lookup sees it some seconds after it was made:
+	// the first pace has to leave room for that inside the time a record counts as waiting.
+	if WaitingRecordMaxAge-defaultAnnounceRefresh < 30*time.Second {
+		t.Errorf("a refresh every %s leaves less than 30 s of the %s a record counts as waiting", defaultAnnounceRefresh, WaitingRecordMaxAge)
+	}
+	if WaitingRecordMaxAge != 90*time.Second {
+		t.Errorf("WaitingRecordMaxAge = %s, want the 90 s the phone's dot is green for", WaitingRecordMaxAge)
 	}
 	if got := (&SyncthingRelay{}).announceRefresh(); got != defaultAnnounceRefresh {
 		t.Errorf("an unset AnnounceRefresh means %s, want the default %s", got, defaultAnnounceRefresh)

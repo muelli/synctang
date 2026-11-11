@@ -115,7 +115,7 @@ The dot and the line under "Paired with ..." come from one lookup on the machine
 server: at once when that screen appears or the app comes back to the foreground, then every
 60 seconds with 20 percent jitter, only while that screen is showing and the app is in the
 foreground, and never two at the same time. The machine announces itself every 60 seconds and a
-record is fresh for 150, so asking more often could not tell anything new. "Check again" (Ctrl+R)
+record is fresh for 90, so asking more often could not tell anything new. "Check again" (Ctrl+R)
 and a long press on the dot look at once, but a check never starts less than 10 seconds after
 the last one, nor while the server has asked to be left alone.
 The app never connects to the machine to find out: it serves one session, and a probe would use
@@ -124,13 +124,13 @@ republishes its record every minute for the first fifteen minutes (a machine is 
 minutes, and those are when somebody is about to look), then every four minutes for fifteen, every sixteen
 for the next fifteen, and at most every thirty (a server that says how often it wants to be told, with
 Reannounce-After, caps that); an address that changes starts it again at once. The app calls a record at
-most 150 seconds old "waiting", so a machine that has been at its prompt for more than fifteen minutes
+most 90 seconds old "waiting", so a machine that has been at its prompt for more than fifteen minutes
 shows amber, "announced N min ago", though it still waits; that is what the record says, and Unlock
 works all the same:
 
 | Dot and words | Meaning |
 | --- | --- |
-| green, "The machine is waiting for you" | announced within 150 s (a timestamp in the future counts as now) |
+| green, "The machine is waiting for you" | announced within 90 s (a timestamp in the future counts as now) |
 | amber, "The machine announced itself N min ago. It may not be at its prompt" | a record that is older, or has no timestamp |
 | red, "The machine has not announced itself. It may still be starting, or switched off" | discovery has no record |
 | grey, "Cannot check: this phone cannot reach the discovery server" | the lookup itself failed, so nothing is known about the machine |
@@ -150,7 +150,7 @@ synctang`, "status waiting age=12") and the Go side's at trace.
 A dial that finds nothing for 90 seconds (the app) or `--timeout` (the command line, two minutes
 by default) ends with one more lookup of the machine on its discovery server, and the headline of
 the failure says what that found, so that "could not reach the machine" is not all there is to
-read. A record at most 150 seconds old: "The machine announced itself N s ago but did not answer.
+read. A record at most 90 seconds old: "The machine announced itself N s ago but did not answer.
 Try again. If it keeps failing, check its network." An older one: "The machine last announced
 itself N min ago, so it may not be at its prompt. Check the machine." No record: "The machine has
 not announced itself. It may still be starting, switched off, or using another discovery server."
