@@ -38,6 +38,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Where the launcher shortcuts and the widget lead. Not exported: only this app's own shortcuts
+             and PendingIntents can start it, and it only opens the app (see UnlockEntryActivity). -->
+        <activity
+            android:name=".UnlockEntryActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.NoDisplay" />
     </application>
 
 </manifest>

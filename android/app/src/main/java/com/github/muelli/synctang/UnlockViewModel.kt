@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import mobile.Mobile
 import mobile.Pairer
 import mobile.Session
@@ -59,6 +60,7 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
         unwrapKey = key::unwrap,
         checkKey = { key.prepareUnwrap() },
         resetIdentity = ::resetIdentity,
+        machinesChanged = ::publishShortcuts,
         allowSoftwareKey = store::allowSoftwareKey,
         strings = object : Strings {
             override fun get(id: Int, vararg args: Any) = application.getString(id, *args)
@@ -79,6 +81,13 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
 
     init {
         refresh()
+        publishShortcuts()
+    }
+
+    /** One launcher shortcut for each paired machine, off the main thread (it asks the system). */
+    private fun publishShortcuts() {
+        val app = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) { LauncherShortcuts.publish(app, store.machines()) }
     }
 
     private fun identity(): Identity {
@@ -110,10 +119,12 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
         val old = Mobile.deviceIDForSeed(store.identitySeed())
         key.delete()
         store.startNewIdentity()
+        publishShortcuts()
         return old
     }
 
     fun refresh() = flow.refresh()
+    fun unlockRequested(deviceId: String, gate: BiometricGate) = flow.unlockRequested(deviceId, gate)
     fun returnedToForeground() = flow.returnedToForeground()
     fun movedToBackground() = flow.movedToBackground()
     fun checkAgain() = flow.checkAgain()

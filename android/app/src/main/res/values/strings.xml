@@ -21,6 +21,7 @@
     <string name="pair_bad_setting">This pairing link names a server in its \"%1$s\" setting that is not a web address, so nothing was paired.</string>
     <string name="enrol_manual_title">Enrol by hand</string>
     <string name="enrol_manual_hint">Only for a machine that cannot show a pairing code. Run this on the machine, once, to let this phone unlock it.</string>
+    <string name="shortcut_unlock">Unlock %1$s</string>
     <string name="pair_copied">Copied to the clipboard.</string>
     <string name="pair_copy">Copy the enrolment command</string>
     <string name="pair_by_hand">No pairing code? Enrol by hand</string>

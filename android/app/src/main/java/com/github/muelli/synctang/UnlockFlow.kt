@@ -171,6 +171,9 @@ interface MachineStore {
     fun machine(): Machine?
     fun saveMachine(machine: Machine)
 
+    /** Every paired machine, the one used last first. Today that is the one machine there is, or none. */
+    fun machines(): List<Machine> = listOfNotNull(machine())
+
     /** The paired machine with this Device ID, if there is one. */
     fun machine(deviceId: String): Machine? = machine()?.takeIf { it.deviceId == deviceId }
 }
@@ -320,6 +323,9 @@ class UnlockFlow(
     private val prepareKey: () -> Cipher,
     private val unwrapKey: (Cipher) -> ByteArray,
     private val resetIdentity: () -> String,
+    // Told after the set of paired machines changed, so that what is published of it (the launcher's
+    // shortcuts) follows. Not called from the identity reset, which the caller knows about already.
+    private val machinesChanged: () -> Unit = {},
     private val allowSoftwareKey: () -> Unit = {},
     private val approveWindowMillis: Long = APPROVE_WINDOW_MILLIS,
     // How long either Keystore call may take: a stuck one cannot be
@@ -648,6 +654,7 @@ class UnlockFlow(
         val ready = _state.value as? UnlockUiState.Ready ?: return
         val replaced = ready.replaced ?: return
         store.saveMachine(replaced)
+        machinesChanged()
         refresh()
     }
 
@@ -665,6 +672,7 @@ class UnlockFlow(
     private suspend fun adopt(machine: Machine) {
         val replaced = store.machine()?.takeIf { it.deviceId != machine.deviceId }
         store.saveMachine(machine)
+        machinesChanged()
         val next = home(previous = null)
         _state.value = if (next is UnlockUiState.Ready) next.copy(replaced = replaced) else next
     }

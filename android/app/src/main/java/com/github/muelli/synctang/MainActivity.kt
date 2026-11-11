@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 package com.github.muelli.synctang
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.KeyboardShortcutGroup
@@ -18,16 +19,22 @@ import com.github.muelli.synctang.ui.SynctangTheme
  * "unlock the machine you paired with".
  *
  * Deliberately not ported from the reference app this project borrowed
- * its transport from: the quick settings tile, the home screen widget,
- * and the build-a-second-APK-per-machine trick. The plan for this app
- * asks for one Unlock action, and every one of those features is
- * another entry point that has to be got right in front of a key that
- * unlocks a disk.
+ * its transport from: the quick settings tile and the build-a-second-APK-
+ * per-machine trick. Every entry point is another way to reach a key that
+ * unlocks a disk, so the ones there are (a shortcut on the launcher and a
+ * widget) share one rule: this activity is exported, so it reads nothing
+ * from the intent that starts it. A request to unlock comes through
+ * [UnlockEntryActivity], which only this app's own shortcuts and pending
+ * intents can start, and through [PendingUnlock]; it is the Unlock button's
+ * one tap for a machine the phone is paired with, and the fingerprint is
+ * still what lets the answer go.
  */
 class MainActivity : FragmentActivity() {
 
     /** What the screens on show can be told to do by key; see [ShortcutRegistry]. */
     private val shortcuts = ShortcutRegistry()
+
+    private lateinit var gate: BiometricGate
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -35,13 +42,25 @@ class MainActivity : FragmentActivity() {
         // threading a flag through the unlock flow: there is then no
         // branch inside the flow that could behave differently in the
         // build people actually use.
-        val gate: BiometricGate =
-            if (TestMode.noBiometric) OpenGate else BiometricGateImpl(this)
+        gate = if (TestMode.noBiometric) OpenGate else BiometricGateImpl(this)
         setContent {
             SynctangTheme {
                 SynctangApp(gate, shortcuts)
             }
         }
+        askedToUnlock()
+    }
+
+    /** The app was already open and a shortcut or the widget brought it to the front. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        askedToUnlock()
+    }
+
+    /** Takes what the entry activity left, if anything: never anything from this activity's own intent. */
+    private fun askedToUnlock() {
+        val deviceId = PendingUnlock.app.take() ?: return
+        ViewModelProvider(this)[UnlockViewModel::class.java].unlockRequested(deviceId, gate)
     }
 
     /**
