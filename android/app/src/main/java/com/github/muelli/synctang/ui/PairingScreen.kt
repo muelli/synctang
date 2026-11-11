@@ -47,9 +47,8 @@ internal fun PairingScreen(
     var rejected by remember { mutableStateOf(false) }
 
     ScreenHeader(stringResource(R.string.pair_title), stringResource(R.string.pair_scan_hint))
-    state.previous?.let { previous ->
-        val name = previous.name.ifBlank { previous.deviceId }
-        Text(stringResource(R.string.pair_keeps_previous, name), style = MaterialTheme.typography.bodyMedium)
+    if (state.kept.isNotEmpty()) {
+        Text(stringResource(R.string.pair_keeps_others), style = MaterialTheme.typography.bodyMedium)
     }
 
     scanner(
@@ -99,7 +98,7 @@ internal fun PairingScreen(
             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive },
         )
     }
-    state.previous?.let { previous ->
+    if (state.kept.isNotEmpty()) {
         OutlinedButton(
             onClick = onKeepCurrent,
             modifier = Modifier
@@ -107,7 +106,7 @@ internal fun PairingScreen(
                 .shortcut(AppAction.KEEP_CURRENT, onInvoke = onKeepCurrent)
                 .focusRing(),
         ) {
-            Text(stringResource(R.string.pair_keep_current, previous.name.ifBlank { previous.deviceId }))
+            Text(stringResource(R.string.pair_keep_current))
         }
     }
 

@@ -31,13 +31,21 @@
     <string name="pair_copied">Copied to the clipboard.</string>
     <string name="pair_copy">Copy the enrolment command</string>
     <string name="pair_by_hand">No pairing code? Enrol by hand</string>
-    <string name="pair_again">Pair with a machine again</string>
-    <string name="pair_keeps_previous">%1$s stays paired until a new pairing works.</string>
-    <string name="pair_keep_current">Keep using %1$s</string>
+    <string name="pair_again">Pair another machine</string>
+    <string name="pair_keeps_others">The machines you have paired stay paired, whatever happens here.</string>
+    <string name="pair_keep_current">Back to my machines</string>
     <string name="pair_working">Pairing with the machine…</string>
     <string name="pair_code_intro">The machine shows its operator a code. It must be this one:</string>
     <string name="pair_code_warning">If it is different, tap Cancel: somebody else used the pairing code first.</string>
-    <string name="pair_replaced">Now paired with %1$s instead of %2$s.</string>
+    <string name="forgot_machine">Forgot %1$s.</string>
+    <string name="forget_action">Forget this machine</string>
+    <string name="forget_title">Forget %1$s?</string>
+    <string name="forget_message">This phone stops listing it. The machine still trusts this phone until you remove it there with synctang-unlocker revoke.</string>
+    <string name="forget_confirm">Forget</string>
+    <string name="forget_cancel">Keep it</string>
+    <string name="machines_title">Your machines</string>
+    <string name="machines_hint">Unlock one of them, or pair another.</string>
+    <string name="unlock_machine_named">Unlock %1$s</string>
     <string name="pair_undo">Undo</string>
     <string name="pair_undo_dismiss">Dismiss</string>
 

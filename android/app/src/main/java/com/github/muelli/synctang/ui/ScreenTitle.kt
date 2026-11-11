@@ -17,6 +17,7 @@ internal fun screenTitle(state: UnlockUiState, aboutOpen: Boolean): Int = when {
     else -> when (state) {
         is UnlockUiState.NeedsPairing -> R.string.pair_title
         is UnlockUiState.Ready -> R.string.ready_title
+        is UnlockUiState.Machines -> R.string.machines_title
         is UnlockUiState.Connecting -> R.string.unlock_connecting
         is UnlockUiState.Pairing -> R.string.pair_working
         is UnlockUiState.Approve -> R.string.unlock_request_title

@@ -21,8 +21,9 @@ class AboutTest {
     @Test
     fun offeredWhereThePhonesIdentityIsAtHand() {
         assertEquals(identity, aboutIdentity(UnlockUiState.NeedsPairing(identity)))
-        assertEquals(identity, aboutIdentity(UnlockUiState.NeedsPairing(identity, previous = machine)))
+        assertEquals(identity, aboutIdentity(UnlockUiState.NeedsPairing(identity, kept = listOf(machine))))
         assertEquals(identity, aboutIdentity(UnlockUiState.Ready(machine, identity)))
+        assertEquals(identity, aboutIdentity(UnlockUiState.Machines(listOf(machine), identity)))
     }
 
     @Test

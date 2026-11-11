@@ -93,7 +93,7 @@ private fun SynctangScreens(gate: BiometricGate, model: UnlockViewModel) {
     SideEffect { activity?.title = windowTitle }
 
     val snackbar = remember { SnackbarHostState() }
-    UndoReplace(state as? UnlockUiState.Ready, snackbar, model)
+    UndoForget(forgottenIn(state), snackbar, model)
 
     Scaffold(
         // Test tags become resource IDs, so that adb and UI Automator
@@ -119,7 +119,20 @@ private fun SynctangScreens(gate: BiometricGate, model: UnlockViewModel) {
             when (val current = state) {
                 is UnlockUiState.NeedsPairing ->
                     PairingScreen(current, model::pair, model::keepCurrentMachine, onEnrolByHand = { aboutOpen = true })
-                is UnlockUiState.Ready -> ReadyScreen(current, { model.connect(gate) }, model::startPairing, model::checkAgain)
+                is UnlockUiState.Ready -> ReadyScreen(
+                    current,
+                    { model.connect(gate) },
+                    model::startPairing,
+                    { model.checkAgain() },
+                    { model.forget(current.machine.deviceId) },
+                )
+                is UnlockUiState.Machines -> MachinesScreen(
+                    current,
+                    { machine -> model.connect(machine, gate) },
+                    { machine -> model.checkAgain(machine.deviceId) },
+                    { machine -> model.forget(machine.deviceId) },
+                    model::startPairing,
+                )
                 is UnlockUiState.Connecting ->
                     Busy(stringResource(R.string.unlock_connecting), current.machine, current.progress, onCancel = model::cancel)
                 is UnlockUiState.Pairing ->
@@ -192,21 +205,24 @@ private fun appVersion(): String {
     }
 }
 
+/** The machine that has just been forgotten, which the home screens offer to take back. */
+internal fun forgottenIn(state: UnlockUiState): com.github.muelli.synctang.Machine? = when (state) {
+    is UnlockUiState.Ready -> state.forgotten
+    is UnlockUiState.Machines -> state.forgotten
+    is UnlockUiState.NeedsPairing -> state.forgotten
+    else -> null
+}
+
 /**
- * A pairing that replaced a different machine is offered back, the
- * way Android apps offer to undo anything done in one tap: a snackbar
- * with Undo. A pairing without a one-time code cannot fail, so this is
- * the only thing between a mistyped device ID and a working pairing
- * lost.
+ * A machine that has just been forgotten is offered back, the way Android apps offer to undo anything done
+ * in one tap: a snackbar with Undo. Forgetting only takes it off this phone, so taking it back is all there
+ * is to undo.
  */
 @Composable
-internal fun UndoReplace(ready: UnlockUiState.Ready?, snackbar: SnackbarHostState, model: UnlockViewModel) {
-    val replaced = ready?.replaced
-    val message = replaced?.let {
-        stringResource(R.string.pair_replaced, ready.machine.label(), it.label())
-    }
+internal fun UndoForget(forgotten: com.github.muelli.synctang.Machine?, snackbar: SnackbarHostState, model: UnlockViewModel) {
+    val message = forgotten?.let { stringResource(R.string.forgot_machine, it.label()) }
     val undo = stringResource(R.string.pair_undo)
-    LaunchedEffect(replaced) {
+    LaunchedEffect(forgotten) {
         if (message == null) return@LaunchedEffect
         val result = snackbar.showSnackbar(
             message,
@@ -215,7 +231,7 @@ internal fun UndoReplace(ready: UnlockUiState.Ready?, snackbar: SnackbarHostStat
             duration = SnackbarDuration.Long,
         )
         when (result) {
-            SnackbarResult.ActionPerformed -> model.undoReplace()
+            SnackbarResult.ActionPerformed -> model.undoForget()
             SnackbarResult.Dismissed -> model.dismissUndo()
         }
     }

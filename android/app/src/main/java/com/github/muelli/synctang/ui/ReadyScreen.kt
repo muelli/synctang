@@ -13,6 +13,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
@@ -26,7 +28,17 @@ import com.github.muelli.synctang.focusRing
 import com.github.muelli.synctang.rememberAutoFocusRequester
 
 @Composable
-internal fun ReadyScreen(state: UnlockUiState.Ready, onUnlock: () -> Unit, onPairAgain: () -> Unit, onCheckAgain: () -> Unit) {
+internal fun ReadyScreen(
+    state: UnlockUiState.Ready,
+    onUnlock: () -> Unit,
+    onPairAgain: () -> Unit,
+    onCheckAgain: () -> Unit,
+    onForget: () -> Unit = {},
+) {
+    var confirmForget by remember { mutableStateOf(false) }
+    if (confirmForget) {
+        ForgetDialog(state.machine, onConfirm = { confirmForget = false; onForget() }, onDismiss = { confirmForget = false })
+    }
     // The machine is the headline: on this screen it is the only thing
     // there is to act on.
     Column {
@@ -71,12 +83,17 @@ internal fun ReadyScreen(state: UnlockUiState.Ready, onUnlock: () -> Unit, onPai
         Spacer(Modifier.width(Spacing.small))
         Text(stringResource(R.string.unlock_action), style = MaterialTheme.typography.titleMedium)
     }
-    // Not destructive: the machine above stays paired, and stays the
-    // one Unlock dials, until a new pairing has actually worked.
+    // Not destructive: pairing another machine adds one, and the machine above stays paired.
     TextButton(
         onClick = onPairAgain,
         modifier = Modifier.shortcut(AppAction.PAIR_AGAIN, onInvoke = onPairAgain).focusRing(),
     ) {
         Text(stringResource(R.string.pair_again))
+    }
+    TextButton(
+        onClick = { confirmForget = true },
+        modifier = Modifier.shortcut(AppAction.FORGET) { confirmForget = true }.focusRing(),
+    ) {
+        Text(stringResource(R.string.forget_action))
     }
 }

@@ -56,21 +56,37 @@ enum class Retry {
  */
 sealed interface UnlockUiState {
     /**
-     * Scan a machine's QR code. [previous] is the machine already
-     * paired, if any, which stays paired until a new pairing works.
+     * Scan a machine's QR code. [kept] are the machines already paired, which stay paired
+     * whatever happens here; a pairing that works adds one. [forgotten] is a machine that has just
+     * been forgotten, which the screen offers to take back.
      */
-    data class NeedsPairing(val identity: Identity, val previous: Machine? = null) : UnlockUiState
+    data class NeedsPairing(
+        val identity: Identity,
+        val kept: List<Machine> = emptyList(),
+        val forgotten: Machine? = null,
+    ) : UnlockUiState
 
     /**
-     * Paired and idle; the Unlock button is the only thing to do.
-     * [replaced] is the machine a pairing has just replaced, which the
-     * screen offers to go back to.
+     * Paired with one machine and idle; the Unlock button is the only thing to do.
+     * [forgotten] is the machine that has just been forgotten, which the screen offers to
+     * take back.
      */
     data class Ready(
         val machine: Machine,
         val identity: Identity,
-        val replaced: Machine? = null,
+        val forgotten: Machine? = null,
         val readiness: Readiness = Readiness(),
+    ) : UnlockUiState
+
+    /**
+     * Paired with two machines or more and idle: one row for each, the one used last first, each with
+     * what discovery last said of it in [readiness] (a machine not in it has not been looked up yet).
+     */
+    data class Machines(
+        val machines: List<Machine>,
+        val identity: Identity,
+        val readiness: Map<String, Readiness> = emptyMap(),
+        val forgotten: Machine? = null,
     ) : UnlockUiState
 
     /** Dialling [machine]; [progress] says how far the dial has got. */
@@ -166,16 +182,28 @@ internal const val POLL_INTERVAL_MILLIS = 500L
 /** How many unknown parameter names a refusal lists, so a hostile link cannot fill the screen. */
 private const val MAX_NAMES_SHOWN = 3
 
-/** Which machine this phone is paired with. [PairingStore] is the real one. */
-interface MachineStore {
-    fun machine(): Machine?
-    fun saveMachine(machine: Machine)
+/** The most lookups, in one poll interval, that the readiness loop makes over the whole list of machines. */
+private const val MAX_READINESS_LOOKUPS_PER_POLL = 3
 
-    /** Every paired machine, the one used last first. Today that is the one machine there is, or none. */
-    fun machines(): List<Machine> = listOfNotNull(machine())
+/** The machines this phone is paired with. [PairingStore] is the real one. */
+interface MachineStore {
+    /** Every paired machine, the one used last first. */
+    fun machines(): List<Machine>
+
+    /** The machine used last, if there is one. */
+    fun machine(): Machine? = machines().firstOrNull()
 
     /** The paired machine with this Device ID, if there is one. */
-    fun machine(deviceId: String): Machine? = machine()?.takeIf { it.deviceId == deviceId }
+    fun machine(deviceId: String): Machine? = machines().firstOrNull { it.deviceId == deviceId }
+
+    /** Adds the machine, or updates the one with its Device ID; it becomes the one used last. */
+    fun saveMachine(machine: Machine)
+
+    /** Removes the machine; nothing else is touched. */
+    fun forget(deviceId: String)
+
+    /** The machine with this Device ID is the one used last now. */
+    fun markUsed(deviceId: String)
 }
 
 /**
@@ -258,8 +286,8 @@ enum class BackAction {
  */
 fun backAction(state: UnlockUiState): BackAction = when (state) {
     is UnlockUiState.NeedsPairing ->
-        if (state.previous != null) BackAction.KEEP_CURRENT_MACHINE else BackAction.EXIT
-    is UnlockUiState.Ready, is UnlockUiState.Done, is UnlockUiState.Failed,
+        if (state.kept.isNotEmpty()) BackAction.KEEP_CURRENT_MACHINE else BackAction.EXIT
+    is UnlockUiState.Ready, is UnlockUiState.Machines, is UnlockUiState.Done, is UnlockUiState.Failed,
     is UnlockUiState.SoftwareKeyRefused, is UnlockUiState.KeyNeedsReplacing -> BackAction.EXIT
     is UnlockUiState.Connecting, is UnlockUiState.Pairing,
     is UnlockUiState.Approve -> BackAction.CANCEL
@@ -373,7 +401,9 @@ class UnlockFlow(
     private val lastReadiness = HashMap<String, Readiness>()
     private val lastReadinessAt = HashMap<String, Long>()
     private var readinessJob: Job? = null
-    private var readinessMachine: String? = null
+    private var readinessMachines: List<String> = emptyList()
+    // A machine on the list that was asked about by name (Check again on its row), for the next look.
+    private var nudgeTarget: String? = null
     @Volatile private var appForeground = true
 
     private val _state = LoggedState(UnlockUiState.Working(Machine("", "")))
@@ -403,22 +433,38 @@ class UnlockFlow(
      * And when the server answers that it is being asked too often, nothing asks again until
      * its Retry-After is up, while the chip goes on showing what it showed.
      */
+    private fun followedMachines(state: UnlockUiState): List<Machine> = when (state) {
+        is UnlockUiState.Ready -> listOf(state.machine)
+        is UnlockUiState.Machines -> state.machines
+        else -> emptyList()
+    }
+
     private fun followReadiness(state: UnlockUiState) {
-        if (state !is UnlockUiState.Ready) {
+        val machines = followedMachines(state)
+        if (machines.isEmpty()) {
             readinessJob?.cancel()
             readinessJob = null
-            readinessMachine = null
+            readinessMachines = emptyList()
             return
         }
-        if (readinessJob?.isActive == true && readinessMachine == state.machine.deviceId) return
+        val ids = machines.map { it.deviceId }
+        if (readinessJob?.isActive == true && readinessMachines == ids) return
         readinessJob?.cancel()
-        readinessMachine = state.machine.deviceId
-        val machine = state.machine
+        readinessMachines = ids
         readinessJob = scope.launch {
             while (readinessNudges.tryReceive().isSuccess) { /* asked for before this screen was up */ }
             var scheduled = true
             var lastStart = Long.MIN_VALUE / 2
+            var turn = 0
+            var machine = machines.first()
             while (true) {
+                val shown = followedMachines(_state.value)
+                // The set of machines changed: another job follows that one.
+                if (shown.map { it.deviceId } != ids) return@launch
+                // One at a time, round and round; one the person asked about by name goes first.
+                val named = nudgeTarget?.let { id -> shown.firstOrNull { it.deviceId == id } }
+                nudgeTarget = null
+                machine = named ?: shown[turn % shown.size].also { turn++ }
                 val t = clock()
                 val limitedUntil = rateLimitedUntil[machine.discovery] ?: 0L
                 val allowed = appForeground && t >= limitedUntil &&
@@ -434,12 +480,20 @@ class UnlockFlow(
                     }
                     readinessNudges.tryReceive() // asked for while this one ran: this is that answer
                     val now = _state.value
-                    if (now !is UnlockUiState.Ready || now.machine.deviceId != machine.deviceId) return@launch
+                    if (followedMachines(now).none { it.deviceId == machine.deviceId }) return@launch
                     when (answer) {
                         is StatusAnswer.Known -> {
                             rememberReadiness(machine, answer.readiness)
-                            appLog.d { "status ${answer.readiness.state.name.lowercase()} age=${answer.readiness.ageSeconds}" }
-                            if (now.readiness != answer.readiness) _state.value = now.copy(readiness = answer.readiness)
+                            appLog.d { "status ${machine.deviceId} ${answer.readiness.state.name.lowercase()} age=${answer.readiness.ageSeconds}" }
+                            when (now) {
+                                is UnlockUiState.Ready ->
+                                    if (now.readiness != answer.readiness) _state.value = now.copy(readiness = answer.readiness)
+                                is UnlockUiState.Machines ->
+                                    if (now.readiness[machine.deviceId] != answer.readiness) {
+                                        _state.value = now.copy(readiness = now.readiness + (machine.deviceId to answer.readiness))
+                                    }
+                                else -> Unit
+                            }
                         }
                         is StatusAnswer.RateLimited -> {
                             rateLimitedUntil[machine.discovery] = clock() + answer.retryAfterMillis
@@ -448,10 +502,13 @@ class UnlockFlow(
                     }
                 }
                 val untilAllowed = (rateLimitedUntil[machine.discovery] ?: 0L) - clock()
-                val wait = maxOf(readinessPollDelayMillis(readinessPollMillis, readinessJitter()), untilAllowed)
+                // Each machine about as often as one alone would be, and never more than a few
+                // looks a minute in all, however many machines there are.
+                val gap = readinessPollMillis / minOf(shown.size, MAX_READINESS_LOOKUPS_PER_POLL)
+                val wait = maxOf(readinessPollDelayMillis(gap, readinessJitter()), untilAllowed)
                 val nudged = withTimeoutOrNull(wait) { readinessNudges.receive(); true } ?: false
                 scheduled = !nudged
-                if (_state.value !is UnlockUiState.Ready) return@launch
+                if (followedMachines(_state.value).isEmpty()) return@launch
             }
         }
     }
@@ -498,8 +555,9 @@ class UnlockFlow(
      * A tap on Check again: look the machine up now, if the last look was not just now and
      * the discovery server has not asked to be left alone.
      */
-    fun checkAgain() {
-        appLog.d { "action check again" }
+    fun checkAgain(deviceId: String? = null) {
+        appLog.d { "action check again" + if (deviceId != null) " id=$deviceId" else "" }
+        nudgeTarget = deviceId
         readinessNudges.trySend(Unit)
     }
 
@@ -545,7 +603,7 @@ class UnlockFlow(
     fun refresh() {
         appLog.d { "action refresh" }
         scope.launch {
-            _state.value = home(previous = null)
+            _state.value = home()
             checkKeyOnce()
         }
     }
@@ -570,7 +628,7 @@ class UnlockFlow(
 
     private fun runKeyCheck() {
         val shown = _state.value
-        if (keyCheckRunning || (shown !is UnlockUiState.Ready && shown !is UnlockUiState.NeedsPairing)) return
+        if (keyCheckRunning || (shown !is UnlockUiState.Ready && shown !is UnlockUiState.Machines && shown !is UnlockUiState.NeedsPairing)) return
         keyChecked = true
         keyCheckRunning = true
         scope.launch {
@@ -581,7 +639,7 @@ class UnlockFlow(
                 // Not while a dial is under way or a request is waiting (the screen is
                 // then Connecting or Approve): that session has this identity, and the
                 // approval finds the dead key for itself.
-                if (now is UnlockUiState.Ready || now is UnlockUiState.NeedsPairing) {
+                if (now is UnlockUiState.Ready || now is UnlockUiState.Machines || now is UnlockUiState.NeedsPairing) {
                     logWarn("the key was found invalidated at start", e)
                     val oldDeviceId = withContext(io) { resetIdentity() }
                     _state.value = UnlockUiState.Failed(
@@ -608,7 +666,7 @@ class UnlockFlow(
      */
     fun startPairing() {
         appLog.d { "action start pairing" }
-        scope.launch { _state.value = home(previous = store.machine(), forcePairing = true) }
+        scope.launch { _state.value = home(forcePairing = true) }
     }
 
     fun keepCurrentMachine() {
@@ -645,46 +703,68 @@ class UnlockFlow(
     }
 
     /**
-     * Goes back to the machine a pairing has just replaced. Only the
-     * phone's side is undone: a machine that enrolled this phone keeps
-     * it enrolled until it is revoked there.
+     * Removes a machine from this phone: the entry, and nothing else. A machine that enrolled this phone keeps
+     * it enrolled until its key holder is revoked there. Only from the home screens, not while something is
+     * under way. The screen offers to take it back ([undoForget]).
      */
-    fun undoReplace() {
-        appLog.d { "action undo replace" }
-        val ready = _state.value as? UnlockUiState.Ready ?: return
-        val replaced = ready.replaced ?: return
-        store.saveMachine(replaced)
+    fun forget(deviceId: String) {
+        appLog.d { "action forget id=$deviceId" }
+        val shown = _state.value
+        if (shown !is UnlockUiState.Ready && shown !is UnlockUiState.Machines) return
+        val machine = store.machine(deviceId) ?: return
+        store.forget(deviceId)
+        machinesChanged()
+        scope.launch { _state.value = home(forgotten = machine) }
+    }
+
+    private fun forgottenOf(state: UnlockUiState): Machine? = when (state) {
+        is UnlockUiState.Ready -> state.forgotten
+        is UnlockUiState.Machines -> state.forgotten
+        is UnlockUiState.NeedsPairing -> state.forgotten
+        else -> null
+    }
+
+    /** Takes back the machine that has just been forgotten. */
+    fun undoForget() {
+        appLog.d { "action undo forget" }
+        val machine = forgottenOf(_state.value) ?: return
+        store.saveMachine(machine)
         machinesChanged()
         refresh()
     }
 
-    /** The offer to undo has gone unused; stop offering it. */
+    /** The offer to take a machine back has gone unused; stop offering it. */
     fun dismissUndo() {
         appLog.d { "action dismiss undo" }
-        val ready = _state.value as? UnlockUiState.Ready ?: return
-        _state.value = ready.copy(replaced = null)
+        _state.value = when (val shown = _state.value) {
+            is UnlockUiState.Ready -> shown.copy(forgotten = null)
+            is UnlockUiState.Machines -> shown.copy(forgotten = null)
+            is UnlockUiState.NeedsPairing -> shown.copy(forgotten = null)
+            else -> return
+        }
     }
 
-    /**
-     * Saves [machine] as the paired one and shows it, offering to undo
-     * if that replaced a different machine.
-     */
+    /** Saves [machine] (adds it, or updates the one with its Device ID) and shows the home screen. */
     private suspend fun adopt(machine: Machine) {
-        val replaced = store.machine()?.takeIf { it.deviceId != machine.deviceId }
         store.saveMachine(machine)
         machinesChanged()
-        val next = home(previous = null)
-        _state.value = if (next is UnlockUiState.Ready) next.copy(replaced = replaced) else next
+        _state.value = home()
     }
 
-    private suspend fun home(previous: Machine?, forcePairing: Boolean = false): UnlockUiState =
+    private suspend fun home(forcePairing: Boolean = false, forgotten: Machine? = null): UnlockUiState =
         try {
             val identity = withContext(io) { identity() }
-            val machine = store.machine()
-            if (machine == null || forcePairing) {
-                UnlockUiState.NeedsPairing(identity, previous)
-            } else {
-                UnlockUiState.Ready(machine, identity, readiness = lastReadiness[machine.deviceId] ?: Readiness())
+            val machines = store.machines()
+            when {
+                machines.isEmpty() || forcePairing -> UnlockUiState.NeedsPairing(identity, machines, forgotten)
+                machines.size == 1 -> UnlockUiState.Ready(
+                    machines[0], identity, forgotten, lastReadiness[machines[0].deviceId] ?: Readiness(),
+                )
+                else -> UnlockUiState.Machines(
+                    machines, identity,
+                    machines.mapNotNull { m -> lastReadiness[m.deviceId]?.let { m.deviceId to it } }.toMap(),
+                    forgotten,
+                )
             }
         } catch (e: SoftwareKeyRefused) {
             UnlockUiState.SoftwareKeyRefused
@@ -718,9 +798,8 @@ class UnlockFlow(
      *
      * Without a code all that has been scanned is a machine to
      * remember, which is what enrolment looked like before, so it is
-     * saved straight away and the enrol command is what remains. That
-     * cannot fail, so nothing protects the machine it replaces except
-     * the undo offered on the Unlock screen afterwards (see [adopt]).
+     * saved straight away and the enrol command is what remains. It adds
+     * the machine; a machine saved by mistake is forgotten from the list.
      */
     fun pair(scanned: String): Boolean {
         // The machine, and only whether there was a code: never the code, never the link.
@@ -759,7 +838,6 @@ class UnlockFlow(
     }
 
     private fun enrol(machine: Machine, code: String) {
-        val previous = store.machine()
         val attempt = InFlight()
         inFlight = attempt
         _state.value = UnlockUiState.Pairing(machine, Progress(startedAtMillis = clock()))
@@ -781,7 +859,7 @@ class UnlockFlow(
                 adopt(machine)
             } catch (e: Exception) {
                 if (attempt.cancelled) {
-                    _state.value = home(previous = previous, forcePairing = true)
+                    _state.value = home(forcePairing = true)
                 } else if (e is SoftwareKeyRefused) {
                     _state.value = UnlockUiState.SoftwareKeyRefused
                 } else if (e is KeyNeedsReplacing) {
@@ -837,6 +915,11 @@ class UnlockFlow(
         connectTo(store.machine() ?: return, gate)
     }
 
+    /** The same for one machine on the list. */
+    fun connect(machine: Machine, gate: BiometricGate? = null) {
+        connectTo(machine, gate)
+    }
+
     // An unlock asked for from outside the app, which came before the home screen was there.
     private var waitingUnlock: Pair<String, BiometricGate>? = null
     private var waitingUnlockAt = 0L
@@ -860,8 +943,8 @@ class UnlockFlow(
             return
         }
         when (_state.value) {
-            is UnlockUiState.Ready, is UnlockUiState.Done, is UnlockUiState.Failed, is UnlockUiState.NeedsPairing ->
-                startRequestedUnlock(deviceId, gate)
+            is UnlockUiState.Ready, is UnlockUiState.Machines, is UnlockUiState.Done, is UnlockUiState.Failed,
+            is UnlockUiState.NeedsPairing -> startRequestedUnlock(deviceId, gate)
             else -> appLog.d { "unlock requested from outside dropped: busy" }
         }
     }
@@ -881,7 +964,7 @@ class UnlockFlow(
         homeShown = true
         val (deviceId, gate) = waitingUnlock ?: return
         waitingUnlock = null
-        if (next !is UnlockUiState.Ready || clock() - waitingUnlockAt > PENDING_UNLOCK_MILLIS) {
+        if ((next !is UnlockUiState.Ready && next !is UnlockUiState.Machines) || clock() - waitingUnlockAt > PENDING_UNLOCK_MILLIS) {
             appLog.d { "unlock requested from outside dropped: not ready in time" }
             return
         }
@@ -890,6 +973,9 @@ class UnlockFlow(
 
     private fun connectTo(machine: Machine, gate: BiometricGate?) {
         appLog.d { "action connect machine=${machine.name} id=${machine.deviceId}" + if (gate != null) " one-tap" else "" }
+        // The machine unlocked last comes first on the list, in the shortcuts and on the widget.
+        store.markUsed(machine.deviceId)
+        machinesChanged()
         disarmApproveExpiry()
         val attempt = InFlight()
         inFlight = attempt
@@ -932,7 +1018,7 @@ class UnlockFlow(
                 // The dial gave up: say what discovery knows of the machine, in the headline.
                 val known = if (!attempt.cancelled && isUnreachable(e)) statusAtFailure(machine) else null
                 _state.value = if (attempt.cancelled) {
-                    home(previous = null)
+                    home()
                 } else {
                     failed(machine, e, known = known)
                 }
@@ -955,8 +1041,9 @@ class UnlockFlow(
         // One approval per request: a second press, or a key, queued
         // behind the first would start a second prompt over the same
         // session.
-        if (_state.value !is UnlockUiState.Approve) return
-        val machine = store.machine() ?: return
+        val waiting = _state.value as? UnlockUiState.Approve ?: return
+        // The machine as this phone knows it, by name; the Approve state carries what the machine called itself.
+        val machine = store.machine(waiting.machine.deviceId) ?: waiting.machine
         val active = session ?: return
         appLog.d { "action approve machine=${machine.name}" }
         // The window to answer is not ended by tapping Approve: the fingerprint prompt
@@ -1119,7 +1206,7 @@ class UnlockFlow(
             }
             closeSession()
         }
-        _state.value = home(previous = null)
+        _state.value = home()
     }
 
     private fun failed(machine: Machine?, e: Exception, retry: Retry = Retry.REFRESH, known: Readiness? = null): UnlockUiState.Failed {
@@ -1291,8 +1378,9 @@ internal fun describeForLog(state: UnlockUiState): String {
     fun machine(m: Machine) = "machine=${m.name} id=${m.deviceId}"
     fun progress(p: Progress) = "stage=${p.stage.name.lowercase()} attempt=${p.attempt} route=${p.route.name.lowercase()}"
     return when (state) {
-        is UnlockUiState.NeedsPairing -> "NeedsPairing phone=${state.identity.deviceId} previous=${state.previous?.name ?: "none"}"
+        is UnlockUiState.NeedsPairing -> "NeedsPairing phone=${state.identity.deviceId} kept=${state.kept.size}"
         is UnlockUiState.Ready -> "Ready ${machine(state.machine)} phone=${state.identity.deviceId}"
+        is UnlockUiState.Machines -> "Machines count=${state.machines.size} phone=${state.identity.deviceId}"
         is UnlockUiState.Connecting -> "Connecting ${machine(state.machine)} ${progress(state.progress)}"
         is UnlockUiState.Pairing -> "Pairing ${machine(state.machine)} ${progress(state.progress)}"
         is UnlockUiState.Approve -> "Approve ${machine(state.machine)} peer=${state.peerId} kid=${kidPrefix(state.kidHex)} expiresAt=${state.expiresAtMillis}"

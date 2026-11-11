@@ -56,7 +56,7 @@ private fun NeedsPairingPreview() = Frame {
 @Preview(name = "NeedsPairing, pairing again", widthDp = 360, heightDp = 800)
 @Composable
 private fun PairingAgainPreview() = Frame {
-    PairingScreen(UnlockUiState.NeedsPairing(identity, previous = machine), { true }, {}, {}, noScanner)
+    PairingScreen(UnlockUiState.NeedsPairing(identity, kept = listOf(machine)), { true }, {}, {}, noScanner)
 }
 
 @Preview(name = "NeedsPairing, camera denied", widthDp = 360, heightDp = 800)

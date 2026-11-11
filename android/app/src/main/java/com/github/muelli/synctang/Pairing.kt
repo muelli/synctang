@@ -6,6 +6,9 @@ import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import java.security.SecureRandom
+import org.json.JSONArray
+import org.json.JSONException
+import org.json.JSONObject
 
 /**
  * One paired machine: which machine to dial, and what to call it in the
@@ -66,13 +69,48 @@ class PairingStore(context: Context) : MachineStore {
         return fresh
     }
 
-    override fun machine(): Machine? {
-        val id = prefs.getString(KEY_MACHINE_ID, null) ?: return null
-        return Machine(
-            id,
-            prefs.getString(KEY_MACHINE_NAME, null).orEmpty(),
-            prefs.getString(KEY_MACHINE_DISCOVERY, null).orEmpty(),
-        )
+    /**
+     * The paired machines, the one used last first, kept as one JSON list in the same encrypted file as
+     * the rest, so that a rewritten Device ID is as hard here as it was when there was one machine. Only
+     * what [Machine] holds goes in: no status, nothing secret.
+     */
+    override fun machines(): List<Machine> {
+        val json = prefs.getString(KEY_MACHINES, null) ?: return emptyList()
+        return try {
+            val array = JSONArray(json)
+            (0 until array.length()).map { i ->
+                val o = array.getJSONObject(i)
+                Machine(o.getString("id"), o.optString("name"), o.optString("discovery"))
+            }
+        } catch (e: JSONException) {
+            // A list that cannot be read is no list: the phone is paired again, which is what the file is
+            // for. Not a crash at start.
+            emptyList()
+        }
+    }
+
+    private fun write(machines: List<Machine>) {
+        val array = JSONArray()
+        for (m in machines) {
+            array.put(JSONObject().put("id", m.deviceId).put("name", m.name).put("discovery", m.discovery))
+        }
+        // commit(), not apply(): a list half written when the app dies would be no list.
+        prefs.edit().putString(KEY_MACHINES, array.toString()).commit()
+    }
+
+    override fun saveMachine(machine: Machine) {
+        write(listOf(machine) + machines().filter { it.deviceId != machine.deviceId })
+    }
+
+    override fun forget(deviceId: String) {
+        write(machines().filter { it.deviceId != deviceId })
+    }
+
+    override fun markUsed(deviceId: String) {
+        val all = machines()
+        val used = all.firstOrNull { it.deviceId == deviceId } ?: return
+        if (all.first() == used) return
+        write(listOf(used) + all.filter { it.deviceId != deviceId })
     }
 
     /**
@@ -84,9 +122,7 @@ class PairingStore(context: Context) : MachineStore {
     fun startNewIdentity() {
         prefs.edit()
             .remove(KEY_SEED)
-            .remove(KEY_MACHINE_ID)
-            .remove(KEY_MACHINE_NAME)
-            .remove(KEY_MACHINE_DISCOVERY)
+            .remove(KEY_MACHINES)
             .commit()
     }
 
@@ -101,19 +137,9 @@ class PairingStore(context: Context) : MachineStore {
         prefs.edit().putBoolean(KEY_SOFTWARE_ALLOWED, true).commit()
     }
 
-    override fun saveMachine(machine: Machine) {
-        prefs.edit()
-            .putString(KEY_MACHINE_ID, machine.deviceId)
-            .putString(KEY_MACHINE_NAME, machine.name)
-            .putString(KEY_MACHINE_DISCOVERY, machine.discovery)
-            .apply()
-    }
-
     private companion object {
         const val KEY_SEED = "identity-seed"
-        const val KEY_MACHINE_ID = "machine-device-id"
-        const val KEY_MACHINE_NAME = "machine-name"
-        const val KEY_MACHINE_DISCOVERY = "machine-discovery"
+        const val KEY_MACHINES = "machines"
         const val KEY_SOFTWARE_ALLOWED = "software-key-allowed"
     }
 }

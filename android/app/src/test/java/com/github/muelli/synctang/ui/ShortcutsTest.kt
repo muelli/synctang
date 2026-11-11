@@ -46,9 +46,9 @@ class ShortcutsTest {
      * from another screen.
      */
     @Test
-    fun onlyTheDestructiveOrWeakeningChoicesHaveNoShortcut() {
+    fun onlyTheDestructiveOrWeakeningChoicesAndTheRepeatsOfUnlockHaveNoShortcut() {
         assertEquals(
-            listOf(AppAction.ALLOW_SOFTWARE_KEY, AppAction.REPLACE_KEY),
+            listOf(AppAction.UNLOCK_THIS, AppAction.FORGET, AppAction.FORGET_CONFIRM, AppAction.ALLOW_SOFTWARE_KEY, AppAction.REPLACE_KEY),
             AppAction.entries.filter { it.chord == null },
         )
     }

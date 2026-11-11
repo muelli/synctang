@@ -13,6 +13,7 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -26,6 +27,7 @@ import com.github.muelli.synctang.ui.DoneScreen
 import com.github.muelli.synctang.ui.FailedScreen
 import com.github.muelli.synctang.ui.KeyNeedsReplacingScreen
 import com.github.muelli.synctang.ui.LocalShortcuts
+import com.github.muelli.synctang.ui.MachinesScreen
 import com.github.muelli.synctang.ui.PairingScreen
 import com.github.muelli.synctang.ui.ReadyScreen
 import com.github.muelli.synctang.ui.ScreenColumn
@@ -98,12 +100,54 @@ class ScreenShortcutsTest {
 
     @Test
     fun ready() {
-        show { ReadyScreen(UnlockUiState.Ready(machine, identity), { calls += "unlock" }, { calls += "again" }, { calls += "check" }) }
-        assertOffers(AppAction.UNLOCK, AppAction.PAIR_AGAIN, AppAction.CHECK_AGAIN)
+        show {
+            ReadyScreen(
+                UnlockUiState.Ready(machine, identity),
+                { calls += "unlock" }, { calls += "again" }, { calls += "check" }, { calls += "forget" },
+            )
+        }
+        assertOffers(AppAction.UNLOCK, AppAction.PAIR_AGAIN, AppAction.FORGET, AppAction.CHECK_AGAIN)
         press(AppAction.UNLOCK)
         press(AppAction.PAIR_AGAIN)
         press(AppAction.CHECK_AGAIN)
         assertEquals(listOf("unlock", "again", "check"), calls)
+    }
+
+    /** Forgetting asks first, says what it does, and Escape keeps the machine. */
+    @Test
+    fun forgettingAMachineAsksFirst() {
+        show {
+            ReadyScreen(
+                UnlockUiState.Ready(machine, identity),
+                {}, {}, {}, { calls += "forget" },
+            )
+        }
+        rule.onNodeWithText("Forget this machine").performClick()
+        rule.onNodeWithText("Keep it").assertExists()
+        press(AppAction.FORGET_KEEP)
+        rule.onNodeWithText("Keep it").assertDoesNotExist()
+        assertEquals(emptyList<String>(), calls)
+
+        rule.onNodeWithText("Forget this machine").performClick()
+        rule.onNodeWithText("Forget").performClick()
+        assertEquals(listOf("forget"), calls)
+    }
+
+    @Test
+    fun theListOfMachinesUnlocksTheFirstByKeyAndEachByTouch() {
+        val second = machine.copy(deviceId = "BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB", name = "attic")
+        show {
+            MachinesScreen(
+                UnlockUiState.Machines(listOf(machine, second), identity),
+                { calls += "unlock ${it.name}" }, { calls += "check ${it.name}" }, { calls += "forget ${it.name}" }, { calls += "pair" },
+            )
+        }
+        press(AppAction.UNLOCK)
+        assertEquals(listOf("unlock ${machine.name}"), calls)
+        rule.onNodeWithContentDescription("Unlock attic").performClick()
+        assertEquals(listOf("unlock ${machine.name}", "unlock attic"), calls)
+        press(AppAction.PAIR_AGAIN)
+        assertEquals("pair", calls.last())
     }
 
     @Test
@@ -177,7 +221,7 @@ class ScreenShortcutsTest {
     fun pairingOffersPairOnlyOnceSomethingIsTyped() {
         show {
             PairingScreen(
-                UnlockUiState.NeedsPairing(identity, previous = machine),
+                UnlockUiState.NeedsPairing(identity, kept = listOf(machine)),
                 { calls += "pair:$it"; true },
                 { calls += "keep" },
                 { calls += "by-hand" },

@@ -33,6 +33,7 @@ import com.github.muelli.synctang.focusRing
 fun aboutIdentity(state: UnlockUiState): Identity? = when (state) {
     is UnlockUiState.NeedsPairing -> state.identity
     is UnlockUiState.Ready -> state.identity
+    is UnlockUiState.Machines -> state.identity
     else -> null
 }
 

@@ -65,6 +65,11 @@ class UnlockFlowTest {
 
     /** What the status check answers, and how often it was asked. */
     @Volatile private var statusAnswer = Readiness()
+
+    /** What the check answers for a machine; by default [statusAnswer] for every one. */
+    @Volatile private var statusFor: (Machine) -> Readiness = { statusAnswer }
+    private val statusAsked = Collections.synchronizedList(mutableListOf<String>())
+    private val sessionMachines = Collections.synchronizedList(mutableListOf<Machine>())
     private val statusCalls = AtomicInteger()
 
     /** When above zero the check answers "rate limited, wait this long" instead of [statusAnswer]. */
@@ -93,7 +98,7 @@ class UnlockFlowTest {
             softwareKeyAllowances++
             identityFails = null
         },
-        newSession = { nextSession().also { sessions += it } },
+        newSession = { machine -> sessionMachines += machine; nextSession().also { sessions += it } },
         newPairing = { nextPairing().also { pairings += it } },
         prepareKey = {
             prepareFails?.let { throw it }
@@ -117,10 +122,11 @@ class UnlockFlowTest {
         readinessPollMillis = pollMillis,
         readinessMinGapMillis = minGapMillis,
         readinessJitter = { 0.5 },
-        checkStatus = { _ ->
+        checkStatus = { machine ->
             statusCalls.incrementAndGet()
+            statusAsked += machine.deviceId
             statusWaitsFor?.await()
-            if (statusRateLimitedMillis > 0) StatusAnswer.RateLimited(statusRateLimitedMillis) else StatusAnswer.Known(statusAnswer)
+            if (statusRateLimitedMillis > 0) StatusAnswer.RateLimited(statusRateLimitedMillis) else StatusAnswer.Known(statusFor(machine))
         },
         keyUseTimeoutSeconds = 1,
         checkKey = {
@@ -227,13 +233,13 @@ class UnlockFlowTest {
         nextPairing = { FakePairing(failWith = Exception("mobile: the machine refused the pairing")) }
 
         onMain { flow.startPairing() }
-        assertEquals(machineA, await<UnlockUiState.NeedsPairing>().previous)
+        assertEquals(listOf(machineA), await<UnlockUiState.NeedsPairing>().kept)
         onMain { flow.pair(payload(machineB)) }
         await<UnlockUiState.Failed>()
         assertEquals(machineA, store.saved)
 
         onMain { flow.startPairing() }
-        assertEquals(machineA, await<UnlockUiState.NeedsPairing>().previous)
+        assertEquals(listOf(machineA), await<UnlockUiState.NeedsPairing>().kept)
         onMain { flow.keepCurrentMachine() }
         assertEquals(machineA, await<UnlockUiState.Ready>().machine)
     }
@@ -246,7 +252,7 @@ class UnlockFlowTest {
 
         onMain { flow.startPairing() }
         val pairing = await<UnlockUiState.NeedsPairing>()
-        assertEquals(machineA, pairing.previous)
+        assertEquals(listOf(machineA), pairing.kept)
         assertEquals(BackAction.KEEP_CURRENT_MACHINE, backAction(pairing))
 
         onMain { flow.keepCurrentMachine() }
@@ -879,41 +885,21 @@ class UnlockFlowTest {
         fail("never polled enough: ${session.progressCalls.get()}")
     }
 
-    // Undoing a replacement
+    // More than one machine
 
-    @Test
-    fun aPayloadWithoutACodeThatReplacesAMachineCanBeUndone() {
-        store.saved = machineA
-        onMain { flow.refresh() }
-        await<UnlockUiState.Ready>()
-        onMain { flow.startPairing() }
-        await<UnlockUiState.NeedsPairing>()
-
-        onMain { flow.pair(payload(machineB, code = null)) }
-        val replaced = await<UnlockUiState.Ready>()
-        assertEquals(machineB.deviceId, replaced.machine.deviceId)
-        assertEquals(machineA, replaced.replaced)
-
-        onMain { flow.undoReplace() }
-        awaitReady { it.machine == machineA && it.replaced == null }
-        assertEquals(machineA, store.saved)
+    private fun awaitMachines(condition: (UnlockUiState.Machines) -> Boolean): UnlockUiState.Machines {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (System.nanoTime() < deadline) {
+            val now = flow.state.value
+            if (now is UnlockUiState.Machines && condition(now)) return now
+            Thread.sleep(5)
+        }
+        fail("Machines never matched, still ${flow.state.value}")
+        throw AssertionError()
     }
 
     @Test
-    fun dismissingTheUndoKeepsTheNewMachine() {
-        store.saved = machineA
-        onMain { flow.refresh() }
-        await<UnlockUiState.Ready>()
-
-        onMain { flow.pair(payload(machineB, code = null)) }
-        awaitReady { it.replaced == machineA }
-        onMain { flow.dismissUndo() }
-        awaitReady { it.replaced == null }
-        assertEquals(machineB.deviceId, store.saved?.deviceId)
-    }
-
-    @Test
-    fun aSuccessfulPairingThatReplacesAMachineCanBeUndoneToo() {
+    fun aSecondPairingAddsAMachineAndShowsTheListWithTheNewOneFirst() {
         store.saved = machineA
         onMain { flow.refresh() }
         await<UnlockUiState.Ready>()
@@ -922,30 +908,217 @@ class UnlockFlowTest {
 
         onMain { flow.pair(payload(machineB)) }
         pairings.awaitOne().finish()
-        awaitReady { it.replaced == machineA }
-        onMain { flow.undoReplace() }
-        awaitReady { it.machine == machineA && it.replaced == null }
-        assertEquals(machineA, store.saved)
+        val list = awaitMachines { true }
+        assertEquals(listOf(machineB.deviceId, machineA.deviceId), list.machines.map { it.deviceId })
+        assertEquals(listOf(machineB.deviceId, machineA.deviceId), store.machines().map { it.deviceId })
     }
 
     @Test
-    fun pairingTheSameMachineAgainHasNothingToUndo() {
+    fun aPayloadWithoutACodeAddsAMachineToo() {
         store.saved = machineA
         onMain { flow.refresh() }
         await<UnlockUiState.Ready>()
 
-        onMain { flow.pair(payload(machineA, code = null)) }
-        Thread.sleep(100)
-        assertNull(await<UnlockUiState.Ready>().replaced)
+        onMain { flow.pair(payload(machineB, code = null)) }
+        assertEquals(2, awaitMachines { true }.machines.size)
     }
 
     @Test
-    fun aFirstPairingHasNothingToUndo() {
+    fun pairingTheSameMachineAgainUpdatesItAndDoesNotAddAnother() {
+        store.saved = machineA
         onMain { flow.refresh() }
-        await<UnlockUiState.NeedsPairing>()
+        await<UnlockUiState.Ready>()
 
-        onMain { flow.pair(payload(machineB, code = null)) }
-        assertNull(await<UnlockUiState.Ready>().replaced)
+        onMain { flow.pair(payload(machineA.copy(name = "new name"), code = null)) }
+        val ready = awaitReady { it.machine.name == "new name" }
+        assertEquals(1, store.machines().size)
+        assertNull(ready.forgotten)
+    }
+
+    @Test
+    fun aFailedPairingOfASecondMachineLeavesTheListAsItWas() {
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        nextPairing = { FakePairing(failWith = Exception("mobile: the machine refused the pairing")) }
+        onMain { flow.startPairing() }
+        await<UnlockUiState.NeedsPairing>()
+        onMain { flow.pair(payload(machineB)) }
+        await<UnlockUiState.Failed>()
+
+        assertEquals(listOf(machineA), store.machines())
+    }
+
+    @Test
+    fun unlockingAMachineOnTheListDialsThatOneAndNotTheFirst() {
+        store.machines = listOf(machineB, machineA)
+        onMain { flow.refresh() }
+        awaitMachines { true }
+        nextSession = { FakeSession(connectReturnsAtOnce = true) }
+        onMain { flow.connect(machineA, countingGate) }
+
+        await<UnlockUiState.Done>()
+        assertEquals(listOf(machineA), sessionMachines.toList())
+        assertEquals("the prompt must name the machine that was tapped", listOf("res:${R.string.biometric_subtitle}(${machineA.name})"), promptsSeen.toList())
+    }
+
+    @Test
+    fun theApproveStepActsOnTheMachineThatWasDialledNotOnTheFirstInTheStore() {
+        store.machines = listOf(machineB, machineA)
+        onMain { flow.refresh() }
+        awaitMachines { true }
+        nextSession = { FakeSession(connectReturnsAtOnce = true) }
+        onMain { flow.connect(machineA) }
+        val approve = await<UnlockUiState.Approve>()
+        assertEquals(machineA.deviceId, approve.machine.deviceId)
+
+        onMain { flow.approve(countingGate) }
+        assertEquals(machineA, await<UnlockUiState.Done>().machine)
+    }
+
+    @Test
+    fun theMachineThatWasUnlockedBecomesTheFirstOfTheList() {
+        store.machines = listOf(machineB, machineA)
+        onMain { flow.refresh() }
+        awaitMachines { true }
+        nextSession = { FakeSession(connectReturnsAtOnce = true) }
+        onMain { flow.connect(machineA, countingGate) }
+        await<UnlockUiState.Done>()
+
+        assertEquals(listOf(machineA.deviceId, machineB.deviceId), store.machines().map { it.deviceId })
+    }
+
+    @Test
+    fun anUnlockAskedForFromOutsideDialsTheMachineItNamesWhenThereAreSeveral() {
+        store.machines = listOf(machineB, machineA)
+        onMain { flow.refresh() }
+        awaitMachines { true }
+        nextSession = { FakeSession(connectReturnsAtOnce = true) }
+        onMain { flow.unlockRequested(machineA.deviceId, countingGate) }
+
+        await<UnlockUiState.Done>()
+        assertEquals(listOf(machineA), sessionMachines.toList())
+    }
+
+    @Test
+    fun anUnlockAskedForBeforeTheListIsThereWaitsForIt() {
+        store.machines = listOf(machineB, machineA)
+        nextSession = { FakeSession(connectReturnsAtOnce = true) }
+        onMain { flow.unlockRequested(machineA.deviceId, countingGate) }
+        onMain { flow.refresh() }
+
+        await<UnlockUiState.Done>()
+        assertEquals(listOf(machineA), sessionMachines.toList())
+    }
+
+    // Forgetting a machine, and taking it back
+
+    @Test
+    fun forgettingAMachineRemovesItAndOffersItBack() {
+        store.machines = listOf(machineB, machineA)
+        onMain { flow.refresh() }
+        awaitMachines { true }
+
+        onMain { flow.forget(machineB.deviceId) }
+        val ready = awaitReady { it.machine == machineA }
+        assertEquals(machineB, ready.forgotten)
+        assertEquals(listOf(machineA), store.machines())
+
+        onMain { flow.undoForget() }
+        val list = awaitMachines { it.forgotten == null }
+        assertEquals(setOf(machineA.deviceId, machineB.deviceId), list.machines.map { it.deviceId }.toSet())
+    }
+
+    @Test
+    fun dismissingTheOfferToTakeAMachineBackLeavesItForgotten() {
+        store.machines = listOf(machineB, machineA)
+        onMain { flow.refresh() }
+        awaitMachines { true }
+        onMain { flow.forget(machineB.deviceId) }
+        awaitReady { it.forgotten == machineB }
+
+        onMain { flow.dismissUndo() }
+        awaitReady { it.forgotten == null }
+        assertEquals(listOf(machineA), store.machines())
+    }
+
+    @Test
+    fun forgettingTheLastMachineGoesToThePairingScreenAndCanBeTakenBack() {
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+
+        onMain { flow.forget(machineA.deviceId) }
+        assertEquals(machineA, await<UnlockUiState.NeedsPairing>().forgotten)
+        assertTrue(store.machines().isEmpty())
+
+        onMain { flow.undoForget() }
+        assertEquals(machineA, await<UnlockUiState.Ready>().machine)
+    }
+
+    @Test
+    fun forgettingAMachineThePhoneDoesNotHaveDoesNothing() {
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        onMain { flow.forget(machineB.deviceId) }
+
+        Thread.sleep(200)
+        assertEquals(listOf(machineA), store.machines())
+        assertNull((flow.state.value as UnlockUiState.Ready).forgotten)
+    }
+
+    @Test
+    fun aMachineIsNotForgottenWhileAnUnlockIsUnderWay() {
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        onMain { flow.connect() }
+        await<UnlockUiState.Connecting>()
+
+        onMain { flow.forget(machineA.deviceId) }
+        assertEquals(listOf(machineA), store.machines())
+        assertTrue(flow.state.value is UnlockUiState.Connecting)
+    }
+
+    // What the list says of each machine
+
+    @Test
+    fun everyMachineOnTheListGetsLookedUpAndEachChipShowsItsOwnAnswer() {
+        statusFor = { machine -> if (machine == machineA) Readiness(ReadinessState.WAITING, 5) else Readiness(ReadinessState.ABSENT, 700) }
+        store.machines = listOf(machineB, machineA)
+        flow = newFlow(pollMillis = 20)
+        onMain { flow.refresh() }
+        val list = awaitMachines { it.readiness[machineA.deviceId]?.state == ReadinessState.WAITING && it.readiness[machineB.deviceId]?.state == ReadinessState.ABSENT }
+        assertEquals(2, list.machines.size)
+    }
+
+    @Test
+    fun withSeveralMachinesTheLookupsAreSpreadOutAndNotMadeAllAtOnce() {
+        store.machines = listOf(machineB, machineA)
+        flow = newFlow(pollMillis = 400)
+        onMain { flow.refresh() }
+        awaitMachines { true }
+        awaitCalls(1)
+        Thread.sleep(50)
+        // Two machines at a poll interval of 400 ms: one lookup about every 200 ms, never both in the same instant.
+        assertTrue("both were asked at once: ${statusCalls.get()}", statusCalls.get() <= 2)
+    }
+
+    @Test
+    fun aCheckNowOnOneMachineAsksAboutThatMachine() {
+        statusFor = { Readiness(ReadinessState.WAITING, 1) }
+        store.machines = listOf(machineB, machineA)
+        flow = newFlow(pollMillis = 60_000, minGapMillis = 0)
+        onMain { flow.refresh() }
+        awaitMachines { true }
+        awaitCalls(1)
+        statusAsked.clear()
+
+        onMain { flow.checkAgain(machineA.deviceId) }
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (!statusAsked.contains(machineA.deviceId) && System.nanoTime() < deadline) Thread.sleep(5)
+        assertTrue("machine A was never asked about: $statusAsked", statusAsked.contains(machineA.deviceId))
     }
 
     private fun awaitReady(condition: (UnlockUiState.Ready) -> Boolean): UnlockUiState.Ready {
@@ -974,7 +1147,7 @@ class UnlockFlowTest {
         pairings.awaitOne().started.await(5, TimeUnit.SECONDS)
 
         onMain { flow.cancel() }
-        assertEquals(machineA, await<UnlockUiState.NeedsPairing>().previous)
+        assertEquals(listOf(machineA), await<UnlockUiState.NeedsPairing>().kept)
         assertTrue("the Go pairing was not cancelled", pairings.single().cancelled)
         assertEquals(machineA, store.saved)
     }
@@ -1923,8 +2096,9 @@ class UnlockFlowTest {
     fun backIsOnlyInterceptedWhereSomethingIsWaitingOnThePhone() {
         val m = machineA
         assertEquals(BackAction.EXIT, backAction(UnlockUiState.NeedsPairing(identity)))
-        assertEquals(BackAction.KEEP_CURRENT_MACHINE, backAction(UnlockUiState.NeedsPairing(identity, m)))
+        assertEquals(BackAction.KEEP_CURRENT_MACHINE, backAction(UnlockUiState.NeedsPairing(identity, listOf(m))))
         assertEquals(BackAction.EXIT, backAction(UnlockUiState.Ready(m, identity)))
+        assertEquals(BackAction.EXIT, backAction(UnlockUiState.Machines(listOf(m, machineB), identity)))
         assertEquals(BackAction.EXIT, backAction(UnlockUiState.Done(m)))
         assertEquals(BackAction.EXIT, backAction(UnlockUiState.Failed(m, "x")))
         assertEquals(BackAction.EXIT, backAction(UnlockUiState.Failed(null, "x", Retry.SCAN_AGAIN)))
@@ -1951,10 +2125,26 @@ class UnlockFlowTest {
     }
 }
 
-private class FakeStore(@Volatile var saved: Machine? = null) : MachineStore {
-    override fun machine() = saved
+private class FakeStore(machine: Machine? = null) : MachineStore {
+    @Volatile var machines: List<Machine> = listOfNotNull(machine)
+
+    /** The machine used last, which is the one that matters to tests of one machine. */
+    var saved: Machine?
+        get() = machines.firstOrNull()
+        set(value) {
+            machines = listOfNotNull(value)
+        }
+
+    override fun machines() = machines
     override fun saveMachine(machine: Machine) {
-        saved = machine
+        machines = listOf(machine) + machines.filter { it.deviceId != machine.deviceId }
+    }
+    override fun forget(deviceId: String) {
+        machines = machines.filter { it.deviceId != deviceId }
+    }
+    override fun markUsed(deviceId: String) {
+        val used = machines.firstOrNull { it.deviceId == deviceId } ?: return
+        machines = listOf(used) + machines.filter { it.deviceId != deviceId }
     }
 }
 

@@ -79,9 +79,21 @@ internal enum class AppAction(val role: Role, val chord: Chord?, @StringRes val 
     CANCEL(Role.BACK, Chord.ESCAPE, R.string.busy_cancel),
     DECLINE(Role.BACK, Chord.ESCAPE, R.string.unlock_decline),
     KEEP_CURRENT(Role.BACK, Chord.ESCAPE, R.string.shortcut_keep_current),
+
+    /** Escape closes the question whether to forget a machine, without forgetting it. */
+    FORGET_KEEP(Role.BACK, Chord.ESCAPE, R.string.forget_cancel),
     CLOSE_ABOUT(Role.BACK, Chord.ESCAPE, R.string.about_close),
 
     PAIR_AGAIN(Role.OTHER, Chord.ctrl(KeyEvent.KEYCODE_P), R.string.pair_again),
+
+    /** A machine's own Unlock on the list: the first row's is [UNLOCK]; no key for the others. */
+    UNLOCK_THIS(Role.OTHER, null, R.string.unlock_action),
+
+    /** No key, on purpose: it takes a machine off the list. */
+    FORGET(Role.OTHER, null, R.string.forget_action),
+
+    /** No key either: the answer that forgets is reached by pressing it. */
+    FORGET_CONFIRM(Role.OTHER, null, R.string.forget_confirm),
     CHECK_AGAIN(Role.OTHER, Chord.ctrl(KeyEvent.KEYCODE_R), R.string.readiness_check_again),
     OPEN_ABOUT(Role.OTHER, Chord.ctrl(KeyEvent.KEYCODE_I), R.string.about_title),
     ENROL_BY_HAND(Role.OTHER, Chord.ctrl(KeyEvent.KEYCODE_E), R.string.pair_by_hand),
