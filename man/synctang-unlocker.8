@@ -112,6 +112,23 @@ terminal of type
 .B dumb
 get, and to anything that is not a terminal the output is the plain text it has always been, which scripts read.
 Prose is broken to the width of the terminal.
+.PP
+.B \-\-verbose
+(also spelled
+.BR \-verbose ),
+anywhere on the command line, or
+.B SYNCTANG_DEBUG=1
+in the environment, turns the log up to trace and prints it to standard error: what the transport is doing while a
+command waits (the relay joined, each discovery lookup and announcement and how the server answered, each
+handshake).
+For
+.B agent
+it is
+.B \-\-log\-level trace
+unless
+.B \-\-log\-level
+was given.
+It never prints the passphrase, a scalar or a pairing code.
 .SH COMMANDS
 Every command accepts
 .B \-h

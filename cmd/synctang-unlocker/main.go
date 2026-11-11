@@ -52,7 +52,8 @@ commands:
               drive, say) that is not asking for a password at boot
   completion  print a shell completion script (bash, zsh or fish)
 
---color=auto|always|never works anywhere on the line (NO_COLOR is honoured).
+--color=auto|always|never and --verbose work anywhere on the line (NO_COLOR is
+honoured; SYNCTANG_DEBUG=1 is the same as --verbose).
 `)
 
 // defaultMachineKeyFile is where this machine's own persistent transport
@@ -77,6 +78,18 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
+// verbose is whether --verbose (or SYNCTANG_DEBUG=1) was given: the log is turned up to trace.
+var verbose bool
+
+// agentLogLevel is the level the agent logs at: the one --log-level names, and trace instead of the default
+// when --verbose was given and --log-level was not.
+func agentLogLevel(flag string, verbose bool) logLevelName {
+	if verbose && flag == string(logLevelInfo) {
+		return logLevelTrace
+	}
+	return logLevelName(flag)
+}
+
 func run(args []string, stdout, stderr io.Writer) int {
 	ui.SetProgram("synctang-unlocker")
 	rest, colour, err := ui.ExtractColorFlag(args)
@@ -85,7 +98,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	ui.SetMode(colour)
-	args = rest
+	args, verbose = ui.ExtractVerboseFlag(rest)
+	verbose = verbose || ui.VerboseFromEnv()
+	if verbose {
+		// What the transport is doing (the relay joined, the discovery lookups and announcements, the
+		// handshakes), at the level "agent --log-level trace" gives the agent. The agent builds its own logger
+		// from its own flag, which verbose only raises (see agentLogLevel).
+		slog.SetDefault(slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: levelTrace})))
+	}
 	if len(args) < 1 {
 		fmt.Fprint(stderr, completion.Reflow(usage, wrap.Width(stderr)))
 		return 2
@@ -277,7 +297,7 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	logLevel, err := parseLogLevel(*logLevelFlag)
+	logLevel, err := parseLogLevel(string(agentLogLevel(*logLevelFlag, verbose)))
 	if err != nil {
 		ui.Errorf(stderr, "%v\n", err)
 		return 2
