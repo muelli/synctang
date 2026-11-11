@@ -11,7 +11,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.TextView
-import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import org.junit.After
@@ -85,27 +84,14 @@ class UnlockWidgetTest {
     }
 
     @Test
-    fun aTapOnTheWidgetStartsTheUnlockOfThatMachine() {
-        val connecting = context.getString(R.string.unlock_connecting)
-        val ready = context.getString(R.string.ready_title)
-        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-            var title = ""
-            fun wait(text: String) {
-                val end = System.currentTimeMillis() + 10_000
-                while (System.currentTimeMillis() < end) {
-                    scenario.onActivity { title = it.title.toString() }
-                    if (title.contains(text)) return
-                    Thread.sleep(100)
-                }
-            }
-            wait(ready)
-            assumeTrue("not on the Unlock screen: $title", title.contains(ready))
-
-            val wide = inflate(UnlockWidgetProvider.layouts(context, widgetContent(listOf(machine)), 1).getValue(SizeF(110f, 40f)))
-            instrumentation.runOnMainSync { wide.findViewById<View>(android.R.id.background).performClick() }
-            wait(connecting)
-            assertTrue(title, title.contains(connecting))
-        }
+    fun aTapOnTheWidgetAsksTheFlowOfTheAppToUnlockThatMachine() {
+        AppLogReader.clear()
+        val wide = inflate(UnlockWidgetProvider.layouts(context, widgetContent(listOf(machine)), 1).getValue(SizeF(110f, 40f)))
+        instrumentation.runOnMainSync { wide.findViewById<View>(android.R.id.background).performClick() }
+        assertTrue(
+            "the flow was never asked to unlock ${machine.deviceId}; log:\n${AppLogReader.read()}",
+            AppLogReader.waitFor("action unlock requested from outside id=${machine.deviceId}"),
+        )
     }
 
     @Test

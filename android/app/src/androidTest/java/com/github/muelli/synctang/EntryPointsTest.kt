@@ -51,6 +51,31 @@ class EntryPointsTest {
         return title(scenario)
     }
 
+    // These two do not need the app to get as far as the Unlock screen, which a phone or an emulator whose key
+    // is in software does not (the app stops at a refusal): they read what the flow was told, from the app's log.
+
+    @Test
+    fun whatTheEntryActivityIsGivenReachesTheFlowOfTheApp() {
+        AppLogReader.clear()
+        context.startActivity(UnlockEntryActivity.intentFor(context, machine.deviceId).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        assertTrue("the flow was never asked to unlock ${machine.deviceId}; log:\n${AppLogReader.read()}", AppLogReader.waitFor("action unlock requested from outside id=${machine.deviceId}"))
+    }
+
+    @Test
+    fun theExportedActivityIsNotAWayInEvenWithTheSameAction() {
+        AppLogReader.clear()
+        val intent = Intent(context, MainActivity::class.java)
+            .setAction(UnlockEntryActivity.ACTION_UNLOCK)
+            .putExtra(UnlockEntryActivity.EXTRA_MACHINE, machine.deviceId)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        ActivityScenario.launch<MainActivity>(intent).use {
+            // The app has started (its flow logs that it was asked to refresh), and was not asked to unlock.
+            assertTrue("the app never started; log:\n${AppLogReader.read()}", AppLogReader.waitFor("action refresh"))
+            Thread.sleep(1_500)
+            assertFalse("an intent from outside asked the flow to unlock:\n${AppLogReader.read()}", AppLogReader.read().contains("unlock requested from outside"))
+        }
+    }
+
     @Test
     fun theEntryActivityIsNotExportedAndTheMainOneIs() {
         val pm = context.packageManager
