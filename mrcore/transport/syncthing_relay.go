@@ -25,6 +25,7 @@ import (
 	"github.com/muelli/syncthing-socket/discovery"
 	"github.com/syncthing/syncthing/lib/protocol"
 	"github.com/syncthing/syncthing/lib/relay/client"
+	relayprotocol "github.com/syncthing/syncthing/lib/relay/protocol"
 )
 
 // defaultRelayPoolURL is the public Syncthing relay pool, the same default
@@ -745,7 +746,7 @@ func (t *SyncthingRelay) listenRelay(ctx context.Context) (raw net.Conn, cleanup
 			return nil, nil, fmt.Errorf("transport: relay invitations channel closed")
 		}
 		t.logger().Log(ctx, levelTrace, "session invitation received")
-		raw, err := client.JoinSession(ctx, inv)
+		raw, err := t.joinRelaySessionAsMachine(ctx, inv)
 		if err != nil {
 			cleanup()
 			return nil, nil, err
@@ -816,6 +817,49 @@ func (t *SyncthingRelay) sleeper() func(context.Context, time.Duration) error {
 		return t.sleep
 	}
 	return sleepFor
+}
+
+// How long each side of a relay session waits, once the relay has invited both, before it joins.
+//
+// strelaysrv hands a session's second connection to the goroutine that serves the session with a non-blocking send
+// on an unbuffered channel (cmd/strelaysrv/session.go, AddConnection). A join that arrives while that goroutine is
+// not at its receive, which is while it is still taking the first connection and, for the first, just after the
+// session was made, is answered "already connected", although the session is not full, and the key is spent, so it
+// cannot be tried again. The relay invites both parties at the same moment and on a fast relay they join within
+// microseconds of one another; measured against strelaysrv 1.30.0, one join in about eight was refused when both
+// went at once. The party that was not refused then sits in a session nobody else will join until its TLS
+// handshake times out, which is how a meeting through a private relay failed one run in ten, with "client
+// handshake: i/o timeout" or "joining session: already connected".
+//
+// Reported upstream: https://github.com/syncthing/syncthing/issues/10952 (the code is the same on main). If
+// strelaysrv gets a fix, these two delays are no longer needed against relays that have it, but the public pool runs
+// whatever its operators run, so they stay until that is certain.
+//
+// So the two sides are put apart: the machine joins after a few milliseconds (the session's goroutine is serving by
+// then) and the key holder after fifty, which leaves the first join taken in time for the second; none of four
+// hundred joins was refused with the machine at ten and the key holder at fifty, where eight in a hundred were
+// with neither waiting. It costs a connection fifty milliseconds. Variables so that a test can take them away to
+// see the refusals come back.
+var (
+	relayMachineJoinDelay = 10 * time.Millisecond
+	relayJoinStagger      = 50 * time.Millisecond
+)
+
+// joinRelaySession joins the session the relay invited this (key holder) side to, after relayJoinStagger.
+func (t *SyncthingRelay) joinRelaySession(ctx context.Context, inv relayprotocol.SessionInvitation) (net.Conn, error) {
+	return t.joinRelaySessionAfter(ctx, inv, relayJoinStagger)
+}
+
+// joinRelaySessionAsMachine joins the session the relay invited the machine to, after relayMachineJoinDelay.
+func (t *SyncthingRelay) joinRelaySessionAsMachine(ctx context.Context, inv relayprotocol.SessionInvitation) (net.Conn, error) {
+	return t.joinRelaySessionAfter(ctx, inv, relayMachineJoinDelay)
+}
+
+func (t *SyncthingRelay) joinRelaySessionAfter(ctx context.Context, inv relayprotocol.SessionInvitation, wait time.Duration) (net.Conn, error) {
+	if err := t.sleeper()(ctx, wait); err != nil {
+		return nil, err
+	}
+	return client.JoinSession(ctx, inv)
 }
 
 // dialRelayAttempt is dialRelay's single attempt: one discovery
@@ -892,7 +936,7 @@ func (t *SyncthingRelay) dialRelayOnce(ctx context.Context, peerID string) (net.
 			if err != nil {
 				return nil, fmt.Errorf("relay %s: %w", u.Host, err)
 			}
-			raw, err := client.JoinSession(ctx, inv)
+			raw, err := t.joinRelaySession(ctx, inv)
 			if err != nil {
 				return nil, fmt.Errorf("joining session on relay %s: %w", u.Host, err)
 			}

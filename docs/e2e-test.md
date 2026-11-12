@@ -88,5 +88,6 @@ The `go-test` job in `ci.yml` also builds the two servers (`scripts/build-syncth
 and gives them to `go test`, so that the tests in `integration/` run instead of
 skipping. `[V]` here: five run and pass in about 85 seconds, five more are opt-in
 measurements and skip. One of the five, the relay pool case, failed once in thirteen
-runs with "already connected" before this (an open question, not fixed), so a red CI run
-there is not necessarily a regression.
+runs with "already connected" before this; that was the relay server refusing the second of two
+simultaneous joins, and the machine and the key holder now join a few milliseconds apart (see
+`relayJoinStagger` in `mrcore/transport/syncthing_relay.go`).

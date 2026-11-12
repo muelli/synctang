@@ -179,8 +179,14 @@ publish have never run: every release so far has been a release candidate from `
   depends on dracut and regenerates every installed kernel's initrd with it, which would
   replace initramfs-tools images. Every machine tested here used dracut from the start.
 - A real machine (a physical NIC, the owner's own network).
-- Reliability: one of the five relay integration tests failed once in thirteen runs with
-  "already connected" (a join race, not fixed); one dial gave up after 90 s with every
+- Reliability: the relay pool integration test used to fail one run in ten with "already
+  connected" or "client handshake: i/o timeout": strelaysrv answers "already connected" to the
+  second of two parties that join a session within microseconds of each other, although the
+  session is not full, and spends the key (reported upstream as syncthing/syncthing#10952). The machine now joins after 10 ms and the key
+  holder after 50 ms, which removed it: 0 failures in 25 runs of that test, and none of 3200
+  joins refused in the test that exercises the relay directly (`relay_join_race_test.go`), where
+  17 to 25 percent were without the delays `[V]`. Relays that are not strelaysrv 1.30.0 were
+  not tried. One dial gave up after 90 s with every
   relay in the record "not found" and was not reproduced; and the machine took about 17 to
   19 s to check the recovered secret on a 2-vCPU VM with a real key derivation, with
   nothing shown to the person meanwhile.
