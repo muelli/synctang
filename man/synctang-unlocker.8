@@ -485,8 +485,16 @@ does); that it has the
 and
 .B network
 dracut modules; that the agent in it is the installed one, which a package upgrade that did not
-rebuild the initrd leaves untrue; and that the kernel command line does not carry
-.BR rd.synctang=0 .
+rebuild the initrd leaves untrue; that the kernel command line does not carry
+.BR rd.synctang=0 ;
+and that the initrd would get an address the way the running system does.
+The initrd asks for DHCP only, so for an address set by hand the check prints the dracut argument
+.B ip=
+(and
+.BR nameserver= )
+to add to the kernel command line.
+It leaves bonds, bridges, VLANs, wireless interfaces, IPv6-only networks and several default routes
+unchecked.
 Each is reported as
 .BR ok ,
 .B PROBLEM
