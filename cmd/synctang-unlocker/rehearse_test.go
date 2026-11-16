@@ -60,6 +60,8 @@ func fakeRehearsal(t *testing.T, modules []string, modErr error, installed, inIn
 	initrdModules = func() ([]string, error) { return modules, modErr }
 	installedAgentPath = writeTemp(t, "installed-agent", installed)
 	kernelCommandLine = func() (string, error) { return cmdline, nil }
+	dhcpHost().install(t)
+	notWireless(t)
 	files := map[string]string{"etc/synctang/machine.pem": "IDENTITY"}
 	if inInitrd != "" {
 		files[initrdAgent] = inInitrd
@@ -146,6 +148,7 @@ func TestWhatCannotBeLookedAtIsUncheckedNotOK(t *testing.T) {
 	id, conf := systemFiles(t, "IDENTITY", "")
 	fakeRehearsal(t, nil, errors.New("lsinitrd: command not found"), "A", "A", "ro")
 	fakeInitrd(t, nil, errors.New("lsinitrd: command not found"))
+	hostNet{}.install(t)
 	checks := staticRehearsalChecks(id, conf)
 	for _, c := range checks {
 		if c.Status == "ok" && !strings.Contains(c.Name, "command line") {
@@ -344,7 +347,7 @@ func TestTheStaticChecksSayWhatTheyAreDoingAsTheyGo(t *testing.T) {
 
 	staticRehearsalChecks(idPath, confPath)
 
-	want := []string{"initrd", "dracut modules", "agent", "command line"}
+	want := []string{"initrd", "dracut modules", "agent", "command line", "network"}
 	if len(steps) != len(want) {
 		t.Fatalf("steps = %q", steps)
 	}

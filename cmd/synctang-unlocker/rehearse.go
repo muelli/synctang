@@ -140,6 +140,10 @@ func staticRehearsalChecks(identityPath, networkConfPath string) []rehearsalChec
 	} else {
 		checks = append(checks, rehearsalCheck{cmdlineName, "ok", ""})
 	}
+
+	rehearsalStep(T("reading the network setup"))
+	cmdline, _ := kernelCommandLine()
+	checks = append(checks, bootNetworkCheck(cmdline))
 	return checks
 }
 
