@@ -3,7 +3,10 @@
 package main
 
 import (
+	"context"
+	"log/slog"
 	"os"
+	"sync/atomic"
 	"testing"
 )
 
@@ -99,3 +102,78 @@ func TestEnsureResolverFallsBackToPublicResolvers(t *testing.T) {
 		t.Fatalf("fallback resolv.conf does not look usable: %q", content)
 	}
 }
+
+// The agent calls ensureResolver on every pass, because at the time the hook starts the network is usually not up
+// and nothing says where DNS is yet. When nothing is found it writes public resolvers (so that a lookup can at least
+// be tried); but the next pass then found a resolv.conf with real nameservers in it and stopped looking, so the DNS
+// that DHCP offered a moment later was never used: on a network where the public resolvers cannot be reached, the
+// agent never found the relay or the discovery server.
+func TestEnsureResolverTakesTheNetworksDNSWhenItAppearsAfterTheFallback(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/resolv.conf"
+	leases := dir + "/leases"
+	if err := os.Mkdir(leases, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pattern := leases + "/*"
+
+	ensureResolverAt(path, nil, []string{pattern})
+	first, _ := os.ReadFile(path)
+	if string(first) != fallbackResolvConf {
+		t.Fatalf("nothing offered DNS yet, so the fallback was expected: %q", first)
+	}
+
+	if err := os.WriteFile(leases+"/2", []byte("DNS=10.0.0.1 10.0.0.2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ensureResolverAt(path, nil, []string{pattern})
+	second, _ := os.ReadFile(path)
+	if want := "nameserver 10.0.0.1\nnameserver 10.0.0.2\n"; string(second) != want {
+		t.Errorf("the DNS from DHCP was not taken after the fallback: %q, want %q", second, want)
+	}
+}
+
+func TestEnsureResolverLeavesAResolvConfThatIsNotItsOwnFallbackAlone(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/resolv.conf"
+	if err := os.WriteFile(path, []byte("nameserver 192.168.1.1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	other := dir + "/other"
+	if err := os.WriteFile(other, []byte("nameserver 10.9.9.9\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ensureResolverAt(path, []string{other}, nil)
+	if got, _ := os.ReadFile(path); string(got) != "nameserver 192.168.1.1\n" {
+		t.Errorf("a usable resolv.conf was replaced: %q", got)
+	}
+}
+
+// Said once, not at every pass (a pass is every two seconds): it is a note about the boot, not a progress line.
+func TestEnsureResolverSaysItFellBackOnceAndNotOnEveryPass(t *testing.T) {
+	old := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(old) })
+	var warnings atomic.Int32
+	slog.SetDefault(slog.New(countingWarnHandler{&warnings}))
+	resolverFellBack = false
+
+	path := t.TempDir() + "/resolv.conf"
+	for i := 0; i < 6; i++ {
+		ensureResolverAt(path, nil, nil)
+	}
+	if got := warnings.Load(); got != 1 {
+		t.Errorf("%d warnings in 6 passes, want 1", got)
+	}
+}
+
+type countingWarnHandler struct{ n *atomic.Int32 }
+
+func (countingWarnHandler) Enabled(context.Context, slog.Level) bool { return true }
+func (h countingWarnHandler) Handle(_ context.Context, r slog.Record) error {
+	if r.Level == slog.LevelWarn {
+		h.n.Add(1)
+	}
+	return nil
+}
+func (h countingWarnHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h countingWarnHandler) WithGroup(string) slog.Handler      { return h }
