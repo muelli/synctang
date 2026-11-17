@@ -9,10 +9,11 @@ None of it is needed to install or use synctang.
 
 A release is a commit with a `v<versionCode>` tag on it. The version code is the number of
 commits up to and including that commit, so the release notes have to be named for a count
-that includes the commit that adds them. None of this has been run yet: every release
-so far has been a release candidate published from `main`, and the tag path of the workflows
-(`e2e`, `release-debs`, the cosign signatures, the F-Droid release build) has never run.
-Make the first release a pre-release and check each step below on it.
+that includes the commit that adds them. The tag path has run once, for `v389`: `ci` (with `e2e` and
+`release-debs`) and `publish-fdroid` ran on the tag, and the release has the packages, their SBOMs,
+`SHA256SUMS` and a cosign bundle for each file. `release-debs` creates an ordinary release; mark it a
+pre-release on GitHub afterwards if it should be one. The page of `v389` has the one-paragraph text
+from before `scripts/release-notes.sh`; the next tag gets the page that script makes.
 
 1. Everything is on `main` and green: `ci`, `emulator`, `e2e` and `publish-fdroid`.
 2. Work out the version the release commit will have, one more than now:
