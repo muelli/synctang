@@ -207,7 +207,8 @@ system does. The initrd asks for DHCP and nothing else, so a machine whose addre
 (netplan, systemd-networkd, NetworkManager or ifupdown with a static address) boots with no
 network. The check asks the kernel where the default route came from, so it does not depend on the
 network manager. For an address set by hand it prints the `ip=` argument to add to the kernel
-command line (see "Kernel command line options"). It leaves bonds, bridges, VLANs, Wi-Fi,
+command line (see "Kernel command line options"); `synctang-unlocker network-args` prints that
+line again, and only that line. It leaves bonds, bridges, VLANs, Wi-Fi,
 IPv6-only networks and machines with several default routes `unchecked`. Each is `ok`, `PROBLEM`
 with the fix, or `unchecked` with the reason. Then
 it waits for a key holder, as `open` does, through the relay and discovery servers the machine
@@ -281,7 +282,8 @@ Kernel command line options:
   network path is what is broken.
 - `ip=ADDRESS::GATEWAY:NETMASK:HOSTNAME:INTERFACE:none` and `nameserver=ADDRESS` are dracut's own
   arguments, not synctang's. They give the initrd a fixed address where there is no DHCP server;
-  `rehearse` prints the line for this machine. Without an `ip=` argument the initrd asks for DHCP.
+  `synctang-unlocker network-args` prints the line for this machine. Without an `ip=` argument
+  the initrd asks for DHCP.
 - `rd.synctang.log=LEVEL` sets how much the agent logs (`trace`, `debug`, `info`, `warn` or
   `error`, default `info`). Its log goes to the journal, so after the boot
   `journalctl -b -t synctang-unlocker` shows it.
