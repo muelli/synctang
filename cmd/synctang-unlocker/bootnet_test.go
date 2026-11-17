@@ -88,6 +88,7 @@ func TestAnAddressSetByHandIsAProblemWithTheKernelArgumentThatFixesIt(t *testing
 	staticHost().install(t)
 	notWireless(t)
 	resolvers(t, "nameserver 192.0.2.53\n")
+	bootLoader(t, map[string]string{"grub/grub.cfg": grubCfg("quiet", "quiet")}, nil)
 	c := bootNetworkCheck("ro quiet")
 	if c.Status != "problem" {
 		t.Fatalf("%+v", c)
@@ -114,6 +115,7 @@ func TestARouteThatIsNotFromDHCPIsTakenForStaticWhateverItsProtocolIsCalled(t *t
 		h.install(t)
 		notWireless(t)
 		resolvers(t)
+		bootLoader(t, map[string]string{"grub/grub.cfg": grubCfg("quiet", "quiet")}, nil)
 		if c := bootNetworkCheck("ro"); c.Status != "problem" {
 			t.Errorf("protocol %q: %+v", protocol, c)
 		}
@@ -138,6 +140,7 @@ func TestWithNoDNSServerFoundTheArgumentHasNoneAndTheAgentUsesItsOwnFallback(t *
 	staticHost().install(t)
 	notWireless(t)
 	resolvers(t, "nameserver 127.0.0.53\n")
+	bootLoader(t, map[string]string{"grub/grub.cfg": grubCfg("quiet", "quiet")}, nil)
 	c := bootNetworkCheck("ro")
 	if c.Status != "problem" || !strings.Contains(c.Detail, "ip=192.0.2.10::192.0.2.1:255.255.255.0::ens3:none") || strings.Contains(c.Detail, "nameserver=") {
 		t.Errorf("%+v", c)
@@ -201,6 +204,7 @@ func TestOnlyTheFirstDefaultRouteDevicesMatter(t *testing.T) {
 	h.install(t)
 	notWireless(t)
 	resolvers(t)
+	bootLoader(t, map[string]string{"grub/grub.cfg": grubCfg("quiet", "quiet")}, nil)
 	if c := bootNetworkCheck("ro"); c.Status != "problem" {
 		t.Errorf("%+v", c)
 	}
@@ -383,12 +387,14 @@ func TestOnlyAWholeIPArgumentCounts(t *testing.T) {
 	}
 }
 
-// Where nothing of the boot loader can be read, the check is what it was: the line to add.
-func TestWithNoBootLoaderConfigurationFoundTheProblemIsTheLineToAdd(t *testing.T) {
+// Where nothing of the boot loader can be read, the address is known to be set by hand and whether the next boot
+// has the argument is not: that is not a problem proven, so it does not stop the rehearsal; the line is there.
+func TestWithNoBootLoaderConfigurationFoundItIsUnverifiedAndHasTheLineToAdd(t *testing.T) {
 	staticHost().install(t)
 	notWireless(t)
 	resolvers(t)
-	if c := bootNetworkCheck("ro"); c.Status != "problem" || !strings.Contains(c.Detail, "ip=192.0.2.10") {
+	c := bootNetworkCheck("ro")
+	if c.Status != "unverified" || !strings.Contains(c.Detail, "ip=192.0.2.10") {
 		t.Errorf("%+v", c)
 	}
 }

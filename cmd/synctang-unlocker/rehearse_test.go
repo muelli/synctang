@@ -247,6 +247,16 @@ func TestInitrdOnlyChecksWithoutWaitingForAKeyHolder(t *testing.T) {
 	}
 }
 
+// "Looks right" would be more than was shown when something could not be proven.
+func TestInitrdOnlyDoesNotSayItLooksRightWhenSomethingIsUnverified(t *testing.T) {
+	fakeOpener(t)
+	withStaticChecks(t, []rehearsalCheck{{Name: "the initrd gets an address", Status: "unverified", Detail: "add ip="}})
+	r := waitFor(t, startOpen([]string{"rehearse", "--initrd-only"}))
+	if r.code != 0 || strings.Contains(r.stdout, "looks right") || !strings.Contains(r.stdout, "unverified") {
+		t.Errorf("exit %d:\n%s%s", r.code, r.stdout, r.stderr)
+	}
+}
+
 func TestAProblemInTheInitrdFailsTheRehearsalBeforeAnyoneIsAsked(t *testing.T) {
 	fakeOpener(t)
 	f := newOpenFixture(t)

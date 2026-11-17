@@ -270,7 +270,7 @@ func staticNetworkCheck(n bootNetwork) rehearsalCheck {
 	entries := readBootEntries()
 	if len(entries) == 0 {
 		// Nothing of the boot loader could be read, so all there is to say is what to add.
-		return problem(fmt.Sprintf(T("%s has an address that was set by hand, not by DHCP, and the initrd asks for DHCP only, so it would have no network at boot; %s"), n.Dev, add))
+		return rehearsalCheck{bootNetworkCheckName, "unverified", fmt.Sprintf(T("%s has an address that was set by hand, not by DHCP, and the initrd asks for DHCP only, so it has no network at boot unless the kernel command line gives it one; the boot loader's configuration could not be read, so it cannot be told whether it does; %s"), n.Dev, add)}
 	}
 	have, other := 0, ""
 	for _, e := range entries {

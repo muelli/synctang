@@ -116,3 +116,34 @@ func TestStatusAtATerminalListsKeyHoldersInATableAndWarnsInYellow(t *testing.T) 
 		t.Errorf("the plain row format is left in a table:\n%s", got)
 	}
 }
+
+// What could not be proven either way is shown, in yellow at a terminal, and does not fail the rehearsal.
+func TestAnUnverifiedCheckIsShownAndIsNotAProblem(t *testing.T) {
+	checks := []rehearsalCheck{
+		{Name: "the initrd carries the identity", Status: "ok"},
+		{Name: "the initrd gets an address", Status: "unverified", Detail: "add ip=192.0.2.10"},
+	}
+	var plain bytes.Buffer
+	if got := printChecks(&plain, checks); got != 0 {
+		t.Fatalf("%d problems: unverified is not one", got)
+	}
+	// The labels have always had nine columns; one that is longer widens them all, so the names stay in a column.
+	for _, want := range []string{"  ok          the initrd carries the identity\n", "  unverified  the initrd gets an address\n", "              add ip=192.0.2.10\n"} {
+		if !strings.Contains(plain.String(), want) {
+			t.Errorf("no %q in:\n%s", want, plain.String())
+		}
+	}
+
+	look := atATerminal(t)
+	var out bytes.Buffer
+	printChecks(&out, checks)
+	if !strings.Contains(out.String(), look.Yellow("the initrd gets an address (unverified)")) {
+		t.Errorf("not yellow:\n%q", out.String())
+	}
+	got := ui.StripEscapes(out.String())
+	for _, want := range []string{"  ⚠ the initrd gets an address (unverified)\n", "    add ip=192.0.2.10\n"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("no %q in:\n%s", want, got)
+		}
+	}
+}

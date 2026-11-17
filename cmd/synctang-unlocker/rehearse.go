@@ -78,9 +78,10 @@ func parseInitrdModules(listing string) ([]string, error) {
 	return modules, nil
 }
 
-// rehearsalCheck is one thing about the initrd. Status is "ok", "problem", or "unchecked" when
-// it could not be looked at; Detail says what is wrong and how to fix it, or why it was not
-// checked.
+// rehearsalCheck is one thing about the initrd. Status is "ok", "problem", "unchecked" when it
+// could not be looked at, or "unverified" when it was looked at and cannot be proven right or
+// wrong; only a problem stops the rehearsal. Detail says what is wrong and how to fix it, or why
+// it was not checked or proven.
 type rehearsalCheck struct {
 	Name   string
 	Status string
@@ -241,17 +242,33 @@ func loadedImageHash(file []byte) ([32]byte, bool) {
 	return sum, true
 }
 
+// anyUnverified says whether a check could not be proven either way.
+func anyUnverified(checks []rehearsalCheck) bool {
+	for _, c := range checks {
+		if c.Status == "unverified" {
+			return true
+		}
+	}
+	return false
+}
+
 // printChecks writes the checks and returns how many are problems.
 func printChecks(w io.Writer, checks []rehearsalCheck) int {
 	problems := 0
 	look := ui.For(w)
+	// The plain labels have always been nine columns wide; "unverified" is ten, and when one is there the
+	// names stay in a column by widening all of them.
+	width := 9
+	if anyUnverified(checks) {
+		width = 10
+	}
 	for _, c := range checks {
-		label := map[string]string{"ok": "ok", "problem": "PROBLEM", "unchecked": "unchecked"}[c.Status]
+		label := map[string]string{"ok": "ok", "problem": "PROBLEM", "unchecked": "unchecked", "unverified": "unverified"}[c.Status]
 		if look == (ui.Style{}) {
 			// Plain: the columns the output has always had.
-			fmt.Fprintf(w, "  %-9s  %s\n", label, c.Name)
+			fmt.Fprintf(w, "  %-*s  %s\n", width, label, c.Name)
 			if c.Detail != "" {
-				fmt.Fprintf(w, "             %s\n", c.Detail)
+				fmt.Fprintf(w, "%*s%s\n", width+4, "", c.Detail)
 			}
 		} else {
 			mark, name := look.OK(label), c.Name
@@ -260,6 +277,8 @@ func printChecks(w io.Writer, checks []rehearsalCheck) int {
 				mark, name = look.Fail(label), look.Red(c.Name)
 			case "unchecked":
 				mark, name = look.Dim("-"), look.Dim(c.Name+" (not checked)")
+			case "unverified":
+				mark, name = look.Warn(label), look.Yellow(c.Name+" (unverified)")
 			}
 			fmt.Fprintf(w, "  %s %s\n", mark, name)
 			if c.Detail != "" {
@@ -332,6 +351,10 @@ func runRehearse(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	if *initrdOnly {
+		if anyUnverified(checks) {
+			fmt.Fprintln(stdout, T("\nnothing in the initrd is wrong, but what is marked unverified could not be proven; run rehearse without --initrd-only to try the unlock itself with a key holder"))
+			return 0
+		}
 		fmt.Fprintln(stdout, T("\nthe initrd looks right; run rehearse without --initrd-only to try the unlock itself with a key holder"))
 		return 0
 	}
