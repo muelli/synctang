@@ -8,7 +8,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
@@ -16,10 +19,18 @@ import androidx.compose.ui.res.stringResource
 import com.github.muelli.synctang.R
 import com.github.muelli.synctang.UnlockUiState
 import com.github.muelli.synctang.focusRing
+import com.github.muelli.synctang.rememberBuzzer
 import com.github.muelli.synctang.rememberAutoFocusRequester
 
 @Composable
 internal fun DoneScreen(state: UnlockUiState.Done, onDone: () -> Unit) {
+    // One buzz when the unlock is done, and not another when the screen is made again after a turn of the phone.
+    val buzzer = rememberBuzzer()
+    var buzzed by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (!buzzed) buzzer.unlocked()
+        buzzed = true
+    }
     StatusHeader(
         Icons.Filled.CheckCircle,
         MaterialTheme.colorScheme.primary,
