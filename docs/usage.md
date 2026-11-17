@@ -208,7 +208,10 @@ system does. The initrd asks for DHCP and nothing else, so a machine whose addre
 network. The check asks the kernel where the default route came from, so it does not depend on the
 network manager. For an address set by hand it prints the `ip=` argument to add to the kernel
 command line (see "Kernel command line options"); `synctang-unlocker network-args` prints that
-line again, and only that line. It leaves bonds, bridges, VLANs, Wi-Fi,
+line again, and only that line. The check looks at the next boot as well as this one: when the
+boot loader's generated configuration (`/boot/grub/grub.cfg`, or the entries in
+`/boot/loader/entries`) already has the argument for every boot entry, it is `ok` and says to reboot;
+when only `/etc/default/grub` has it, it says to run `update-grub`. It leaves bonds, bridges, VLANs, Wi-Fi,
 IPv6-only networks and machines with several default routes `unchecked`. Each is `ok`, `PROBLEM`
 with the fix, or `unchecked` with the reason. Then
 it waits for a key holder, as `open` does, through the relay and discovery servers the machine

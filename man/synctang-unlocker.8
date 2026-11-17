@@ -496,6 +496,12 @@ The initrd asks for DHCP only, so for an address set by hand the check prints th
 (and
 .BR nameserver= )
 to add to the kernel command line.
+It reads the boot loader's generated configuration as well as the running kernel's command line:
+when every boot entry in it already has the argument for this machine's address, the check passes
+and says to reboot, and when only
+.B /etc/default/grub
+has it, the check says to run
+.BR update\-grub .
 It leaves bonds, bridges, VLANs, wireless interfaces, IPv6-only networks and several default routes
 unchecked.
 Each is reported as
