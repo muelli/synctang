@@ -1,0 +1,4 @@
+- Several machines: the app lists them, each with its own Unlock, and you can forget one (with undo).
+- A home screen widget unlocks a machine in one tap; a long press on the icon offers Unlock for each machine.
+- After a new key the machines are kept and marked to pair again.
+- The status dot is green for 90 seconds after the machine last announced.
