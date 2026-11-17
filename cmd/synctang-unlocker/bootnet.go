@@ -11,6 +11,9 @@ import (
 	"net/netip"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -33,6 +36,11 @@ var (
 	// upstreamResolvConfs are the files that list the DNS servers of the network itself, best first: the
 	// stub resolver in /etc/resolv.conf answers on a local address that the initrd does not have.
 	upstreamResolvConfs = []string{"/run/systemd/resolve/resolv.conf", "/run/NetworkManager/resolv.conf", "/etc/resolv.conf"}
+	// bootLoaderConfigs are the files the next boot's kernel command lines are in: the configuration GRUB
+	// generated (update-grub, grub2-mkconfig) and one file per entry for Fedora and systemd-boot. They are globs.
+	bootLoaderConfigs = []string{"/boot/grub/grub.cfg", "/boot/grub2/grub.cfg", "/boot/loader/entries/*.conf"}
+	// grubDefaults are what GRUB generates its configuration from: the edit that update-grub has to be run after.
+	grubDefaults = []string{"/etc/default/grub", "/etc/default/grub.d/*.cfg"}
 	// isWireless says whether an interface is a Wi-Fi one.
 	isWireless = func(dev string) bool {
 		_, err := os.Stat("/sys/class/net/" + dev + "/wireless")
@@ -80,7 +88,8 @@ func ipJSON(out any, args ...string) error {
 type bootNetwork struct {
 	Dev  string
 	DHCP bool   // the initrd's own DHCP gives the same: nothing to add
-	Args string // otherwise the kernel arguments that give the initrd this machine's address
+	Addr string // otherwise the address it has, and
+	Args string // the kernel arguments that give the initrd it
 }
 
 // detectBootNetwork says how the interface with the default route gets its address, or the one
@@ -154,7 +163,7 @@ func detectBootNetwork(only string) (bootNetwork, error) {
 	for _, dns := range upstreamDNS() {
 		arg += " nameserver=" + dns
 	}
-	return bootNetwork{Dev: dev, Args: arg}, nil
+	return bootNetwork{Dev: dev, Addr: local, Args: arg}, nil
 }
 
 // bootNetworkCheck says whether the initrd's DHCP would give it the network this machine has now. The
@@ -172,8 +181,124 @@ func bootNetworkCheck(cmdline string) rehearsalCheck {
 	case n.DHCP:
 		return rehearsalCheck{bootNetworkCheckName, "ok", ""}
 	}
-	return rehearsalCheck{bootNetworkCheckName, "problem", fmt.Sprintf(
-		T("%s has an address that was set by hand, not by DHCP, and the initrd asks for DHCP only, so it would have no network at boot; add this to the kernel command line in the boot loader (for GRUB, GRUB_CMDLINE_LINUX in /etc/default/grub, then update-grub; synctang-unlocker network-args prints it again): %s"), n.Dev, n.Args)}
+	return staticNetworkCheck(n)
+}
+
+// bootEntry is the kernel command line of one entry of the boot loader.
+type bootEntry struct {
+	File string
+	Args []string
+}
+
+// readBootEntries reads the entries the boot loader would start a kernel from, which are the ones with
+// no "recovery" or "single" in them: those are for repair, and a machine that waits for a key holder does
+// not boot into them by itself.
+func readBootEntries() []bootEntry {
+	var entries []bootEntry
+	for _, glob := range bootLoaderConfigs {
+		files, _ := filepath.Glob(glob)
+		for _, file := range files {
+			raw, err := os.ReadFile(file)
+			if err != nil {
+				continue
+			}
+			for _, line := range strings.Split(string(raw), "\n") {
+				fields := strings.Fields(line)
+				var args []string
+				switch {
+				case len(fields) == 0:
+					continue
+				case filepath.Ext(file) == ".conf" && fields[0] == "options":
+					args = fields[1:]
+				case filepath.Ext(file) != ".conf" && (fields[0] == "linux" || fields[0] == "linuxefi" || fields[0] == "linux16") && len(fields) > 2:
+					args = fields[2:] // after the kernel image
+				default:
+					continue
+				}
+				if slices.Contains(args, "recovery") || slices.Contains(args, "single") {
+					continue
+				}
+				entries = append(entries, bootEntry{file, args})
+			}
+		}
+	}
+	return entries
+}
+
+// ipArgs are the ip= arguments among args, as the text after "ip=". Only a whole argument is one: rd.ip= is
+// another.
+func ipArgs(args []string) []string {
+	var found []string
+	for _, a := range args {
+		if v, ok := strings.CutPrefix(a, "ip="); ok {
+			found = append(found, v)
+		}
+	}
+	return found
+}
+
+// ipArgumentWord finds an ip= argument in a line of GRUB's defaults, where it sits inside quotes.
+var ipArgumentWord = regexp.MustCompile(`(?:^|[\s"'=])ip=[^\s"']`)
+
+// grubDefaultsHaveIP says whether the settings update-grub generates its configuration from carry an ip=
+// argument.
+func grubDefaultsHaveIP() (string, bool) {
+	for _, glob := range grubDefaults {
+		files, _ := filepath.Glob(glob)
+		for _, file := range files {
+			raw, err := os.ReadFile(file)
+			if err != nil {
+				continue
+			}
+			for _, line := range strings.Split(string(raw), "\n") {
+				if line = strings.TrimSpace(line); strings.HasPrefix(line, "GRUB_CMDLINE_LINUX") && ipArgumentWord.MatchString(line) {
+					return file, true
+				}
+			}
+		}
+	}
+	return "", false
+}
+
+// staticNetworkCheck is the check for a machine whose address is set by hand: the running boot has no ip=
+// argument (one that has is dealt with before), so what matters is the next boot, and that is in the boot
+// loader's configuration. A person who edited the defaults and ran update-grub has done everything.
+func staticNetworkCheck(n bootNetwork) rehearsalCheck {
+	add := fmt.Sprintf(T("add this to the kernel command line in the boot loader (for GRUB, GRUB_CMDLINE_LINUX in /etc/default/grub, then update-grub; synctang-unlocker network-args prints it again): %s"), n.Args)
+	problem := func(detail string) rehearsalCheck { return rehearsalCheck{bootNetworkCheckName, "problem", detail} }
+
+	entries := readBootEntries()
+	if len(entries) == 0 {
+		// Nothing of the boot loader could be read, so all there is to say is what to add.
+		return problem(fmt.Sprintf(T("%s has an address that was set by hand, not by DHCP, and the initrd asks for DHCP only, so it would have no network at boot; %s"), n.Dev, add))
+	}
+	have, other := 0, ""
+	for _, e := range entries {
+		matched := false
+		for _, v := range ipArgs(e.Args) {
+			if client, _, _ := strings.Cut(v, ":"); client == n.Addr {
+				matched = true
+			} else if other == "" {
+				other = client
+			}
+		}
+		if matched {
+			have++
+		}
+	}
+	switch {
+	case have == len(entries):
+		return rehearsalCheck{bootNetworkCheckName, "ok", fmt.Sprintf(
+			T("the boot loader's configuration (%s) has it for the next boot; this boot started without it, so reboot to use it"), entries[0].File)}
+	case have == 0 && other != "":
+		return problem(fmt.Sprintf(T("%s has an address that was set by hand, and the boot loader's configuration (%s) has an ip= argument for %s, which is not this machine's address %s; %s"), n.Dev, entries[0].File, other, n.Addr, add))
+	case have == 0:
+		if file, ok := grubDefaultsHaveIP(); ok {
+			return problem(fmt.Sprintf(T("%s has an address that was set by hand, and %s has an ip= argument but the boot loader's configuration (%s) does not: run update-grub as root, then rehearse again"), n.Dev, file, entries[0].File))
+		}
+		return problem(fmt.Sprintf(T("%s has an address that was set by hand, not by DHCP, and the initrd asks for DHCP only, so it would have no network at boot; %s"), n.Dev, add))
+	}
+	return problem(fmt.Sprintf(T("%s has an address that was set by hand, and only %d of %d boot entries in the boot loader's configuration carry it, so the others would boot with no network; %s"), n.Dev, have, len(entries), add))
 }
 
 // upstreamDNS is up to two IPv4 DNS servers of the network, from the first file that lists any that
