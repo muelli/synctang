@@ -212,8 +212,10 @@ line again, and only that line. The check looks at the next boot as well as this
 boot loader's generated configuration (`/boot/grub/grub.cfg`, or the entries in
 `/boot/loader/entries`) already has the argument for every boot entry, it is `ok` and says to reboot;
 when only `/etc/default/grub` has it, it says to run `update-grub`. It leaves bonds, bridges, VLANs, Wi-Fi,
-IPv6-only networks and machines with several default routes `unchecked`. Each is `ok`, `PROBLEM`
-with the fix, or `unchecked` with the reason. Then
+IPv6-only networks and machines with several default routes `unchecked`. When the address is set by
+hand and no boot loader file can be read, the check is `unverified` (yellow at a terminal): it cannot
+be proven right or wrong, the line to add is shown, and it does not stop the rehearsal. Each is `ok`,
+`PROBLEM` with the fix, `unverified` or `unchecked` with the reason. Then
 it waits for a key holder, as `open` does, through the relay and discovery servers the machine
 would use at boot; you approve on the phone or the laptop; and it checks that what the machine
 recovered opens the volume. Nothing is opened: the volume of a running machine is in use, and the

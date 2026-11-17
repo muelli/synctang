@@ -507,7 +507,10 @@ unchecked.
 Each is reported as
 .BR ok ,
 .B PROBLEM
-(with what is wrong and the fix) or
+(with what is wrong and the fix),
+.B unverified
+(looked at, but it cannot be proven right or wrong, for example an address set by hand when no boot
+loader file can be read; it is shown in yellow and does not stop the command) or
 .B unchecked
 (with why it could not be looked at, for example when
 .B lsinitrd
