@@ -46,6 +46,9 @@ commands:
   devices     list LUKS devices, and what is enrolled on each
   rehearse    check the initrd, then rehearse the boot unlock with a key
               holder, without rebooting
+  network-args
+              print the kernel arguments that give the initrd this machine's
+              address, when it is set by hand
   pair        show a QR code and a link, and enrol the key holder (a phone or
               a laptop) that answers
   open        wait for a key holder, then open a LUKS volume (an external
@@ -131,6 +134,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runDevices(args[1:], stdout, stderr)
 	case "rehearse":
 		return runRehearse(args[1:], stdout, stderr)
+	case "network-args":
+		return runNetworkArgs(args[1:], stdout, stderr)
 	case "completion":
 		return completion.Run("synctang-unlocker", usage, helpOfCommand, markPositionals, args[1:], stdout, stderr)
 	case "open":

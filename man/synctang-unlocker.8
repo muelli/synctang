@@ -49,6 +49,9 @@ synctang\-unlocker \- unlock a LUKS volume with the approval of a key holder
 .B synctang\-unlocker rehearse
 .RI [ flags ]
 .br
+.B synctang\-unlocker network\-args
+.RI [ flags ]
+.br
 .B synctang\-unlocker completion
 .I shell
 .br
@@ -562,6 +565,40 @@ and
 override it.
 Default
 .BR /etc/synctang/network.conf .
+.SS network\-args
+Prints the kernel arguments that give the initrd this machine's network, for a machine whose
+address is set by hand.
+The initrd asks for DHCP and nothing else, so on a network without a DHCP server the machine boots
+with no address and the agent finds no network.
+The command asks the kernel where the default route of the running system came from, which every
+network manager records the same way, and prints
+.B ip=
+and one
+.B nameserver=
+for each DNS server of the network, as one line on standard output and nothing else, so that
+.B $(synctang\-unlocker network\-args)
+can be pasted as it is.
+Add the line to the kernel command line in the boot loader (for GRUB,
+.B GRUB_CMDLINE_LINUX
+in
+.BR /etc/default/grub ,
+then
+.BR update\-grub ).
+.B rehearse
+names this command when it finds the problem.
+.PP
+On a network that gives the address by DHCP there is nothing to print: the command says so on
+standard error and exits with status 0.
+It exits with status 1, and says why, when it cannot tell: for a wireless interface, a bond,
+a bridge or a VLAN, which the initrd does not set up by itself, for several default routes (name one
+with
+.BR \-\-interface ),
+or for a route without a gateway.
+It needs no root.
+.TP
+\fB\-\-interface\fR \fIname\fR
+The interface to give the initrd.
+Default: the one with the default route.
 .SS agent
 Runs the systemd password agent: it waits for a key holder to connect and to
 answer one recovery attempt at a time, checks that the recovered secret really

@@ -68,7 +68,7 @@ func TestUsageFitsATerminalAndAlignsItsDescriptions(t *testing.T) {
 }
 
 func TestEveryCommandsHelpFitsATerminal(t *testing.T) {
-	for _, command := range []string{"enrol", "agent", "status", "devices", "rehearse", "pair", "open", "completion"} {
+	for _, command := range []string{"enrol", "agent", "status", "devices", "rehearse", "network-args", "pair", "open", "completion"} {
 		var out, errOut bytes.Buffer
 		run([]string{command, "-h"}, &out, &errOut)
 		for _, line := range strings.Split(out.String()+errOut.String(), "\n") {

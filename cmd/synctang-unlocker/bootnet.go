@@ -5,6 +5,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -75,54 +76,64 @@ func ipJSON(out any, args ...string) error {
 	return nil
 }
 
-// bootNetworkCheck says whether the initrd's DHCP would give it the network this machine has now. The
-// command line is this boot's. It does not judge what it cannot tell and says why.
-func bootNetworkCheck(cmdline string) rehearsalCheck {
-	unchecked := func(detail string) rehearsalCheck {
-		return rehearsalCheck{bootNetworkCheckName, "unchecked", detail}
-	}
-	for _, f := range strings.Fields(cmdline) {
-		if strings.HasPrefix(f, "ip=") {
-			return unchecked(T("the kernel command line has an ip= argument, which was not compared with this machine's network"))
-		}
-	}
+// bootNetwork is how the running system gets its address, as far as the initrd is concerned.
+type bootNetwork struct {
+	Dev  string
+	DHCP bool   // the initrd's own DHCP gives the same: nothing to add
+	Args string // otherwise the kernel arguments that give the initrd this machine's address
+}
 
+// detectBootNetwork says how the interface with the default route gets its address, or the one
+// named in only when it is not empty. An error is a reason it could not tell, which is not a
+// problem of the machine's.
+func detectBootNetwork(only string) (bootNetwork, error) {
 	var routes []ipRoute
 	if err := ipJSON(&routes, "-4", "route", "show", "default"); err != nil {
-		return unchecked(err.Error())
+		return bootNetwork{}, err
+	}
+	if only != "" {
+		kept := routes[:0]
+		for _, r := range routes {
+			if r.Dev == only {
+				kept = append(kept, r)
+			}
+		}
+		if routes = kept; len(routes) == 0 {
+			return bootNetwork{}, fmt.Errorf(T("%s has no default route over IPv4, so there is no address to compare"), only)
+		}
 	}
 	if len(routes) == 0 {
-		return unchecked(T("this machine has no default route over IPv4, so there is no address to compare"))
+		return bootNetwork{}, errors.New(T("this machine has no default route over IPv4, so there is no address to compare"))
 	}
 	for _, r := range routes {
 		if r.Dev != routes[0].Dev {
-			return unchecked(T("more than one interface has a default route"))
+			return bootNetwork{}, errors.New(T("more than one interface has a default route; name one with --interface"))
 		}
 	}
 	route := routes[0]
 	dev := route.Dev
 
 	if isWireless(dev) {
-		return unchecked(fmt.Sprintf(T("%s is a wireless interface, and the initrd cannot join a wireless network"), dev))
+		return bootNetwork{}, fmt.Errorf(T("%s is a wireless interface, and the initrd cannot join a wireless network"), dev)
 	}
 	var links []ipLink
 	if err := ipJSON(&links, "-d", "link", "show", "dev", dev); err != nil {
-		return unchecked(err.Error())
+		return bootNetwork{}, err
 	}
 	if len(links) > 0 && links[0].LinkInfo.Kind != "" {
-		return unchecked(fmt.Sprintf(T("%s is a %s, which the initrd does not set up by itself"), dev, links[0].LinkInfo.Kind))
+		return bootNetwork{}, fmt.Errorf(T("%s is a %s, which the initrd does not set up by itself"), dev, links[0].LinkInfo.Kind)
 	}
 
 	if route.Protocol == "dhcp" {
-		return rehearsalCheck{bootNetworkCheckName, "ok", ""}
+		return bootNetwork{Dev: dev, DHCP: true}, nil
 	}
 
 	if route.Gateway == "" {
-		return unchecked(T("the default route has no gateway, so there is no ip= argument to suggest"))
+		return bootNetwork{}, errors.New(T("the default route has no gateway, so there is no ip= argument to suggest"))
 	}
 	var addrs []ipAddr
 	if err := ipJSON(&addrs, "-4", "addr", "show", "dev", dev); err != nil {
-		return unchecked(err.Error())
+		return bootNetwork{}, err
 	}
 	local, prefix := "", 0
 	for _, a := range addrs {
@@ -136,15 +147,33 @@ func bootNetworkCheck(cmdline string) rehearsalCheck {
 		}
 	}
 	if local == "" {
-		return unchecked(fmt.Sprintf(T("%s has no global IPv4 address to suggest"), dev))
+		return bootNetwork{}, fmt.Errorf(T("%s has no global IPv4 address to suggest"), dev)
 	}
 
 	arg := fmt.Sprintf("ip=%s::%s:%s::%s:none", local, route.Gateway, net.IP(net.CIDRMask(prefix, 32)), dev)
 	for _, dns := range upstreamDNS() {
 		arg += " nameserver=" + dns
 	}
+	return bootNetwork{Dev: dev, Args: arg}, nil
+}
+
+// bootNetworkCheck says whether the initrd's DHCP would give it the network this machine has now. The
+// command line is this boot's. It does not judge what it cannot tell and says why.
+func bootNetworkCheck(cmdline string) rehearsalCheck {
+	for _, f := range strings.Fields(cmdline) {
+		if strings.HasPrefix(f, "ip=") {
+			return rehearsalCheck{bootNetworkCheckName, "unchecked", T("the kernel command line has an ip= argument, which was not compared with this machine's network")}
+		}
+	}
+	n, err := detectBootNetwork("")
+	switch {
+	case err != nil:
+		return rehearsalCheck{bootNetworkCheckName, "unchecked", err.Error()}
+	case n.DHCP:
+		return rehearsalCheck{bootNetworkCheckName, "ok", ""}
+	}
 	return rehearsalCheck{bootNetworkCheckName, "problem", fmt.Sprintf(
-		T("%s has an address that was set by hand, not by DHCP, and the initrd asks for DHCP only, so it would have no network at boot; add this to the kernel command line in the boot loader (for GRUB, GRUB_CMDLINE_LINUX in /etc/default/grub, then update-grub): %s"), dev, arg)}
+		T("%s has an address that was set by hand, not by DHCP, and the initrd asks for DHCP only, so it would have no network at boot; add this to the kernel command line in the boot loader (for GRUB, GRUB_CMDLINE_LINUX in /etc/default/grub, then update-grub; synctang-unlocker network-args prints it again): %s"), n.Dev, n.Args)}
 }
 
 // upstreamDNS is up to two IPv4 DNS servers of the network, from the first file that lists any that
