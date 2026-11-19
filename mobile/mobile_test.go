@@ -114,7 +114,30 @@ func TestSessionRecoveryRoundTrip(t *testing.T) {
 	runSession(t, v)
 }
 
+// TestSessionRecoveryWithTheSharedXFromAKeystoreKey is the same round trip answered the way a hardware key agreement
+// key answers: the Keystore does the multiplication and hands back x(s.X) only, with no scalar for the app to hold.
+// The software ECDH here stands in for the Keystore.
+func TestSessionRecoveryWithTheSharedXFromAKeystoreKey(t *testing.T) {
+	v := loadVectors(t)
+	runSessionAnswering(t, v, func(session *Session, scalar, public []byte) error {
+		xOnly, err := xOnlyAnswer(session.RequestPoint(), scalar)
+		if err != nil {
+			return err
+		}
+		return session.AnswerWithSharedX(xOnly)
+	})
+}
+
 func runSession(t *testing.T, v vectors) {
+	t.Helper()
+	runSessionAnswering(t, v, func(session *Session, scalar, public []byte) error {
+		return session.AnswerWithScalar(scalar, public)
+	})
+}
+
+// runSessionAnswering runs the session of runSession with answer standing in for what the app does with its key: it is
+// given a copy of the scalar and its public point, and answers the machine's request.
+func runSessionAnswering(t *testing.T, v vectors, answer func(session *Session, scalar, public []byte) error) {
 	t.Helper()
 
 	const (
@@ -219,10 +242,10 @@ func runSession(t *testing.T, v vectors) {
 	if err != nil {
 		t.Fatalf("PublicPointOf: %v", err)
 	}
-	if err := session.AnswerWithScalar(append([]byte(nil), scalar...), public); err != nil {
-		t.Fatalf("AnswerWithScalar: %v", err)
+	if err := answer(session, append([]byte(nil), scalar...), public); err != nil {
+		t.Fatalf("answering: %v", err)
 	}
-	if err := session.AnswerWithScalar(append([]byte(nil), scalar...), public); err == nil {
+	if err := answer(session, append([]byte(nil), scalar...), public); err == nil {
 		t.Fatal("expected the second answer to be refused")
 	}
 

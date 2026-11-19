@@ -697,6 +697,16 @@ func (s *Session) AnswerWithScalar(scalar, expectedPublic []byte) (err error) {
 	return s.answerXOnly(append([]byte(nil), xOnly...))
 }
 
+// AnswerWithSharedX answers the machine's request with x(s.X), the x-coordinate of the shared point, computed by a
+// key that never leaves the secure hardware: a Keystore key agreement key does the multiplication and returns that
+// and nothing else, so there is no scalar for the app to hold, and none to wipe. It is the whole of such a key's
+// contribution; the machine lifts it back to a point and finishes the recovery. xOnly is wiped before this returns,
+// whatever happens; the caller wipes its own copy. A second answer to the same request is refused.
+func (s *Session) AnswerWithSharedX(xOnly []byte) error {
+	defer mrcore.Wipe(xOnly)
+	return s.answerXOnly(append([]byte(nil), xOnly...))
+}
+
 // answerXOnly sends the x-coordinate of s.X back to the machine, which
 // is the whole of a hardware-bound key holder's contribution: the
 // machine lifts it back to a point and finishes the recovery itself.
