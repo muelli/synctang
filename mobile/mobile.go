@@ -328,6 +328,7 @@ type Session struct {
 
 	conn        transport.Conn
 	machineName string
+	purpose     string
 	kid         []byte
 	x           []byte
 	answered    bool
@@ -573,6 +574,7 @@ func (s *Session) connectOnceLocked(ctx context.Context, cert tls.Certificate) e
 		return fmt.Errorf("mobile: reading hello: %w", err)
 	}
 	s.machineName = mrcore.SafeLabel(hello.Name, machineNameMaxRunes)
+	s.purpose = mrcore.SafeLabel(hello.Purpose, purposeMaxRunes)
 
 	return s.readRecoverRequestLocked()
 }
@@ -602,6 +604,20 @@ func (s *Session) readRecoverRequestLocked() error {
 	s.progress.advance(StageRequestReady)
 	logEvent(slog.LevelDebug, "request received", "kid", kidPrefix(req.Kid), "machine_name", s.machineName)
 	return nil
+}
+
+// purposeMaxRunes is how much of a purpose the library keeps. The ones it knows are a few letters; a longer one is
+// a newer machine's, or somebody's.
+const purposeMaxRunes = 40
+
+// Purpose is what the machine said in its Hello it will do with the answer, when that is not an ordinary unlock: "enrol",
+// "pair" or "extract" (mrcore.PurposeEnrol and the others), or another word cleaned and cut. Empty is an unlock. It is the
+// machine's own word and an honest machine's advice: the app shows it as a warning, never as "this is only an
+// unlock", and does not take the one-tap path for it.
+func (s *Session) Purpose() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.purpose
 }
 
 // MachineName is the name the machine gave for itself in its Hello. It
