@@ -18,14 +18,14 @@ import (
 // extractUsage is what "extract-keyslot-key -h" prints. The command is not in the usage text of the program
 // or in its shell completion, and the manual page describes it: it shows what an approval can do, for
 // whoever wants to judge that, and is not a step in setting anything up.
-const extractUsage = `usage: synctang-unlocker extract-keyslot-key [flags] <device>
+var extractUsage = T(`usage: synctang-unlocker extract-keyslot-key [flags] <device>
        synctang-unlocker extract-keyslot-key --device <device> [flags]
 
 Waits for a key holder to approve, as "open" does, and prints the passphrase of that key holder's own
 keyslot on standard output, and nothing else there. It does not open the volume. Anyone who has this
 passphrase can unlock the volume without any key holder, and it stays good until that keyslot is
 destroyed, so handle it as the LUKS passphrase itself: do not put it in a file. Needs root.
-`
+`)
 
 // runExtractKeyslotKey is "synctang-unlocker extract-keyslot-key": the secret a key holder's approval
 // recovers is the passphrase of its keyslot (the agent hands exactly this to systemd), and the machine
