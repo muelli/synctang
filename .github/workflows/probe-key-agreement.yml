@@ -136,6 +136,15 @@ jobs:
         continue-on-error: true
         run: |
           export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
+          # The screen on, unlocked and staying so: the prompt is cancelled for an app that is not in the foreground.
+          adb shell svc power stayon true
+          adb shell settings put system screen_off_timeout 1800000
+          adb shell input keyevent KEYCODE_WAKEUP
+          adb shell wm dismiss-keyguard
+          sleep 1
+          adb shell input text 1234
+          adb shell input keyevent KEYCODE_ENTER
+          sleep 2
           ( while true; do adb emu finger touch 1 > /dev/null 2>&1; sleep 1; done ) &
           toucher=$!
           ./gradlew connectedDebugAndroidTest -Psynctang.goMobileTarget=android/amd64 \

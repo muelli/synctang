@@ -4,6 +4,7 @@ package com.github.muelli.synctang
 import android.hardware.biometrics.BiometricManager
 import android.os.Build
 import android.os.CancellationSignal
+import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import java.security.interfaces.ECPublicKey
 import java.util.concurrent.CountDownLatch
@@ -142,8 +143,12 @@ class KeyAgreementProbeTest {
             .setNegativeButton("cancel", executor) { _, _ -> outcome = "cancelled"; done.countDown() }
             .setAllowedAuthenticators(android.hardware.biometrics.BiometricManager.Authenticators.BIOMETRIC_STRONG)
             .build()
-        prompt.authenticate(crypto, CancellationSignal(), executor, callback)
-        assertTrue("the prompt did not finish within a minute (is the sensor being touched?)", done.await(60, TimeUnit.SECONDS))
+        // The prompt belongs to an app that is in the foreground: the system cancels it otherwise.
+        ActivityScenario.launch(MainActivity::class.java).use {
+            Thread.sleep(2_000)
+            prompt.authenticate(crypto, CancellationSignal(), executor, callback)
+            assertTrue("the prompt did not finish within a minute (is the sensor being touched?)", done.await(60, TimeUnit.SECONDS))
+        }
         Log.i(tag, "the prompt: $outcome")
 
         val got = agreement.apply { doPhase(peer.public, true) }.generateSecret()
