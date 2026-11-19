@@ -81,7 +81,7 @@ func runAgentOnce(ctx context.Context, device string, machineCert tls.Certificat
 		}
 		return nil
 	}
-	return serveOneExchange(ctx, device, machineName, listenOpts, tr, deliver)
+	return serveOneExchange(ctx, device, machineName, "", listenOpts, tr, deliver)
 }
 
 // deliverFunc takes the recovered and verified key material and puts it to use:
@@ -91,8 +91,9 @@ type deliverFunc func(keyMaterial []byte) error
 
 // serveOneExchange is everything an exchange needs around the conversation
 // itself: read the volume's token, listen for one of the key holders it names,
-// and run the exchange, handing the result to deliver.
-func serveOneExchange(ctx context.Context, device, machineName string, listenOpts transport.ListenOptions, tr transport.Transport, deliver deliverFunc) error {
+// and run the exchange, handing the result to deliver. purpose is what the machine says it will do with the
+// answer when that is not to unlock the volume (mrcore.Hello.Purpose); empty for an unlock.
+func serveOneExchange(ctx context.Context, device, machineName, purpose string, listenOpts transport.ListenOptions, tr transport.Transport, deliver deliverFunc) error {
 	dump, err := runCommand(nil, "cryptsetup", "luksDump", device)
 	if err != nil {
 		return fmt.Errorf(T("synctang-unlocker: reading LUKS header: %w"), err)
@@ -120,7 +121,7 @@ func serveOneExchange(ctx context.Context, device, machineName string, listenOpt
 	}
 	defer conn.Close()
 
-	return runExchange(ctx, conn, tok, device, agentNameFor(machineName, tok.Machine.Name), deliver)
+	return runExchange(ctx, conn, tok, device, agentNameFor(machineName, tok.Machine.Name), purpose, deliver)
 }
 
 // agentNameFor is the name the agent greets a key holder with: the one
@@ -166,7 +167,7 @@ func runExchange(
 	ctx context.Context,
 	conn transport.Conn,
 	tok mrcore.Token,
-	device, machineName string,
+	device, machineName, purpose string,
 	deliver deliverFunc,
 ) error {
 	// Bound the exchange itself, not just the wait for a connection.
@@ -196,7 +197,7 @@ func runExchange(
 		return err
 	}
 
-	if err := mrcore.WriteMessage(conn, mrcore.Hello{Name: machineName}); err != nil {
+	if err := mrcore.WriteMessage(conn, mrcore.Hello{Name: machineName, Purpose: purpose}); err != nil {
 		return fmt.Errorf(T("synctang-unlocker: sending hello: %w"), err)
 	}
 

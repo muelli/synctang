@@ -297,7 +297,7 @@ func tokenWithRecipients(t *testing.T, ids ...string) mrcore.Token {
 func TestAgentRefusesBeforeAnythingIsSentWhenSeveralRecipientsMatch(t *testing.T) {
 	tok := tokenWithRecipients(t, testKH1, testKH2, testKH1)
 	conn := &recordingConn{peer: testKH1}
-	err := runExchange(context.Background(), conn, tok, "/dev/null", "m", func([]byte) error { return nil })
+	err := runExchange(context.Background(), conn, tok, "/dev/null", "m", "", func([]byte) error { return nil })
 	if err == nil {
 		t.Fatal("the agent answered for one of two entries")
 	}

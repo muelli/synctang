@@ -179,7 +179,7 @@ func openOnDemand(device, name, machineName string, cert tls.Certificate, timeou
 		}
 		return nil
 	}
-	if !waitForApproval(device, machineName, cert, timeout, directAddr, network, deliver, stderr) {
+	if !waitForApproval(device, machineName, "", cert, timeout, directAddr, network, deliver, stderr) {
 		return 1
 	}
 	fmt.Fprintf(stdout, T("unlocked: /dev/mapper/%s\n"), name)
@@ -191,7 +191,7 @@ func openOnDemand(device, name, machineName string, cert tls.Certificate, timeou
 // answers with the wrong key, a dropped connection) is reported and followed by another, as
 // "synctang-unlocker pair" does, until one works or the time is up. "open" and "rehearse" share
 // it: they differ only in what is done with the key.
-func waitForApproval(device, machineName string, cert tls.Certificate, timeout time.Duration, directAddr string, network transport.NetworkConfig, deliver deliverFunc, stderr io.Writer) bool {
+func waitForApproval(device, machineName, purpose string, cert tls.Certificate, timeout time.Duration, directAddr string, network transport.NetworkConfig, deliver deliverFunc, stderr io.Writer) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	tr := newAgentTransport(cert, nil, directAddr, network)
@@ -203,7 +203,7 @@ func waitForApproval(device, machineName string, cert tls.Certificate, timeout t
 		return fmt.Sprintf(T("waiting for a key holder (%s of %s)"), clock(time.Since(started)), clock(timeout))
 	})
 	for {
-		err := serveOneExchange(ctx, device, machineName, transport.ListenOptions{DirectAddr: directAddr}, tr, deliver)
+		err := serveOneExchange(ctx, device, machineName, purpose, transport.ListenOptions{DirectAddr: directAddr}, tr, deliver)
 		if err == nil {
 			status.Stop()
 			return true

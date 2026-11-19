@@ -383,7 +383,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		// window. It is the passphrase of the approving key holder's own keyslot.
 		key, code := keyFromApprovalFn(*device, approval{
 			machineName: *name, machineKeyFile: *machineKeyFile, networkConf: *networkConf,
-			directAddr: *directAddr, timeout: *window, what: T("pairing a key holder"),
+			directAddr: *directAddr, timeout: *window, what: T("pairing a key holder"), purpose: mrcore.PurposePair,
 		}, stdout, stderr)
 		if code != 0 {
 			return code

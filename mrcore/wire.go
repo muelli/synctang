@@ -66,6 +66,30 @@ type RecoverResult struct {
 // Conn.PeerID(), not merely asserted by this message.
 type Hello struct {
 	Name string `json:"name"`
+
+	// Purpose is what the machine says it will do with the answer, when that is not to unlock the volume: one of
+	// the Purpose constants below. Empty, and then not sent, is an ordinary unlock. It is the machine's own word
+	// and an honest machine's advice to the person approving: a machine that does something else says nothing,
+	// which looks exactly like an unlock. A key holder shows it as a warning, whatever it is, and never as
+	// "this is only an unlock".
+	Purpose string `json:"purpose,omitempty"`
+}
+
+// What a machine says it will do with the answer, other than unlock the volume. The answer is the passphrase of
+// the approving key holder's own keyslot, which is good for anything a LUKS passphrase is good for.
+const (
+	// PurposeEnrol: enrol a key holder (synctang-unlocker enrol --approve-with-key-holder).
+	PurposeEnrol = "enrol"
+	// PurposePair: pair a key holder (synctang-unlocker pair --approve-with-key-holder).
+	PurposePair = "pair"
+	// PurposeExtract: print the passphrase of the keyslot (synctang-unlocker extract-keyslot-key).
+	PurposeExtract = "extract"
+)
+
+// KnownPurpose says whether p is one of the purposes above. A key holder that meets another still treats it as
+// something other than an unlock, and shows it cleaned.
+func KnownPurpose(p string) bool {
+	return p == PurposeEnrol || p == PurposePair || p == PurposeExtract
 }
 
 // WriteMessage writes v to w as a 4-byte big-endian length prefix

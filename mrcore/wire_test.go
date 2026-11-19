@@ -106,3 +106,41 @@ func TestRecoverResultRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+// What the machine says it will do with the answer, in its greeting. Empty is an ordinary unlock, and is not sent
+// at all, so that a greeting without the field and a greeting for an unlock look the same on the wire.
+func TestAHelloCarriesAPurposeOnlyWhenThereIsOne(t *testing.T) {
+	var unlock bytes.Buffer
+	if err := WriteMessage(&unlock, Hello{Name: "box"}); err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(unlock.Bytes(), []byte("purpose")) {
+		t.Errorf("an unlock greeting carries a purpose: %q", unlock.Bytes())
+	}
+	for _, purpose := range []string{PurposeEnrol, PurposePair, PurposeExtract} {
+		var buf bytes.Buffer
+		if err := WriteMessage(&buf, Hello{Name: "box", Purpose: purpose}); err != nil {
+			t.Fatal(err)
+		}
+		var got Hello
+		if err := ReadMessage(&buf, &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.Name != "box" || got.Purpose != purpose {
+			t.Errorf("round trip = %+v, want purpose %q", got, purpose)
+		}
+	}
+}
+
+func TestOnlyTheNamedPurposesAreKnown(t *testing.T) {
+	for _, p := range []string{PurposeEnrol, PurposePair, PurposeExtract} {
+		if !KnownPurpose(p) {
+			t.Errorf("%q is not known", p)
+		}
+	}
+	for _, p := range []string{"", "unlock", "Enrol", "something a newer machine says"} {
+		if KnownPurpose(p) {
+			t.Errorf("%q is known", p)
+		}
+	}
+}

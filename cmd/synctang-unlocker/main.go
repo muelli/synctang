@@ -236,7 +236,7 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 		// other for adding one. It goes from the exchange into the command and nowhere else.
 		key, code := keyFromApprovalFn(*device, approval{
 			machineName: *name, machineKeyFile: *machineKeyFile, networkConf: *networkConf,
-			directAddr: *directAddr, timeout: *approveTimeout, what: T("enrolling a key holder"),
+			directAddr: *directAddr, timeout: *approveTimeout, what: T("enrolling a key holder"), purpose: mrcore.PurposeEnrol,
 		}, stdout, stderr)
 		if code != 0 {
 			return code

@@ -91,6 +91,14 @@ func newOpenFixture(t *testing.T) openFixture {
 // with scalar s, and return what the machine says about it.
 func (f openFixture) answer(t *testing.T, ctx context.Context, s []byte) mrcore.RecoverResult {
 	t.Helper()
+	_, result := f.answerSeeing(t, ctx, s)
+	return result
+}
+
+// answerSeeing is answer, and also returns the machine's greeting, which says what the machine will do with the
+// answer.
+func (f openFixture) answerSeeing(t *testing.T, ctx context.Context, s []byte) (mrcore.Hello, mrcore.RecoverResult) {
+	t.Helper()
 	conn, err := transport.NewSyncthingRelay(f.holderCert).Dial(ctx, transport.DialOptions{PeerID: f.machineID, DirectAddr: f.addr})
 	if err != nil {
 		t.Fatalf("Dial: %v", err)
@@ -118,7 +126,7 @@ func (f openFixture) answer(t *testing.T, ctx context.Context, s []byte) mrcore.
 	if err := mrcore.ReadMessage(conn, &result); err != nil {
 		t.Fatalf("reading RecoverResult: %v", err)
 	}
-	return result
+	return hello, result
 }
 
 func (f openFixture) args(extra ...string) []string {

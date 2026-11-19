@@ -402,7 +402,7 @@ func runRehearse(args []string, stdout, stderr io.Writer) int {
 	// Nothing is opened: the exchange already checks the recovered secret against a keyslot
 	// before it delivers it, and the volume of a running machine is in use.
 	nothing := func([]byte) error { return nil }
-	if !waitForApproval(dev, *machineName, cert, *timeout, *directAddr, network, nothing, stderr) {
+	if !waitForApproval(dev, *machineName, "", cert, *timeout, *directAddr, network, nothing, stderr) {
 		return 1
 	}
 	fmt.Fprintf(stdout, "\n%s", ui.For(stdout).Green(ui.For(stdout).Emoji("🎉", "")))

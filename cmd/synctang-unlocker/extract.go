@@ -63,7 +63,7 @@ func runExtractKeyslotKey(args []string, stdout, stderr io.Writer) int {
 
 	key, code := keyFromApprovalFn(positional[0], approval{
 		machineName: *machineName, machineKeyFile: *machineKeyFile, networkConf: *networkConf,
-		directAddr: *directAddr, timeout: *timeout, what: T("extracting its key"),
+		directAddr: *directAddr, timeout: *timeout, what: T("extracting its key"), purpose: mrcore.PurposeExtract,
 	}, stderr, stderr)
 	if code != 0 {
 		return code
@@ -91,6 +91,8 @@ type approval struct {
 	timeout                                              time.Duration
 	// what the approval is for, for the sentence that says nobody could give it ("opening it").
 	what string
+	// purpose is what the machine tells the key holder it will do with the answer (mrcore.Purpose...).
+	purpose string
 }
 
 // keyFromApproval waits for a key holder whose answer opens device and returns what it recovered, the
@@ -132,7 +134,7 @@ func keyFromApproval(device string, a approval, info, stderr io.Writer) ([]byte,
 		key = append([]byte(nil), keyMaterial...) // the caller wipes the slice it was lent
 		return nil
 	}
-	if !waitForApproval(device, a.machineName, cert, a.timeout, a.directAddr, network, deliver, stderr) {
+	if !waitForApproval(device, a.machineName, a.purpose, cert, a.timeout, a.directAddr, network, deliver, stderr) {
 		return nil, 1
 	}
 	return key, 0
