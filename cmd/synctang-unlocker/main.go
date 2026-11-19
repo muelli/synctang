@@ -136,6 +136,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runRehearse(args[1:], stdout, stderr)
 	case "network-args":
 		return runNetworkArgs(args[1:], stdout, stderr)
+	case "extract-keyslot-key":
+		// Not in the usage text or the completion, on purpose: see extractUsage.
+		return runExtractKeyslotKey(args[1:], stdout, stderr)
 	case "completion":
 		return completion.Run("synctang-unlocker", usage, helpOfCommand, markPositionals, args[1:], stdout, stderr)
 	case "open":
