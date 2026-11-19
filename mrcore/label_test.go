@@ -22,6 +22,8 @@ func TestSafeLabel(t *testing.T) {
 		{"bidirectional override is neutralised", "evil‮gnp.exe", 64, "evil?gnp.exe"},
 		{"zero-width space is neutralised", "a​b", 64, "a?b"},
 		{"invalid UTF-8 is neutralised", "a\xffb", 64, "a?b"},
+		{"line separator is neutralised", "a\u2028b", 64, "a?b"},
+		{"paragraph separator is neutralised", "a\u2029b", 64, "a?b"},
 		{"long text is cut at the limit", strings.Repeat("x", 100), 10, "xxxxxxxxxx..."},
 		{"cut counts characters, not bytes", strings.Repeat("é", 20), 5, "ééééé..."},
 		{"empty stays empty", "", 64, ""},

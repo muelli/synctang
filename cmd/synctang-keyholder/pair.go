@@ -140,7 +140,8 @@ func pairOnce(ctx context.Context, wait time.Duration, cert tls.Certificate, lin
 		if waitCtx.Err() != nil {
 			return &pairFinal{fmt.Errorf(T("the machine did not answer within %s"), wait)}
 		}
-		return &pairFinal{fmt.Errorf(T("the machine had the pairing request but its answer did not arrive: %w"), err)}
+		return &pairFinal{fmt.Errorf(T("the machine had the pairing request but its answer did not arrive: %w. The code shown above is void: "+
+			"it belonged to the connection that was lost. If the person at the machine confirmed it, pairing again will say that this key holder is already enrolled"), err)}
 	}
 	if !result.OK {
 		return &pairFinal{pairRefusal(result.Error)}

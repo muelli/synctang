@@ -250,6 +250,10 @@ func (p *Pairer) Pair(machineID, pairingCode, seed, publicKeyHex, name, directAd
 		if errors.Is(lastErr, errOperatorTimeout) {
 			return lastErr
 		}
+		var noVerdict *pairNoVerdict
+		if errors.As(lastErr, &noVerdict) {
+			return noVerdict.error
+		}
 		select {
 		case <-dialCtx.Done():
 			if p.isCancelled() {
@@ -319,7 +323,12 @@ func pairOnce(ctx, dialCtx context.Context, prog *progress, cert tls.Certificate
 		if waitCtx.Err() == context.DeadlineExceeded && ctx.Err() == nil {
 			return errOperatorTimeout
 		}
-		return fmt.Errorf("mobile: reading the pairing result: %w", err)
+		if ctx.Err() != nil {
+			return fmt.Errorf("mobile: reading the pairing result: %w", err)
+		}
+		// The machine has the proof of a code that is good once, and its operator may have said yes: this
+		// connection is over and a fresh one would meet a closed window, so it is final, not "unreachable".
+		return &pairNoVerdict{withKind(FailurePairNotConfirmed, fmt.Errorf("mobile: the machine's answer did not arrive: %w", err))}
 	}
 	if !result.OK {
 		return &pairRefused{reason: mrcore.SafeLabel(result.Error, machineErrorMaxRunes)}
@@ -327,6 +336,11 @@ func pairOnce(ctx, dialCtx context.Context, prog *progress, cert tls.Certificate
 	prog.advance(StageEnrolled)
 	return nil
 }
+
+// pairNoVerdict is a connection that was lost after the proof was sent, with no answer from the machine.
+type pairNoVerdict struct{ error }
+
+func (e *pairNoVerdict) Unwrap() error { return e.error }
 
 // pairBadChallenge is a challenge no honest machine sends. Nothing was proved yet, but another attempt
 // would meet the same machine.
