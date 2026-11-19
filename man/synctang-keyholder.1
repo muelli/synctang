@@ -44,6 +44,15 @@ and waits at its LUKS prompt; the key holder always dials, never listens.
 It looks the machine up by its transport identity, shows the machine's name and
 identity, waits for a person to approve, answers once, and reports how it went.
 .PP
+Every approval gives the machine the passphrase of this key holder's own keyslot, and the machine can do with
+it what the passphrase of any LUKS keyslot can do: open the volume, and add or remove keys.
+A notice says so before each approval.
+A machine that says in its greeting that it will do something other than unlock, such as enrol or pair a key
+holder or print the passphrase, is said to be asking for something that is not an unlock, as a warning, and
+the result is not called "unlocked".
+This is the machine's own word and an honest machine's advice: a machine that does something else says nothing,
+which looks exactly like an unlock.
+.PP
 The private key stays on this computer.
 The machine recovers the volume secret from the answer, checks that it opens
 the volume, and only then uses it.
