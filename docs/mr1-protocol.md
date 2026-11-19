@@ -92,7 +92,7 @@ tests.
 transport's authenticated connection, each prefixed with a 4-byte
 big-endian length (`mrcore.WriteMessage`/`ReadMessage`), at most 65536
 bytes each, with byte fields as standard padded base64. The machine
-sends `Hello` (its name) first, then `RecoverRequest`; the key holder
+sends `Hello` (its name, and a purpose when it will do something other than unlock with the answer) first, then `RecoverRequest`; the key holder
 answers with `RecoverResponse`, and finally the machine sends
 `RecoverResult` to say whether the recovered secret opened the volume.
 The complete specification, with the token format, the nonce and AEAD

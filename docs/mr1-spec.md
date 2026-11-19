@@ -432,7 +432,7 @@ the authenticated channel.
 
 | # | Direction | Message | Body fields |
 |---|---|---|---|
-| 1 | M to K | `Hello` | `name` (string): the machine's name, to be shown to a human before they approve. |
+| 1 | M to K | `Hello` | `name` (string): the machine's name, to be shown to a human before they approve. `purpose` (string, omitted when empty): what the machine says it will do with the answer when that is not an ordinary unlock, one of `enrol`, `pair`, `extract`; a key holder that meets another still treats it as something other than an unlock. |
 | 2 | M to K | `RecoverRequest` | `kid` (b64), `X` (b64, 65 bytes). |
 | 3 | K to M | `RecoverResponse` | exactly one of `Y` (b64, 65 bytes), `xOnly` (b64, 32 bytes), `error` (string). |
 | 4 | M to K | `RecoverResult` | `ok` (boolean), `error` (string, omitted when empty). |
@@ -447,7 +447,8 @@ holder exercised together by the project's test suite, which this
 document did not run separately):
 
 - The key holder shows `Hello.name` and the machine's verified transport
-  identity to a human and waits for approval before message 3 (it may
+  identity to a human, with a warning when `Hello.purpose` is set (the
+  purpose is the machine's own word and proves nothing), and waits for approval before message 3 (it may
   ask for approval before or after reading message 2; only the order of
   messages on the wire is fixed).
 - In message 3, exactly one of the three fields is set. The reference

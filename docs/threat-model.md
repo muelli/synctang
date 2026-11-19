@@ -71,13 +71,23 @@ copy of the passphrase. This is how LUKS is made, and not special to synctang: t
 can do all of the above. What synctang adds is that a key holder's approval hands one over.
 
 The machine's root, malware on the machine, and anyone who obtains one approval from your key holder for a
-copy of the disk (see above) are the parties who can reach this; each needs an approval, and a key holder
-shows who is asking, but it cannot show what the approval will be used for: it sees a request to unlock, and
-the machine decides what to do with the answer. Whoever can run the stock programs as root on the machine can
-ask for an approval under that description; a person who writes their own program can ask under any. Tang has
-the same property: `clevis luks bind` adds a random-key keyslot and leaves the original passphrase in place,
-and `clevis luks pass` prints the passphrase of a slot that was bound to a Tang server `[V]` (Clevis manual
-pages).
+copy of the disk (see above) are the parties who can reach this; each needs an approval. A key holder shows who is
+asking, and it says what the approval is for as far as the machine says so: the greeting of the machine carries a
+purpose (`mrcore.Hello.Purpose`) when it will not simply unlock, which `enrol` and `pair` with
+`--approve-with-key-holder` and `extract-keyslot-key` do. The laptop then says "this is not an unlock" and what the
+machine says it will do, and does not call the result "unlocked"; the phone shows a warning in place of the usual
+text, does not take its one-tap path (a tap on a machine to unlock it is consent to an unlock, not to this), and
+words what it did afterwards the same way `[V]` (tests of the machine, the laptop, the library and the phone's flow).
+Every approval, an unlock too, is preceded by a standing notice that the machine gets the passphrase of the key
+holder's keyslot and can open the volume and add or remove keys with it.
+
+That is the machine's own word, and an honest machine's advice, nothing more. A machine that does something it did
+not say looks exactly like an unlock, and a person who writes their own program can ask for an approval under any
+description. What it stops is the plain case: a colleague with `sudo` who runs the stock program and gets an approval
+that was described to the person as an unlock. Whoever can run programs as root on the machine can still ask for
+an approval under that description. Tang has the same property: `clevis luks bind` adds a random-key keyslot and
+leaves the original passphrase in place, and `clevis luks pass` prints the passphrase of a slot that was bound to
+a Tang server `[V]` (Clevis manual pages).
 
 What the key holder does to help, cheapest first:
 

@@ -415,7 +415,10 @@ enrolled key holder has one of its own. Any one of them opens the volume.
 
   The machine waits for that approval first (for as long as `--timeout`), then shows the pairing link for the
   new key holder as usual. What the approval recovers is the passphrase of the approving key holder's own
-  keyslot, and it goes from the exchange into the command and nowhere else. The new key holder gets a keyslot
+  keyslot, and it goes from the exchange into the command and nowhere else. The key holder you approve on
+  warns you that this is not an unlock and says what the machine says it will do (the laptop prints it; the
+  phone shows it in place of the usual text and waits for a tap on Approve instead of going on by itself),
+  and it does not call the result "unlocked". The new key holder gets a keyslot
   of its own, which `revoke` removes like any other. The manual page says what else an approval makes possible.
 - **A second passphrase.** While you still have the first, add one for emergencies with
   `cryptsetup luksAddKey /dev/sdXN`, and keep it somewhere that is not this machine. Do not put it in a file.
