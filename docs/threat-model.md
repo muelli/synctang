@@ -244,9 +244,28 @@ Android does not back up.
   process with root access to the phone while the app is alive can therefore find a
   scalar in freed memory after an unlock, not only during it `[I]` (read from the
   source of gomobile; memory was not examined). A
-  non-exportable hardware key agreement key would not have this weakness; this
-  phone cannot offer one. Whether a phone with KeyMint keeps such a key in
-  hardware, and whether the app should then use it, is `[U]`: none was tried.
+  non-exportable hardware key agreement key does not have this weakness; the Pixel
+  3a XL cannot offer one, and a phone with Android 16 QPR2 can (next point).
+- **On Android 16 QPR2 (API 36.1) and later:** `BiometricPrompt.CryptoObject` takes a
+  `KeyAgreement`, so a Keystore key agreement key can need a fingerprint for each
+  use, bound to that one operation. A phone that has it makes its key that way when
+  it makes a new key: the secure hardware does the multiplication and returns the
+  x-coordinate and nothing else, so the app never holds a scalar, wrapped or not, and
+  the weakness above does not apply to it. The constructor is looked for on the phone,
+  never assumed from a version number; a phone without it keeps the wrapped key, and a
+  phone keeps the kind of key it has until the person makes a new one, which is a new
+  public point, so every machine is paired again. The key is made with the same
+  safeguards as the wrapped one: StrongBox first, a trial use with a time limit, the
+  security level reported, and a key in software refused unless the person allows it.
+  The prompt is the framework's own, not androidx's (1.1.0 cannot be given a
+  `KeyAgreement`), and has to be shown from the activity in the foreground.
+  `[V]` on the 36.1 emulator image, in CI (`AgreementKeyTest`, with a virtual fingerprint
+  enrolled and touched): an agreement that was not authenticated is refused, the real
+  gate authenticates the `CryptoObject`, and the secret after it equals a software ECDH
+  of the same two keys. The Keystore on the emulator is software, so this shows that the
+  sequence works and nothing about where a key lives. `[U]` on a real phone: whether
+  its secure hardware (TEE, StrongBox, a Titan M) accepts and uses such a key, and the
+  fingerprint sensor.
 - **On the Pixel 3a XL:** the StrongBox chip creates a key and reports it at the
   StrongBox level, and then every use of it fails (`BACKEND_BUSY` from the key blob
   upgrade, for as long as anyone waits) `[V]`. So the app uses each candidate key
