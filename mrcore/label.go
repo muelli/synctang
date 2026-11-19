@@ -22,6 +22,7 @@ import (
 // rather than a defence against a stranger; a label is still never
 // evidence of who sent it.
 func SafeLabel(s string, maxRunes int) string {
+	s = tidySpaces(s)
 	var b strings.Builder
 	n := 0
 	for len(s) > 0 {
@@ -37,6 +38,44 @@ func SafeLabel(s string, maxRunes int) string {
 		}
 		s = s[size:]
 		n++
+	}
+	return b.String()
+}
+
+// blankLooking are letters and symbols that draw nothing, though they are not spaces: the Hangul fillers and
+// the empty Braille pattern. A label made only of them reads as empty.
+const blankLooking = "\u115f\u1160\u3164\uffa0\u2800"
+
+// tidySpaces drops the spaces (category Zs; a newline or a separator is not one, it is marked later) at the
+// ends of s, makes each run of spaces one space, and returns "" for a string with nothing visible in it, so that a label cannot be made to look like another by trailing spaces,
+// or to look like nothing by invisible letters.
+func tidySpaces(s string) string {
+	visible := false
+	var b strings.Builder
+	space := false
+	for _, r := range s {
+		if unicode.Is(unicode.Zs, r) {
+			space = true
+			continue
+		}
+		if strings.ContainsRune(blankLooking, r) {
+			// Kept in a label that has something else in it, and noted as not visible.
+			if space && b.Len() > 0 {
+				b.WriteByte(' ')
+			}
+			space = false
+			b.WriteRune(r)
+			continue
+		}
+		visible = true
+		if space && b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		space = false
+		b.WriteRune(r)
+	}
+	if !visible {
+		return ""
 	}
 	return b.String()
 }

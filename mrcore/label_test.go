@@ -27,6 +27,11 @@ func TestSafeLabel(t *testing.T) {
 		{"long text is cut at the limit", strings.Repeat("x", 100), 10, "xxxxxxxxxx..."},
 		{"cut counts characters, not bytes", strings.Repeat("é", 20), 5, "ééééé..."},
 		{"empty stays empty", "", 64, ""},
+		{"runs of spaces become one", "a   b", 64, "a b"},
+		{"spaces at the ends are dropped", "  server  ", 64, "server"},
+		{"a name of only spaces is empty", "   ", 64, ""},
+		{"a name of only blank-looking letters is empty", "\u3164\u115f\u1160\uffa0\u2800", 64, ""},
+		{"blank-looking letters among visible ones are kept", "a\u3164b", 64, "a\u3164b"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
