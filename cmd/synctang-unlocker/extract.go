@@ -23,8 +23,9 @@ var extractUsage = T(`usage: synctang-unlocker extract-keyslot-key [flags] <devi
 
 Waits for a key holder to approve, as "open" does, and prints the passphrase of that key holder's own
 keyslot on standard output, and nothing else there. It does not open the volume. Anyone who has this
-passphrase can unlock the volume without any key holder, and it stays good until that keyslot is
-destroyed, so handle it as the LUKS passphrase itself: do not put it in a file. Needs root.
+passphrase can unlock the volume without any key holder, add or destroy keyslots and read out the
+volume key, so handle it as the LUKS passphrase itself: do not put it in a file. Needs root. The manual
+page says what ends it.
 `)
 
 // runExtractKeyslotKey is "synctang-unlocker extract-keyslot-key": the secret a key holder's approval

@@ -389,6 +389,9 @@ removes it like any other.
 With it,
 .B \-\-timeout
 is also how long to wait for the approval, which is asked for before the pairing link is shown.
+The approver agrees before anyone knows which key holder will be added, and with
+.B \-\-yes
+one approval enrols whoever answers the link.
 .TP
 \fB\-\-existing\-passphrase\-file\fR \fIfile\fR
 A file holding an existing valid passphrase of the volume, or
@@ -681,9 +684,24 @@ agent hands exactly this to systemd at boot.
 The machine holds it for the moment of the unlock, and this command prints it.
 Whoever has it can unlock the volume with no key holder at all, with
 .BR cryptsetup (8)
-and its standard input as the key file, and it stays good until the keyslot is destroyed:
+and its standard input as the key file, and can do what the passphrase of any LUKS keyslot can: add keyslots,
+destroy keyslots (including the owner's own passphrase and those of every other key holder), and read out the
+volume key itself, which the
+.B luksDump
+command of
+.BR cryptsetup (8)
+does when it is asked for the volume key.
+It stays good until its keyslot is destroyed, which
 .B revoke
-destroys it, nothing else does.
+does and so do
+.BR "cryptsetup luksKillSlot" ,
+.B luksRemoveKey
+and
+.BR erase ;
+but a volume key that was read out is not ended by any of them: only encrypting the volume again under a new
+volume key does
+.RB ( "cryptsetup reencrypt" ),
+after which the key holders have to be enrolled again.
 Handle it as the LUKS passphrase itself.
 It is hex text, and it works wherever a passphrase does, so that a key holder that is still
 enrolled is enough to run
@@ -694,7 +712,7 @@ without the original passphrase:
 .PP
 .RS
 .nf
-sudo sh \-c 'synctang\-unlocker revoke \-\-device /dev/sdXN \\
+sudo bash \-c 'synctang\-unlocker revoke \-\-device /dev/sdXN \\
   \-\-existing\-passphrase\-file <(synctang\-unlocker extract\-keyslot\-key /dev/sdXN) \\
   <transport id>'
 .fi

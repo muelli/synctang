@@ -26,7 +26,10 @@ that is stronger than being able to ask:
   rebooting that machine and you can see its console.
 - After any suspected exposure of the disk or a backup, treat the volume
   secret as compromised: change the LUKS passphrase, revoke every key
-  holder and enrol them again.
+  holder and enrol them again. If the exposure included an approval or a
+  keyslot passphrase (see "An approval is more than an unlock" below), that
+  is not enough: the volume key may have been read, and only encrypting
+  the volume again under a new one (`cryptsetup reencrypt`) ends access.
 - Sealing the machine's transport identity in the TPM (a PCR policy, so
   the disk alone cannot impersonate the machine) is the change that would
   remove this. It is real additional work and is not built. `[I]` not
@@ -43,7 +46,7 @@ that is stronger than being able to ask:
 
 **An approval is more than an unlock.** The secret that a key holder's approval recovers is the passphrase
 of that key holder's own keyslot: the agent hands exactly this to systemd at boot, and the machine holds it for
-the moment of the unlock. Whoever gets hold of it can do what the passphrase of any keyslot can:
+the moment of the unlock. Whoever gets hold of it can do what the passphrase of any keyslot can, and that is a lot:
 
 - Unlock the volume with no key holder at all. `synctang-unlocker extract-keyslot-key` shows this: it waits for
   an approval and prints the passphrase `[V]` (run on a test volume, 2026-11-19). It is described only in the
@@ -52,15 +55,29 @@ the moment of the unlock. Whoever gets hold of it can do what the passphrase of 
   takes the passphrase of any slot `[V]` (a passphrase added this way enrolled a second key holder in the test).
   `synctang-unlocker enrol` and `pair` can take an approval in place of the original passphrase for the first
   of these.
-- Keep that access after the key holder is revoked, if it did one of the things above: `revoke` destroys the
-  keyslot of a key holder, and nothing else. A keyslot that was added with the passphrase is independent of the
-  key holder, and so is a copy of the passphrase.
+- Destroy keyslots: `cryptsetup luksKillSlot` takes the passphrase of any slot, including the slot of the
+  owner's own passphrase and those of every other key holder, and it can destroy the slot it was given
+  `[V]` (a review ran it on a scratch volume, 2026-11-19, and left no keyslot).
+- Read out the volume key itself: `cryptsetup luksDump --dump-volume-key` with that passphrase prints it
+  `[V]` (same review). The volume key is what the data is encrypted with. **No revoke and no removal of keyslots
+  ends access for whoever has it**: with the volume key `cryptsetup` opens the volume, and adds a new passphrase,
+  without a single keyslot left `[V]`. Only encrypting the volume again under a new volume key
+  (`cryptsetup reencrypt`) ends it, after which the key holders have to be enrolled again.
+
+So `revoke` (which destroys the keyslot of one key holder and nothing else) is enough only if the approval or
+the passphrase was never used for anything but opening the volume. After an approval you doubt, treat the volume
+key as read, and re-encrypt. A keyslot added with the passphrase is independent of the key holder, and so is a
+copy of the passphrase. This is how LUKS is made, and not special to synctang: the passphrase of any LUKS keyslot
+can do all of the above. What synctang adds is that a key holder's approval hands one over.
 
 The machine's root, malware on the machine, and anyone who obtains one approval from your key holder for a
 copy of the disk (see above) are the parties who can reach this; each needs an approval, and a key holder
-shows who is asking. Tang has the same property: `clevis luks bind` adds a random-key keyslot and leaves the
-original passphrase in place, and `clevis luks pass` prints the passphrase of a slot that was bound to a
-Tang server `[V]` (Clevis manual pages).
+shows who is asking, but it cannot show what the approval will be used for: it sees a request to unlock, and
+the machine decides what to do with the answer. Whoever can run the stock programs as root on the machine can
+ask for an approval under that description; a person who writes their own program can ask under any. Tang has
+the same property: `clevis luks bind` adds a random-key keyslot and leaves the original passphrase in place,
+and `clevis luks pass` prints the passphrase of a slot that was bound to a Tang server `[V]` (Clevis manual
+pages).
 
 What the key holder does to help, cheapest first:
 
