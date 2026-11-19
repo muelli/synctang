@@ -14,6 +14,9 @@ work=$(mktemp -d)
 quiet=0
 trap 'rm -rf "$work"' EXIT
 
+# The screen on and staying so: a lock screen in the way is what stopped an earlier run.
+$adb shell svc power stayon true
+$adb shell settings put system screen_off_timeout 1800000
 $adb shell input keyevent KEYCODE_WAKEUP
 $adb shell wm dismiss-keyguard
 sleep 1
@@ -36,7 +39,8 @@ for n in tree.iter('node'):
     x1, y1, x2, y2 = map(int, m.groups())
     nodes.append((text, n.get('clickable') == 'true', n.get('class') or '', (x1 + x2) // 2, (y1 + y2) // 2, n.get('resource-id') or ''))
 alltext = ' | '.join(t for t, *_ in nodes if t)
-if re.search(r'(?i)(confirm|enter|re-?enter).*(pin|pattern|password)|pin', alltext) and any('password' in c.lower() or 'EditText' in c for _, _, c, *_ in nodes) and re.search(r'(?i)confirm your|enter your|your pin', alltext):
+# The lock screen ("Enter PIN" over a keypad) and Settings' own check ("Confirm your PIN") both want the PIN typed.
+if re.search(r'(?i)\b(enter|confirm|re-?enter)\b.{0,20}\b(pin|pattern|password)\b|\byour (pin|pattern|password)\b', alltext):
     print('pin')
     sys.exit()
 words = ['I agree', 'Agree', 'Yes, I’m in', "Yes, I'm in", 'Next', 'More', 'Start', 'Continue', 'Done', 'Skip', 'OK', 'Got it', 'Not now']
