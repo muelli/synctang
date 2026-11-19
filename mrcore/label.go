@@ -12,7 +12,9 @@ import (
 // to print on a console or show on a screen. Control characters (a
 // terminal escape sequence, a newline that forges a second log line),
 // format characters (a bidirectional override that reorders what follows
-// it, a zero-width space) and invalid UTF-8 each become "?", and the
+// it, a zero-width space), line and paragraph separators (U+2028, U+2029,
+// which break a line without being control characters) and invalid UTF-8
+// each become "?", and the
 // result is cut to at most maxRunes characters with "..." appended when
 // it was cut.
 //
@@ -28,7 +30,7 @@ func SafeLabel(s string, maxRunes int) string {
 			break
 		}
 		r, size := utf8.DecodeRuneInString(s)
-		if r == utf8.RuneError || unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+		if r == utf8.RuneError || unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) {
 			b.WriteByte('?')
 		} else {
 			b.WriteRune(r)

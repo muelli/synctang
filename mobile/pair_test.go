@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -300,5 +301,51 @@ func TestPairRefusesANonceTooShortToBindAnythingTo(t *testing.T) {
 	}
 	if p.ShortCode() != "" {
 		t.Errorf("a code was shown for it: %q", p.ShortCode())
+	}
+}
+
+// A connection that is lost after the proof was sent is not one to try again: the machine has the proof of a
+// code that is good once, and its operator may have said yes. A fresh attempt would meet a window that is
+// closed, and the phone would say it could not reach a machine that had enrolled it. It says the machine did
+// not answer, and that pairing again will tell whether it was enrolled.
+func TestPairDoesNotRetryWhenTheMachineHasTheProofAndTheAnswerIsLost(t *testing.T) {
+	secret, code, err := mrcore.NewPairingSecret()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const machineSeed, phoneSeed = "lost answer machine", "lost answer phone"
+	machineID, _ := DeviceIDForSeed(machineSeed)
+	machineCert, _ := identity.GenerateDeterministicCert(machineSeed)
+	addr := freePort(t)
+	var connections atomic.Int32
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		tr := transport.NewSyncthingRelay(machineCert)
+		for ctx.Err() == nil {
+			conn, err := tr.Listen(ctx, transport.ListenOptions{DirectAddr: addr})
+			if err != nil {
+				return
+			}
+			connections.Add(1)
+			_ = machineSide(conn, secret, machineID, []byte("a nonce that is thirty two bytes"), "m")
+			conn.Close() // gone, with no verdict
+		}
+	}()
+
+	p := NewPairer()
+	start := time.Now()
+	err = p.Pair(machineID, code, phoneSeed, hex.EncodeToString([]byte("a public key stands in for a point")), "phone", addr, 25)
+	if err == nil {
+		t.Fatal("Pair reported success")
+	}
+	if p.LastFailure() != FailurePairNotConfirmed {
+		t.Errorf("failure kind %d, want %d (the machine did not say)", p.LastFailure(), FailurePairNotConfirmed)
+	}
+	if elapsed := time.Since(start); elapsed > 10*time.Second {
+		t.Errorf("took %s: it kept trying", elapsed)
+	}
+	if connections.Load() != 1 {
+		t.Errorf("%d connections, want 1", connections.Load())
 	}
 }

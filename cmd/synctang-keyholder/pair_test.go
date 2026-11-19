@@ -32,6 +32,9 @@ type fakeMachine struct {
 	// nonce is what the machine sends (a fixed one when nil).
 	nonce []byte
 
+	// drop makes the machine go away after it has the proof, without a verdict.
+	drop bool
+
 	got chan fakePairing
 }
 
@@ -100,6 +103,10 @@ func newFakeMachine(t *testing.T, verdict func() mrcore.PairResult) *fakeMachine
 		p := fakePairing{peerID: conn.PeerID(), pubKey: req.PubKey, name: req.Name}
 		sas, err := mrcore.CheckPairResponse(secret, m.id, p.peerID, req, nonce, resp)
 		p.proof, p.sas = err == nil, sas
+		if m.drop {
+			m.got <- p
+			return
+		}
 		result := mrcore.PairResult{Error: mrcore.PairRefusedCodeMismatch}
 		if p.proof {
 			result = m.verdict()
@@ -210,6 +217,25 @@ func TestPairWithAWrongCodeSaysSoAndSavesNothing(t *testing.T) {
 	}
 	if _, err := os.Stat(book); !os.IsNotExist(err) {
 		t.Error("a name was saved for a machine that refused")
+	}
+}
+
+// The code the laptop printed belongs to the connection that was lost: after the machine has gone without a
+// verdict it is good for nothing, and somebody who sees it on the screen and on the machine's must not trust it.
+func TestPairWithNoVerdictSaysTheCodeShownIsVoidAndWhatToDoNext(t *testing.T) {
+	m := newFakeMachine(t, accept)
+	m.drop = true
+	keyFile, transportFile := keyholderDir(t)
+	book := booksPath(t)
+	code, out, errOut := runKH(append(pairArgs(m, book, keyFile, transportFile, "--store", "file"), m.link("box"))...)
+	if code != 1 {
+		t.Fatalf("exit %d:\n%s%s", code, out, errOut)
+	}
+	if !strings.Contains(errOut, "void") || !strings.Contains(errOut, "already enrolled") {
+		t.Errorf("the failure should say that the code above is void and what to do next:\n%s", errOut)
+	}
+	if _, err := os.Stat(book); !os.IsNotExist(err) {
+		t.Error("a name was saved for a machine that gave no verdict")
 	}
 }
 
