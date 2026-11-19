@@ -936,6 +936,21 @@ class UnlockFlowTest {
         assertNull(ready.forgotten)
     }
 
+    // Two machines can call themselves the same, or one can pose as another (a name is not authenticated). A list
+    // with two rows of one name is told apart only by a short id, so the second is saved with it.
+    @Test
+    fun aMachineThatCallsItselfWhatAnotherPairedMachineIsCalledIsSavedWithItsShortId() {
+        store.machines = listOf(machineA)
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+
+        onMain { flow.pair(payload(machineB.copy(name = machineA.name), code = null)) }
+        awaitMachines { it.machines.size == 2 }
+        val saved = store.machines()
+        assertEquals(machineA.name, saved.first { it.deviceId == machineA.deviceId }.name)
+        assertEquals("${machineA.name} (BBBBBBB)", saved.first { it.deviceId == machineB.deviceId }.name)
+    }
+
     @Test
     fun aFailedPairingOfASecondMachineLeavesTheListAsItWas() {
         store.saved = machineA
