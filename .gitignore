@@ -33,3 +33,7 @@
 /synctang-keyholder
 /sbom/
 /completion-writer
+
+# Programs built in place by "go build" in their own directory.
+/cmd/synctang-unlocker/synctang-unlocker
+/cmd/synctang-keyholder/synctang-keyholder
