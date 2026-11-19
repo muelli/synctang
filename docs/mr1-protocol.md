@@ -131,19 +131,26 @@ shown who is asking and have to agree. `--yes` skips the question, and with it
 the comparison of the six-digit codes that catches a link somebody else used
 first; it is for automation that has another reason to trust the key holder.
 
-The order of the messages matters for that comparison. The key holder sends
-`PairRequest` (its public key and name) first. The machine checks that the key
-is a point on the curve, and only then sends `PairChallenge` with a fresh
-32-byte nonce. The key holder answers with `PairResponse`, the proof. The
-six-digit code is derived from the machine's id, the key holder's id, the public
-key and the nonce, so a key holder that has to choose its key before the nonce
-exists cannot try keys until one gives a code it wants. If the machine sent the
-nonce first, a key holder could do exactly that (this was found in a review and
-shown possible). Both clients refuse a nonce shorter than 16 bytes.
+The order of the messages matters for that comparison, and each side commits before it sees the other.
+The key holder sends `PairRequest` first: its public key and name, a commitment to a 32-byte nonce of its
+own (`PairCommit`), and a tag made with the pairing code over those (`PairRequestTag`). The machine checks
+the tag, so a peer without the code gets nothing, then checks that the key is a point on the curve, and only
+then sends `PairChallenge` with a fresh 32-byte nonce. The key holder answers with `PairResponse`: its nonce,
+now revealed, and the proof; the machine checks that the nonce is the one committed to before it looks at
+the proof. The six-digit code is derived from the machine's id, the key holder's id, the public key and both
+nonces. A key holder has to choose its key and its nonce before the machine's nonce exists, and whoever plays
+the machine has to choose its nonce without knowing the key holder's, so neither can try until the code is one
+they want. With the machine's nonce first, a key holder could do exactly that; with only the key holder
+committed, whoever played the machine could fit its own nonce, and a link passed on with another machine's
+identity in it made the two codes agree. Both were found in reviews and shown possible. Both clients refuse a
+nonce shorter than 16 bytes. A machine that will not go on sends `PairChallenge` with `error` set, in place of
+a nonce.
 
 Anyone who can reach the machine can send a `PairRequest` and so can hold the
 pairing slot while the operator is asked about another key holder; that is a
-denial of service for the length of the window, and not more.
+denial of service for the length of the window, and not more. A connection that was given a nonce and left
+without a valid answer counts against the window, and after three the machine ends it and says that the link
+has leaked.
 
 ### One entry per transport ID
 
