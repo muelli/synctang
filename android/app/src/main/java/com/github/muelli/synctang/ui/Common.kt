@@ -104,13 +104,20 @@ internal fun StatusHeader(icon: ImageVector, tint: Color, headline: String, deta
     }
 }
 
-/** The machine a screen is about, by name: the one it gave, which proves nothing. */
+/**
+ * The machine a screen is about, by name: the one it gave, which proves nothing. The short Device ID is
+ * beside it, because that is what tells two machines of one name apart; a screen that shows the identity in
+ * full anyway leaves it out.
+ */
 @Composable
-internal fun MachineName(machine: Machine) {
+internal fun MachineName(machine: Machine, withShortId: Boolean = true) {
     if (machine.label().isBlank()) return
     Column {
         Text(stringResource(R.string.unlock_machine), style = MaterialTheme.typography.labelMedium)
         Text(machine.label(), style = MaterialTheme.typography.titleLarge)
+        if (withShortId && machine.name.isNotBlank()) {
+            Text(shortDeviceId(machine.deviceId), style = MaterialTheme.typography.bodySmall)
+        }
     }
 }
 
@@ -121,7 +128,7 @@ internal fun MachineName(machine: Machine) {
  */
 @Composable
 internal fun MachineIdentity(machine: Machine, peerId: String) {
-    MachineName(machine)
+    MachineName(machine, withShortId = false)
     val matches = sameDeviceId(peerId, machine.deviceId)
     // One thing to a screen reader: the verdict, not an icon and a sentence.
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.semantics(mergeDescendants = true) {}) {

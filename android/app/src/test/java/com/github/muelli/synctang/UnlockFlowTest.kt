@@ -951,6 +951,18 @@ class UnlockFlowTest {
         assertEquals("${machineA.name} (BBBBBBB)", saved.first { it.deviceId == machineB.deviceId }.name)
     }
 
+    // The same name by another spelling is still the same name to a person looking at two rows.
+    @Test
+    fun aNameThatDiffersOnlyInCaseOrCompatibilityFormsIsTakenForTheSameName() {
+        store.machines = listOf(machineA.copy(name = "server"))
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+
+        onMain { flow.pair(payload(machineB.copy(name = "\uFF33erver"), code = null)) } // a full-width S
+        awaitMachines { it.machines.size == 2 }
+        assertEquals("\uFF33erver (BBBBBBB)", store.machines().first { it.deviceId == machineB.deviceId }.name)
+    }
+
     @Test
     fun aFailedPairingOfASecondMachineLeavesTheListAsItWas() {
         store.saved = machineA

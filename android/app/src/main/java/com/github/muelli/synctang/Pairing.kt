@@ -159,7 +159,8 @@ private const val MAX_LINK_NAME = 64
  * The name is the link's word and proves nothing about the machine, and a link is passed through chat and
  * clipboards, so it is cleaned where it comes in, the way the laptop program does it (`SafeLabel` in mrcore).
  */
-internal fun cleanMachineName(raw: String): String {
+internal fun cleanMachineName(rawName: String): String {
+    val raw = tidySpaces(rawName)
     val out = StringBuilder()
     var kept = 0
     var i = 0
@@ -180,6 +181,34 @@ internal fun cleanMachineName(raw: String): String {
         kept++
     }
     return out.toString()
+}
+
+/** Letters and symbols that draw nothing though they are not spaces: the Hangul fillers and the empty Braille pattern. */
+private const val BLANK_LOOKING = "\u115F\u1160\u3164\uFFA0\u2800"
+
+/**
+ * [s] with the spaces (Unicode category Zs) at its ends dropped and each run of them made one, and "" when there
+ * is nothing visible in it: a name padded with spaces would look like another without them, and one made of
+ * invisible letters like no name at all. Newlines and separators are not spaces here; they are marked later.
+ */
+private fun tidySpaces(s: String): String {
+    val b = StringBuilder()
+    var visible = false
+    var space = false
+    var i = 0
+    while (i < s.length) {
+        val cp = s.codePointAt(i)
+        i += Character.charCount(cp)
+        if (Character.getType(cp) == Character.SPACE_SEPARATOR.toInt()) {
+            space = true
+            continue
+        }
+        if (space && b.isNotEmpty()) b.append(' ')
+        space = false
+        b.appendCodePoint(cp)
+        if (cp > 0xFFFF || BLANK_LOOKING.indexOf(cp.toChar()) < 0) visible = true
+    }
+    return if (visible) b.toString() else ""
 }
 
 /**

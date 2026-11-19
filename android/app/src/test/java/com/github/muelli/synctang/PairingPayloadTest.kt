@@ -170,6 +170,19 @@ class PairingPayloadTest {
         assertEquals("study desktop", nameOf("study%20desktop"))
     }
 
+    // A name that is padded with spaces looks like another without them, and one made of letters that draw nothing
+    // looks like no name at all (the screen then says nothing where it would have shown the Device ID).
+    @Test
+    fun aNameInALinkHasItsSpacesTidiedAndAnInvisibleOneIsEmpty() {
+        fun nameOf(encoded: String) = PairingPayload.parse("synctang://pair?machine=$id&name=$encoded")?.name
+        assertEquals("server", nameOf("%20%20server%20"))
+        assertEquals("a b", nameOf("a%20%20%20b"))
+        assertEquals("a b", nameOf("a%C2%A0%E2%80%83b")) // a no-break space, an em space
+        assertEquals("", nameOf("%20%20"))
+        assertEquals("", nameOf("%E3%85%A4%E1%85%9F%E1%85%A0%EF%BE%A0%E2%A0%80")) // fillers and an empty Braille pattern
+        assertEquals("a\u3164b", nameOf("a%E3%85%A4b")) // among visible ones they are kept
+    }
+
     @Test
     fun aVeryLongNameInALinkIsCutAtSixtyFourCharacters() {
         val name = PairingPayload.parse("synctang://pair?machine=$id&name=" + "x".repeat(500))?.name

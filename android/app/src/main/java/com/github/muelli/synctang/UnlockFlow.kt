@@ -759,9 +759,14 @@ class UnlockFlow(
      */
     private suspend fun withNameThatIsNotAnotherMachinesName(machine: Machine): Machine {
         if (machine.name.isEmpty()) return machine
-        val taken = store.machines().any { it.deviceId != machine.deviceId && it.name == machine.name }
+        val taken = store.machines().any { it.deviceId != machine.deviceId && sameName(it.name, machine.name) }
         return if (taken) machine.copy(name = "${machine.name} (${machine.deviceId.substringBefore('-')})") else machine
     }
+
+    /** Two names are the same to a person who looks at two rows if they differ only in case or in a compatibility form. */
+    private fun sameName(a: String, b: String): Boolean =
+        java.text.Normalizer.normalize(a, java.text.Normalizer.Form.NFKC).trim().lowercase() ==
+            java.text.Normalizer.normalize(b, java.text.Normalizer.Form.NFKC).trim().lowercase()
 
     private suspend fun home(forcePairing: Boolean = false, forgotten: Machine? = null): UnlockUiState =
         try {
