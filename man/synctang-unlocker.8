@@ -608,6 +608,69 @@ It needs no root.
 \fB\-\-interface\fR \fIname\fR
 The interface to give the initrd.
 Default: the one with the default route.
+.SS extract\-keyslot\-key
+Waits for a key holder to approve, as
+.B open
+does, and prints the passphrase of that key holder's own keyslot on standard output, and nothing
+else there; the rest it says goes to standard error.
+It does not open the volume.
+This command is not in the list of commands of the program or in its shell completion: it is here
+so that what an approval makes possible can be seen and judged, and it is not a step in setting
+anything up.
+.PP
+The secret a key holder's approval recovers is the passphrase of that key holder's keyslot: the
+agent hands exactly this to systemd at boot.
+The machine holds it for the moment of the unlock, and this command prints it.
+Whoever has it can unlock the volume with no key holder at all, with
+.BR cryptsetup (8)
+and its standard input as the key file, and it stays good until the keyslot is destroyed:
+.B revoke
+destroys it, nothing else does.
+Handle it as the LUKS passphrase itself.
+It is hex text, and it works wherever a passphrase does, so that a key holder that is still
+enrolled is enough to run
+.B pair
+or
+.B revoke
+without the original passphrase:
+.PP
+.RS
+.nf
+sudo sh \-c 'synctang\-unlocker revoke \-\-device /dev/sdXN \\
+  \-\-existing\-passphrase\-file <(synctang\-unlocker extract\-keyslot\-key /dev/sdXN) \\
+  <transport id>'
+.fi
+.RE
+.PP
+The process substitution keeps it off the disk.
+Do not redirect it to a file.
+Tang has the same thing:
+.B clevis luks pass
+prints the passphrase of a slot that was bound to a Tang server.
+It needs root.
+.TP
+\fB\-\-device\fR \fIpath\fR
+The LUKS device, instead of giving it as the argument.
+.TP
+\fB\-\-name\fR \fIname\fR
+This machine's name, shown to the key holder.
+Default: the name given at enrolment.
+.TP
+\fB\-\-machine\-key\-file\fR \fIfile\fR
+This machine's persistent transport identity.
+Default
+.BR /etc/synctang/machine.pem .
+.TP
+\fB\-\-timeout\fR \fIduration\fR
+Give up waiting for a key holder after this long.
+.TP
+\fB\-\-direct\-addr\fR \fIaddress\fR
+Listen on this address directly, bypassing relay and discovery (testing only).
+.TP
+\fB\-\-network\-conf\fR \fIfile\fR
+The file naming the relay pool and discovery servers to use instead of the public ones.
+Default
+.BR /etc/synctang/network.conf .
 .SS agent
 Runs the systemd password agent: it waits for a key holder to connect and to
 answer one recovery attempt at a time, checks that the recovered secret really
