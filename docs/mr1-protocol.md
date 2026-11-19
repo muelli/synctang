@@ -119,13 +119,15 @@ Everything the code is good for is bounded: it lasts five minutes by
 default (`--timeout`), it enrols one key holder, it is proved over a
 TLS channel whose far end the phone has already pinned to the Device ID
 from the same QR code, and the proof is bound to both identities, to a
-fresh nonce and to the public key being enrolled, so it is worth nothing
+fresh nonce from each side and to the public key being enrolled, so it is worth nothing
 replayed, on a second phone, or for enrolling any key but the one it was
-made for. The proof is an HMAC-SHA-256 keyed with the one-time secret over
-length-prefixed parts, the first of which is the label `synctang-pair-v2`;
-a machine and a phone from before the key was bound used `v1` and cannot
-pair with each other (the machine reports that the pairing code did not
-match).
+made for. Four things are made with the secret or from the same fields, each over
+length-prefixed parts and each with a label of its own, so that none can stand for another:
+the proof (`PairProof`, an HMAC-SHA-256 keyed with the one-time secret, label `synctang-pair-v3`),
+the tag on the request (`PairRequestTag`, an HMAC, label `synctang-pair-req-v1`), the key holder's
+commitment (`PairCommit`, SHA-256, label `synctang-pair-commit-v1`) and the six-digit code
+(`PairSAS`, SHA-256, label `synctang-pair-sas-v2`). Machines and phones of different versions of
+these labels cannot pair with each other (the machine reports that the pairing code did not match).
 Anybody who photographs the code can still *ask*, which is why you are
 shown who is asking and have to agree. `--yes` skips the question, and with it
 the comparison of the six-digit codes that catches a link somebody else used

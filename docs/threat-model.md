@@ -121,11 +121,12 @@ and the codes now differ; `[V]` another in memory against the primitives. A QR c
 screen was never open to it, since the key holder then dials the real machine.
 
 Each completed connection is one chance in a million for somebody who has the pairing code: they can take the
-nonce, look at the code, and leave, as often as they like. The machine counts the connections that were given a
-nonce and ended without a valid answer, and ends the window after three, saying that the link has leaked
-`[V]`. A peer that does not have the code gets no nonce, so no code to look at, and does not count. The
-operator saying no is not a guess and does not count either. So over one window the chance of a match for
-somebody with the link is a few in a million, and the code is checked by the operator at that.
+nonce, look at the code, and leave, up to three times, and then the window ends. The machine counts the
+connections that were given a nonce and ended without a valid answer, or with the operator's no, and ends the
+window after three, saying that the link has leaked
+`[V]`. A peer that does not have the code gets no nonce, so no code to look at, and does not count. So over one
+window the chance of a match for somebody with the link is a few in a million, and the code is checked by the
+operator at that.
 
 What the operator sees when somebody else answered first is not a refusal: the machine asks about a key holder
 while the laptop or phone shows no code yet, or a code that is different. The laptop keeps dialling until its
