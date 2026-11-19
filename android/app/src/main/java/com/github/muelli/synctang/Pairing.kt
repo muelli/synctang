@@ -155,7 +155,8 @@ private const val MAX_LINK_NAME = 64
 /**
  * The name a link gives for its machine, made fit to show: control characters (a newline that draws a second
  * line), format characters (a bidirectional override that reorders what follows it, a zero-width space), line
- * and paragraph separators and lone surrogates each become "?", and it is cut to [MAX_LINK_NAME] characters.
+ * and paragraph separators, lone surrogates and characters that draw nothing ([isDrawnAsNothing]) each become
+ * "?", and it is cut to [MAX_LINK_NAME] characters.
  * The name is the link's word and proves nothing about the machine, and a link is passed through chat and
  * clipboards, so it is cleaned where it comes in, the way the laptop program does it (`SafeLabel` in mrcore).
  */
@@ -176,15 +177,27 @@ internal fun cleanMachineName(rawName: String): String {
             type == Character.FORMAT.toInt() ||
             type == Character.LINE_SEPARATOR.toInt() ||
             type == Character.PARAGRAPH_SEPARATOR.toInt() ||
-            type == Character.SURROGATE.toInt()
+            type == Character.SURROGATE.toInt() ||
+            isDrawnAsNothing(cp)
         if (hidden) out.append('?') else out.appendCodePoint(cp)
         kept++
     }
     return out.toString()
 }
 
-/** Letters and symbols that draw nothing though they are not spaces: the Hangul fillers and the empty Braille pattern. */
-private const val BLANK_LOOKING = "\u115F\u1160\u3164\uFFA0\u2800"
+/** A symbol that draws nothing though it is neither a space nor default-ignorable: the empty Braille pattern. */
+private const val BLANK_LOOKING = "\u2800"
+
+/**
+ * Characters that draw nothing and are not format characters: the Hangul fillers, the combining grapheme joiner,
+ * the variation selectors and the like (what Unicode calls default-ignorable code points, less the format
+ * characters). By ranges, as java.lang.Character has no property for them; a little wider than Unicode's list,
+ * on purpose.
+ */
+private fun isDrawnAsNothing(cp: Int): Boolean =
+    cp == 0x034F || cp in 0x115F..0x1160 || cp in 0x17B4..0x17B5 || cp in 0x180B..0x180F ||
+        cp == 0x2065 || cp == 0x3164 || cp in 0xFE00..0xFE0F || cp == 0xFFA0 || cp in 0xFFF0..0xFFF8 ||
+        cp in 0xE0000..0xE0FFF
 
 /**
  * [s] with the spaces (Unicode category Zs) at its ends dropped and each run of them made one, and "" when there

@@ -179,8 +179,15 @@ class PairingPayloadTest {
         assertEquals("a b", nameOf("a%20%20%20b"))
         assertEquals("a b", nameOf("a%C2%A0%E2%80%83b")) // a no-break space, an em space
         assertEquals("", nameOf("%20%20"))
-        assertEquals("", nameOf("%E3%85%A4%E1%85%9F%E1%85%A0%EF%BE%A0%E2%A0%80")) // fillers and an empty Braille pattern
-        assertEquals("a\u3164b", nameOf("a%E3%85%A4b")) // among visible ones they are kept
+        assertEquals("", nameOf("%E2%A0%80%E2%A0%80")) // the empty Braille pattern draws nothing
+        // Fillers, the combining grapheme joiner and the variation selectors draw nothing either, and are not format
+        // characters: they are marked, as the laptop program does, so that a name cannot look like another by them.
+        assertEquals("??", nameOf("%E3%85%A4%E1%85%9F"))
+        assertEquals("a?b", nameOf("a%E3%85%A4b"))
+        assertEquals("server?", nameOf("server%CD%8F"))
+        assertEquals("server?", nameOf("server%EF%B8%8F"))
+        assertEquals("server?", nameOf("server%F3%A0%84%80")) // a variation selector from the supplement
+        assertEquals("server?", nameOf("server%E1%9E%B5"))
     }
 
     @Test

@@ -30,8 +30,12 @@ func TestSafeLabel(t *testing.T) {
 		{"runs of spaces become one", "a   b", 64, "a b"},
 		{"spaces at the ends are dropped", "  server  ", 64, "server"},
 		{"a name of only spaces is empty", "   ", 64, ""},
-		{"a name of only blank-looking letters is empty", "\u3164\u115f\u1160\uffa0\u2800", 64, ""},
-		{"blank-looking letters among visible ones are kept", "a\u3164b", 64, "a\u3164b"},
+		{"the empty Braille pattern alone is empty", "\u2800\u2800", 64, ""},
+		{"fillers that draw nothing are marked", "a\u3164b\u115fc\u1160d\uffa0e", 64, "a?b?c?d?e"},
+		{"a name of only fillers is marks, not nothing", "\u3164\u115f", 64, "??"},
+		{"combining grapheme joiner is marked", "server\u034f", 64, "server?"},
+		{"variation selectors are marked", "server\ufe0f\U000e0100", 64, "server??"},
+		{"khmer inherent vowels are marked", "server\u17b5", 64, "server?"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

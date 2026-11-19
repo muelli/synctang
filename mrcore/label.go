@@ -12,7 +12,8 @@ import (
 // to print on a console or show on a screen. Control characters (a
 // terminal escape sequence, a newline that forges a second log line),
 // format characters (a bidirectional override that reorders what follows
-// it, a zero-width space), line and paragraph separators (U+2028, U+2029,
+// it, a zero-width space), default-ignorable characters (the Hangul fillers, the combining grapheme joiner,
+// variation selectors: they draw nothing and are not Cf), line and paragraph separators (U+2028, U+2029,
 // which break a line without being control characters) and invalid UTF-8
 // each become "?", and the
 // result is cut to at most maxRunes characters with "..." appended when
@@ -31,7 +32,8 @@ func SafeLabel(s string, maxRunes int) string {
 			break
 		}
 		r, size := utf8.DecodeRuneInString(s)
-		if r == utf8.RuneError || unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) {
+		if r == utf8.RuneError || unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) ||
+			unicode.Is(unicode.Other_Default_Ignorable_Code_Point, r) || unicode.Is(unicode.Variation_Selector, r) {
 			b.WriteByte('?')
 		} else {
 			b.WriteRune(r)
@@ -42,9 +44,11 @@ func SafeLabel(s string, maxRunes int) string {
 	return b.String()
 }
 
-// blankLooking are letters and symbols that draw nothing, though they are not spaces: the Hangul fillers and
-// the empty Braille pattern. A label made only of them reads as empty.
-const blankLooking = "\u115f\u1160\u3164\uffa0\u2800"
+// blankLooking are symbols that draw nothing, though they are neither spaces nor default-ignorable characters:
+// the empty Braille pattern. A label made only of it reads as empty. (The Hangul fillers, the combining grapheme
+// joiner and the variation selectors are default-ignorable, and are marked with "?" like the format
+// characters.)
+const blankLooking = "\u2800"
 
 // tidySpaces drops the spaces (category Zs; a newline or a separator is not one, it is marked later) at the
 // ends of s, makes each run of spaces one space, and returns "" for a string with nothing visible in it, so that a label cannot be made to look like another by trailing spaces,
