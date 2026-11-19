@@ -334,6 +334,7 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(gnuflag.Writer(stderr))
 	device := fs.String("device", "", T("LUKS2 device or image to enrol the key holder on (\"synctang-unlocker devices\" lists them)"))
 	passphraseFile := fs.String("existing-passphrase-file", "", T("file containing an existing valid LUKS passphrase (- for stdin)"))
+	approve := fs.Bool("approve-with-key-holder", false, T("in place of --existing-passphrase-file: first wait for a key holder that is already enrolled to approve (for as long as --timeout), and pair the new one with that"))
 	name := fs.String("name", "", T("this machine's name, shown to the key holder (default: the name already on the volume, else this machine's hostname)"))
 	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, T("path to this machine's persistent transport identity"))
 	window := fs.Duration("timeout", defaultPairWindow, T("how long to accept a pairing for"))
@@ -354,8 +355,12 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		ui.Errorf(stderr, T("--device is required: %s\n"), deviceHint())
 		return 2
 	}
-	if *passphraseFile == "" {
-		ui.Errorln(stderr, T("--existing-passphrase-file is required"))
+	if *approve && *passphraseFile != "" {
+		ui.Errorln(stderr, T("--approve-with-key-holder and --existing-passphrase-file are two ways to authorise the pairing: give one"))
+		return 2
+	}
+	if !*approve && *passphraseFile == "" {
+		ui.Errorln(stderr, T("--existing-passphrase-file is required, or --approve-with-key-holder to use the approval of a key holder that is already enrolled"))
 		return 2
 	}
 	// Found out now, before the passphrase is read and the window opens, not when a key
@@ -372,10 +377,24 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	passphrase, err := readPassphrase(*passphraseFile)
-	if err != nil {
-		ui.Errorf(stderr, "%v\n", err)
-		return 1
+	var passphrase []byte
+	if *approve {
+		// Before the link is shown, so that what the approval gives is in this command only for the pairing
+		// window. It is the passphrase of the approving key holder's own keyslot.
+		key, code := keyFromApprovalFn(*device, approval{
+			machineName: *name, machineKeyFile: *machineKeyFile, networkConf: *networkConf,
+			directAddr: *directAddr, timeout: *window, what: T("pairing a key holder"),
+		}, stdout, stderr)
+		if code != 0 {
+			return code
+		}
+		passphrase = key
+	} else {
+		passphrase, err = readPassphrase(*passphraseFile)
+		if err != nil {
+			ui.Errorf(stderr, "%v\n", err)
+			return 1
+		}
 	}
 	defer mrcore.Wipe(passphrase)
 

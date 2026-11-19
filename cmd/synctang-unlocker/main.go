@@ -180,6 +180,10 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 	recipientTransportID := fs.String("recipient-transport-id", "", T("the recipient's own transport identity (from synctang-keyholder export-pubkey), if known"))
 	machineKeyFile := fs.String("machine-key-file", defaultMachineKeyFile, T("path to this machine's persistent transport identity"))
 	rebuild := fs.Bool("rebuild-initrd", false, T("after enrolling, run dracut --force if the initrd does not carry this machine's identity and network.conf"))
+	approve := fs.Bool("approve-with-key-holder", false, T("in place of --existing-passphrase-file: wait for a key holder that is already enrolled to approve, and enrol the new one with that"))
+	approveTimeout := fs.Duration("timeout", defaultOpenTimeout, T("with --approve-with-key-holder, give up waiting for an approval after this long"))
+	directAddr := fs.String("direct-addr", "", T("with --approve-with-key-holder, listen on this address directly, bypassing relay and discovery (testing only)"))
+	networkConf := fs.String("network-conf", defaultNetworkConfFile, T("with --approve-with-key-holder, the file naming the relay pool and discovery servers to use instead of the public ones"))
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -189,8 +193,16 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	if *device == "" || *pubkeyHex == "" || *passphraseFile == "" {
-		ui.Errorln(stderr, T("--device, --pubkey and --existing-passphrase-file are all required"))
+	if *pubkeyHex == "" {
+		ui.Errorln(stderr, T("--device and --pubkey are required, and so is one of --existing-passphrase-file and --approve-with-key-holder"))
+		return 2
+	}
+	if *approve && *passphraseFile != "" {
+		ui.Errorln(stderr, T("--approve-with-key-holder and --existing-passphrase-file are two ways to authorise the enrolment: give one"))
+		return 2
+	}
+	if !*approve && *passphraseFile == "" {
+		ui.Errorln(stderr, T("--existing-passphrase-file is required, or --approve-with-key-holder to use the approval of a key holder that is already enrolled"))
 		return 2
 	}
 
@@ -209,10 +221,24 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	passphrase, err := readPassphrase(*passphraseFile)
-	if err != nil {
-		ui.Errorf(stderr, "%v\n", err)
-		return 1
+	var passphrase []byte
+	if *approve {
+		// What a key holder's approval recovers is the passphrase of its own keyslot, which is as good as any
+		// other for adding one. It goes from the exchange into the command and nowhere else.
+		key, code := keyFromApprovalFn(*device, approval{
+			machineName: *name, machineKeyFile: *machineKeyFile, networkConf: *networkConf,
+			directAddr: *directAddr, timeout: *approveTimeout, what: T("enrolling a key holder"),
+		}, stdout, stderr)
+		if code != 0 {
+			return code
+		}
+		passphrase = key
+	} else {
+		passphrase, err = readPassphrase(*passphraseFile)
+		if err != nil {
+			ui.Errorf(stderr, "%v\n", err)
+			return 1
+		}
 	}
 	defer mrcore.Wipe(passphrase)
 

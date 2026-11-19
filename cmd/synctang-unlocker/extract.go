@@ -60,7 +60,7 @@ func runExtractKeyslotKey(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	key, code := keyFromApproval(positional[0], approval{
+	key, code := keyFromApprovalFn(positional[0], approval{
 		machineName: *machineName, machineKeyFile: *machineKeyFile, networkConf: *networkConf,
 		directAddr: *directAddr, timeout: *timeout, what: T("extracting its key"),
 	}, stderr, stderr)
@@ -79,6 +79,10 @@ func runExtractKeyslotKey(args []string, stdout, stderr io.Writer) int {
 	ui.Notef(stderr, T("that is the passphrase of the keyslot that approved: anyone who has it can unlock %s without a key holder, until that keyslot is destroyed\n"), positional[0])
 	return 0
 }
+
+// keyFromApprovalFn is keyFromApproval; a variable so that a test can stand in for the exchange, which the tests
+// of the commands that run it cover.
+var keyFromApprovalFn = keyFromApproval
 
 // approval is what waiting for an enrolled key holder's approval needs, the same as "open".
 type approval struct {

@@ -167,6 +167,40 @@ The key holder's public key, hex-encoded, as printed by
 .B synctang\-keyholder export\-pubkey .
 Required.
 .TP
+\fB\-\-approve\-with\-key\-holder\fR
+In place of
+.BR \-\-existing\-passphrase\-file :
+wait for a key holder that is already enrolled to approve, as
+.B open
+does, and enrol the new one with what its approval recovers, which is the passphrase of that key holder's own
+keyslot.
+So a volume whose passphrase is lost can still get a new key holder, while one key holder is enrolled and
+works.
+Nothing is written to disk; the passphrase goes from the exchange into the command.
+It is an alternative to
+.BR \-\-existing\-passphrase\-file ,
+and giving both is an error.
+The approving key holder's keyslot stays; the new one is a keyslot of its own, and
+.B revoke
+removes it like any other.
+.TP
+\fB\-\-timeout\fR \fIduration\fR
+With
+.BR \-\-approve\-with\-key\-holder ,
+give up waiting for an approval after this long.
+.TP
+\fB\-\-direct\-addr\fR \fIaddress\fR
+With
+.BR \-\-approve\-with\-key\-holder ,
+listen on this address directly, bypassing relay and discovery (testing only).
+.TP
+\fB\-\-network\-conf\fR \fIfile\fR
+With
+.BR \-\-approve\-with\-key\-holder ,
+the file naming the relay pool and discovery servers to use instead of the public ones.
+Default
+.BR /etc/synctang/network.conf .
+.TP
 \fB\-\-existing\-passphrase\-file\fR \fIfile\fR
 A file holding an existing valid passphrase of the volume, or
 .B \-
@@ -176,7 +210,9 @@ not look hung while it waits.
 When standard input is a terminal it asks for the passphrase with the typing hidden, and it ends at Enter;
 from a pipe it reads to the end.
 One trailing newline is ignored.
-Required.
+Required, unless
+.B \-\-approve\-with\-key\-holder
+is given.
 Do not keep the passphrase in a file on disk; see
 .BR EXAMPLES .
 A process substitution, as in the examples, does not survive
@@ -334,11 +370,33 @@ needs on the device, normally root.
 The LUKS2 device or image to enrol the key holder on.
 Required.
 .TP
+\fB\-\-approve\-with\-key\-holder\fR
+In place of
+.BR \-\-existing\-passphrase\-file :
+wait for a key holder that is already enrolled to approve, as
+.B open
+does, and pair the new one with what its approval recovers, which is the passphrase of that key holder's own
+keyslot.
+So a volume whose passphrase is lost can still get a new key holder, while one key holder is enrolled and
+works.
+Nothing is written to disk; the passphrase goes from the exchange into the command.
+It is an alternative to
+.BR \-\-existing\-passphrase\-file ,
+and giving both is an error.
+The approving key holder's keyslot stays; the new one is a keyslot of its own, and
+.B revoke
+removes it like any other.
+With it,
+.B \-\-timeout
+is also how long to wait for the approval, which is asked for before the pairing link is shown.
+.TP
 \fB\-\-existing\-passphrase\-file\fR \fIfile\fR
 A file holding an existing valid passphrase of the volume, or
 .B \-
 for standard input.
-Required.
+Required, unless
+.B \-\-approve\-with\-key\-holder
+is given.
 If standard input is used, the confirmation question cannot be answered from
 it, so it is asked on the controlling terminal, the way
 .BR ssh (1)
