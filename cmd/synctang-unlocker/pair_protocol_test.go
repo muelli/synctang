@@ -65,7 +65,11 @@ func TestTheMachineSendsNoNonceUntilTheKeyHolderHasSaidWhichKeyItWants(t *testin
 		t.Fatalf("the machine sent a nonce (%x) before it knew which key was wanted", c.Nonce)
 	case <-time.After(400 * time.Millisecond):
 	}
-	if err := mrcore.WriteMessage(conn, mrcore.PairRequest{PubKey: f.holderS}); err != nil {
+	holder, err := mrcore.NewPairHolder(secret, f.machineID, f.holderID, f.holderS, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mrcore.WriteMessage(conn, holder.Request()); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -97,18 +101,65 @@ func TestAKeyThatCanNeverWorkIsRefusedBeforeAnyNonceIsSent(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	defer conn.Close()
-	if err := mrcore.WriteMessage(conn, mrcore.PairRequest{PubKey: bytes.Repeat([]byte{0xff}, 65)}); err != nil {
+	// A key that is no point on the curve, in a request that is otherwise in order.
+	holder, err := mrcore.NewPairHolder(secret, f.machineID, f.holderID, bytes.Repeat([]byte{0xff}, 65), "")
+	if err != nil {
 		t.Fatal(err)
 	}
-	var first mrcore.PairResult
+	if err := mrcore.WriteMessage(conn, holder.Request()); err != nil {
+		t.Fatal(err)
+	}
+	var first mrcore.PairChallenge
 	if err := mrcore.ReadMessage(conn, &first); err != nil {
 		t.Fatal(err)
 	}
-	if first.OK || first.Error != mrcore.PairRefusedInvalidKey {
-		t.Errorf("the first message back was %+v, want the refusal of the key", first)
+	if len(first.Nonce) != 0 || first.Error != mrcore.PairRefusedInvalidKey {
+		t.Errorf("the first message back was %+v, want the refusal of the key in place of a nonce", first)
 	}
 	if err := <-done; err == nil {
 		t.Error("runPairOnce reported success")
+	}
+}
+
+// A request that does not carry the tag only somebody with the pairing code can make gets neither a nonce nor a
+// code to look at: the first message back is the refusal, and the operator is never asked.
+func TestARequestWithoutTheRightTagGetsNoNonceAndNobodyIsAsked(t *testing.T) {
+	f := newPairFixture(t)
+	secret, _, _ := mrcore.NewPairingSecret()
+	shown, done := startPairingWindow(t, f, secret, true)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	tr := transport.NewSyncthingRelay(f.holderCert)
+	var conn transport.Conn
+	var err error
+	for {
+		if conn, err = tr.Dial(ctx, transport.DialOptions{PeerID: f.machineID, DirectAddr: f.addr}); err == nil {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	defer conn.Close()
+	stranger, _, _ := mrcore.NewPairingSecret()
+	holder, err := mrcore.NewPairHolder(stranger, f.machineID, f.holderID, f.holderS, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mrcore.WriteMessage(conn, holder.Request()); err != nil {
+		t.Fatal(err)
+	}
+	var first mrcore.PairChallenge
+	if err := mrcore.ReadMessage(conn, &first); err != nil {
+		t.Fatal(err)
+	}
+	if len(first.Nonce) != 0 || first.Error != mrcore.PairRefusedCodeMismatch {
+		t.Errorf("the first message back was %+v, want the refusal in place of a nonce", first)
+	}
+	<-done
+	select {
+	case p := <-shown:
+		t.Errorf("the operator was asked about %+v", p)
+	default:
 	}
 }
 
@@ -126,7 +177,7 @@ func TestTheCodeOfOneConnectionIsNotTheCodeOfAnother(t *testing.T) {
 		p := <-shown
 		codes = append(codes, p.SAS)
 		// What the key holder works out from the nonce it was sent is what the operator was shown.
-		if want := mrcore.PairSAS(f.machineID, f.holderID, f.holderS, f.nonce); p.SAS != want {
+		if want := f.sas; p.SAS != want {
 			t.Errorf("the operator was shown %q, the key holder computes %q", p.SAS, want)
 		}
 		<-done

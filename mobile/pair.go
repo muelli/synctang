@@ -279,26 +279,36 @@ func pairOnce(ctx, dialCtx context.Context, prog *progress, cert tls.Certificate
 	stop := context.AfterFunc(dialCtx, func() { conn.Close() })
 	defer func() { stop() }()
 
-	// The phone speaks first: it says which key it wants enrolled, and the machine chooses the nonce after that,
-	// which is what keeps anyone from fitting a key to the short code (see mrcore.PairSAS).
+	// The phone speaks first: it says which key it wants enrolled and commits to a nonce of its own, and only
+	// then does the machine choose its nonce. The code is made from both, so that neither side can fit it (see
+	// mrcore.PairSAS).
 	prog.advance(StageSendingProof)
-	if err := mrcore.WriteMessage(conn, mrcore.PairRequest{PubKey: publicKey, Name: name}); err != nil {
+	holder, err := mrcore.NewPairHolder(secret, machineID, selfID, publicKey, name)
+	if err != nil {
+		return fmt.Errorf("mobile: %w", err)
+	}
+	defer holder.Wipe()
+	if err := mrcore.WriteMessage(conn, holder.Request()); err != nil {
 		return fmt.Errorf("mobile: sending the pairing request: %w", err)
 	}
 	var challenge mrcore.PairChallenge
 	if err := mrcore.ReadMessage(conn, &challenge); err != nil {
 		return fmt.Errorf("mobile: reading the pairing challenge: %w", err)
 	}
-	if len(challenge.Nonce) < mrcore.PairMinNonceLen {
+	response, sas, err := holder.Answer(challenge)
+	var refusal *mrcore.PairRefusal
+	switch {
+	case errors.As(err, &refusal):
+		return &pairRefused{reason: mrcore.SafeLabel(refusal.Reason, machineErrorMaxRunes)}
+	case err != nil:
 		return &pairBadChallenge{fmt.Errorf("the machine sent a nonce of %d bytes, which is too short to bind anything to", len(challenge.Nonce))}
 	}
-	proof := mrcore.PairProof(secret, machineID, selfID, publicKey, challenge.Nonce)
-	if err := mrcore.WriteMessage(conn, mrcore.PairResponse{Proof: proof}); err != nil {
+	if err := mrcore.WriteMessage(conn, response); err != nil {
 		return fmt.Errorf("mobile: sending the proof of the pairing code: %w", err)
 	}
 	stop()
 	// Both sides can work out the code from what they hold, with nothing sent for it.
-	onCode(mrcore.PairSAS(machineID, selfID, publicKey, challenge.Nonce))
+	onCode(sas)
 	waitCtx, cancelWait := context.WithTimeout(ctx, pairOperatorWait)
 	defer cancelWait()
 	stop = context.AfterFunc(waitCtx, func() { conn.Close() })

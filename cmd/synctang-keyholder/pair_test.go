@@ -71,10 +71,17 @@ func newFakeMachine(t *testing.T, verdict func() mrcore.PairResult) *fakeMachine
 			return
 		}
 		defer conn.Close()
-		// The key holder speaks first; the nonce is chosen after the key is known.
+		// The key holder speaks first, with a commitment and a tag; the nonce is chosen after the key is known.
 		var req mrcore.PairRequest
 		if err := mrcore.ReadMessage(conn, &req); err != nil {
 			m.got <- fakePairing{err: err}
+			return
+		}
+		if mrcore.CheckPairRequest(secret, m.id, conn.PeerID(), req) != nil {
+			p := fakePairing{peerID: conn.PeerID(), pubKey: req.PubKey, name: req.Name}
+			p.err = mrcore.WriteMessage(conn, mrcore.PairChallenge{Error: mrcore.PairRefusedCodeMismatch})
+			m.got <- p
+			time.Sleep(200 * time.Millisecond)
 			return
 		}
 		nonce := m.nonce
@@ -91,8 +98,8 @@ func newFakeMachine(t *testing.T, verdict func() mrcore.PairResult) *fakeMachine
 			return
 		}
 		p := fakePairing{peerID: conn.PeerID(), pubKey: req.PubKey, name: req.Name}
-		p.proof = string(mrcore.PairProof(secret, m.id, p.peerID, req.PubKey, nonce)) == string(resp.Proof)
-		p.sas = mrcore.PairSAS(m.id, p.peerID, req.PubKey, nonce)
+		sas, err := mrcore.CheckPairResponse(secret, m.id, p.peerID, req, nonce, resp)
+		p.proof, p.sas = err == nil, sas
 		result := mrcore.PairResult{Error: mrcore.PairRefusedCodeMismatch}
 		if p.proof {
 			result = m.verdict()

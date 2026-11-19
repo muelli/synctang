@@ -46,20 +46,19 @@ func fakeMachine(t *testing.T, addr, machineSeed string, secret []byte, accept b
 		defer conn.Close()
 
 		nonce := []byte("a nonce that is thirty two bytes")
-		req, resp, err := machineSide(conn, nonce, "test machine")
-		if err != nil {
+		view := machineSide(conn, secret, machineID, nonce, "test machine")
+		if view.err != nil {
 			close(got)
 			return
 		}
 
-		expected := mrcore.PairProof(secret, machineID, conn.PeerID(), req.PubKey, nonce)
-		ok := accept && string(expected) == string(resp.Proof)
+		ok := accept && view.ok
 		result := mrcore.PairResult{OK: ok}
 		if !ok {
 			result.Error = mrcore.PairRefusedCodeMismatch
 		}
 		_ = mrcore.WriteMessage(conn, result)
-		got <- req
+		got <- view.req
 		// Give the phone a moment to read the verdict before the
 		// deferred Close tears the connection down under it.
 		time.Sleep(500 * time.Millisecond)
@@ -176,10 +175,10 @@ func TestPairerOffersTheShortCodeWhileTheOperatorDecides(t *testing.T) {
 		t.Fatal(err)
 	}
 	machineID, _ := DeviceIDForSeed(machineSeed)
-	phoneID, _ := DeviceIDForSeed(phoneSeed)
 	machineCert, _ := identity.GenerateDeterministicCert(machineSeed)
 	addr := freePort(t)
 	release := make(chan struct{})
+	shown := make(chan string, 1) // the code the machine shows its operator
 	nonce := []byte("a nonce that is thirty two bytes")
 
 	go func() {
@@ -190,12 +189,13 @@ func TestPairerOffersTheShortCodeWhileTheOperatorDecides(t *testing.T) {
 			return
 		}
 		defer conn.Close()
-		req, resp, err := machineSide(conn, nonce, "test machine")
-		if err != nil {
+		view := machineSide(conn, secret, machineID, nonce, "test machine")
+		if view.err != nil {
 			return
 		}
+		shown <- view.sas
 		<-release // the operator is still deciding
-		_ = mrcore.WriteMessage(conn, mrcore.PairResult{OK: string(mrcore.PairProof(secret, machineID, conn.PeerID(), req.PubKey, nonce)) == string(resp.Proof)})
+		_ = mrcore.WriteMessage(conn, mrcore.PairResult{OK: view.ok})
 		time.Sleep(500 * time.Millisecond)
 	}()
 
@@ -207,7 +207,12 @@ func TestPairerOffersTheShortCodeWhileTheOperatorDecides(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- p.Pair(machineID, code, phoneSeed, hex.EncodeToString(pubKey), "my phone", addr, 25) }()
 
-	want := mrcore.PairSAS(machineID, phoneID, pubKey, nonce)
+	var want string
+	select {
+	case want = <-shown:
+	case <-time.After(20 * time.Second):
+		t.Fatal("the machine never worked out a code")
+	}
 	deadline := time.Now().Add(20 * time.Second)
 	for p.ShortCode() == "" && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
@@ -227,24 +232,45 @@ func TestPairerOffersTheShortCodeWhileTheOperatorDecides(t *testing.T) {
 	}
 }
 
+// machineView is what the machine's half of a pairing saw.
+type machineView struct {
+	req  mrcore.PairRequest
+	resp mrcore.PairResponse
+	sas  string // the code the machine shows its operator
+	ok   bool   // the request had the tag, and the response the nonce committed to and the proof
+	err  error  // a read or write failed
+}
+
 // machineSide is the machine's half of the pairing up to the question to its operator: the key holder asks
-// first, the machine answers with a nonce it chooses then, and the key holder proves it has the code.
-func machineSide(conn io.ReadWriter, nonce []byte, name string) (mrcore.PairRequest, mrcore.PairResponse, error) {
-	var req mrcore.PairRequest
-	var resp mrcore.PairResponse
-	if err := mrcore.ReadMessage(conn, &req); err != nil {
-		return req, resp, err
+// first, with a commitment and a tag; the machine answers with a nonce it chooses then; and the key holder
+// reveals its nonce and proves it has the code.
+func machineSide(conn interface {
+	io.ReadWriter
+	PeerID() string
+}, secret []byte, machineID string, nonce []byte, name string) machineView {
+	var v machineView
+	if v.err = mrcore.ReadMessage(conn, &v.req); v.err != nil {
+		return v
 	}
-	if err := mrcore.WriteMessage(conn, mrcore.PairChallenge{Nonce: nonce, Name: name}); err != nil {
-		return req, resp, err
+	if mrcore.CheckPairRequest(secret, machineID, conn.PeerID(), v.req) != nil {
+		v.err = mrcore.WriteMessage(conn, mrcore.PairChallenge{Error: mrcore.PairRefusedCodeMismatch})
+		return v
 	}
-	return req, resp, mrcore.ReadMessage(conn, &resp)
+	if v.err = mrcore.WriteMessage(conn, mrcore.PairChallenge{Nonce: nonce, Name: name}); v.err != nil {
+		return v
+	}
+	if v.err = mrcore.ReadMessage(conn, &v.resp); v.err != nil {
+		return v
+	}
+	sas, err := mrcore.CheckPairResponse(secret, machineID, conn.PeerID(), v.req, nonce, v.resp)
+	v.sas, v.ok = sas, err == nil
+	return v
 }
 
 // A nonce of a few bytes would let anyone who can pick a key fit it to the short code, so the phone does not
 // take one, whatever the machine is.
 func TestPairRefusesANonceTooShortToBindAnythingTo(t *testing.T) {
-	_, code, err := mrcore.NewPairingSecret()
+	secret, code, err := mrcore.NewPairingSecret()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +289,7 @@ func TestPairRefusesANonceTooShortToBindAnythingTo(t *testing.T) {
 			return
 		}
 		defer conn.Close()
-		_, _, _ = machineSide(conn, []byte("1234"), "m")
+		_ = machineSide(conn, secret, machineID, []byte("1234"), "m")
 		_ = mrcore.WriteMessage(conn, mrcore.PairResult{OK: true})
 		time.Sleep(300 * time.Millisecond)
 	}()

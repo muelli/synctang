@@ -100,26 +100,37 @@ func pairOnce(ctx context.Context, wait time.Duration, cert tls.Certificate, lin
 	stop := context.AfterFunc(ctx, func() { conn.Close() })
 	defer func() { stop() }()
 
-	// The key holder speaks first: it says which key it wants enrolled, and the machine chooses the nonce after
-	// that, which is what keeps anyone from fitting a key to the short code (see mrcore.PairSAS).
-	if err := mrcore.WriteMessage(conn, mrcore.PairRequest{PubKey: pub, Name: name}); err != nil {
+	// The key holder speaks first: it says which key it wants enrolled and commits to a nonce of its own, and
+	// only then does the machine choose its nonce. The code is made from both, so that neither side can fit
+	// it (see mrcore.PairSAS).
+	holder, err := mrcore.NewPairHolder(secret, link.Machine, selfID, pub, name)
+	if err != nil {
+		return &pairFinal{err}
+	}
+	defer holder.Wipe()
+	if err := mrcore.WriteMessage(conn, holder.Request()); err != nil {
 		return fmt.Errorf(T("sending the pairing request: %w"), err)
 	}
 	var challenge mrcore.PairChallenge
 	if err := mrcore.ReadMessage(conn, &challenge); err != nil {
 		return fmt.Errorf(T("reading the pairing challenge: %w"), err)
 	}
-	if len(challenge.Nonce) < mrcore.PairMinNonceLen {
+	response, sas, err := holder.Answer(challenge)
+	var refusal *mrcore.PairRefusal
+	switch {
+	case errors.As(err, &refusal):
+		return &pairFinal{pairRefusal(refusal.Reason)}
+	case err != nil:
 		return &pairFinal{fmt.Errorf(T("the machine sent a nonce of %d bytes, which is too short to bind anything to (it should be %d)"), len(challenge.Nonce), mrcore.PairNonceLen)}
 	}
-	if err := mrcore.WriteMessage(conn, mrcore.PairResponse{Proof: mrcore.PairProof(secret, link.Machine, selfID, pub, challenge.Nonce)}); err != nil {
+	if err := mrcore.WriteMessage(conn, response); err != nil {
 		return fmt.Errorf(T("sending the proof of the pairing code: %w"), err)
 	}
 	stop()
 
 	// Both sides can work out the short code from what they hold; the machine shows it to its operator
 	// with the question whether to enrol this key holder.
-	announce(mrcore.PairSAS(link.Machine, selfID, pub, challenge.Nonce))
+	announce(sas)
 
 	waitCtx, cancel := context.WithTimeout(context.Background(), wait)
 	defer cancel()
