@@ -70,8 +70,8 @@ func DecodePairingSecret(encoded string) ([]byte, error) {
 // PairProof is what the key holder sends to show it holds the secret
 // from the machine's QR code.
 //
-// Bound to both Device IDs, to a nonce the machine chose for this
-// connection, and to the public key being enrolled, so a proof is worth
+// Bound to both Device IDs, to the nonce the machine chose for this
+// connection and the nonce the key holder committed to (holderNonce), and to the public key being enrolled, so a proof is worth
 // nothing anywhere else: not replayed on a later connection (the nonce
 // differs), not reused by a second phone that photographed the same code
 // (the peer ID differs), not replayed against another machine that

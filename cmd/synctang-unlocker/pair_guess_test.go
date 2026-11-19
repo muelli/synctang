@@ -3,8 +3,10 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
+	"io"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -122,12 +124,15 @@ func TestPeersWithoutThePairingCodeDoNotCountAndTheRealKeyHolderStillPairs(t *te
 	}
 }
 
-// A person who says no, or a key holder that answers wrongly, is not a guess: only leaving without an answer is.
-func TestTheOperatorSayingNoIsNotAGuess(t *testing.T) {
+// The operator's no counts too: somebody who has the link can put a question with a fresh code in front of the
+// operator as often as it likes, and each is one in a million, seen by the operator, but a tired one says yes.
+// A no is what an operator says when the code is not the one on the key holder's screen, which is exactly what
+// a leaked link looks like, so the window ends after three.
+func TestTheOperatorSayingNoCountsAndTheWindowEndsAfterThree(t *testing.T) {
 	f := newPairFixture(t)
 	secret, _, _ := mrcore.NewPairingSecret()
 	var asked atomic.Int32
-	done := startWindow(t, f, secret, 2, func(pairPeer) bool { asked.Add(1); return false })
+	done := startWindow(t, f, secret, 3, func(pairPeer) bool { asked.Add(1); return false })
 	for i := 0; i < 3; i++ {
 		if result, err := dialAndPair(t, f, f.addr, secret); err != nil || result.OK {
 			t.Fatalf("attempt %d: %v %+v", i, err, result)
@@ -135,8 +140,15 @@ func TestTheOperatorSayingNoIsNotAGuess(t *testing.T) {
 	}
 	select {
 	case err := <-done:
-		t.Fatalf("the window ended after answers the operator had given: %v", err)
-	default:
+		var many *errTooManyAbandoned
+		if !errors.As(err, &many) || many.Count != 3 {
+			t.Fatalf("err = %v, want too many connections, 3", err)
+		}
+		if !strings.Contains(err.Error(), "leaked") {
+			t.Errorf("the message should say the link has leaked: %v", err)
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("the window did not end after three questions the operator declined")
 	}
 	if asked.Load() != 3 {
 		t.Errorf("the operator was asked %d times, want 3", asked.Load())
@@ -160,27 +172,46 @@ func TestAPairingWithNoQuestionToAskTheOperatorEnrolsNobody(t *testing.T) {
 }
 
 // What was typed while the machine was still waiting is not the answer to a question that was not on the screen
-// yet: the question drops it first.
-func TestTheQuestionDropsWhatWasTypedBeforeItWasAsked(t *testing.T) {
+// yet. The question is printed, then what is queued is dropped, then the answer is read: dropping before it was
+// printed would let what is typed while it is being written answer it.
+func TestTheQuestionDropsWhatWasTypedUntilItWasOnTheScreenAndThenReads(t *testing.T) {
 	var order []string
 	was := flushAnswers
 	flushAnswers = func() { order = append(order, "flush") }
 	t.Cleanup(func() { flushAnswers = was })
-	out := &orderWriter{log: &order}
-	confirm := pairConfirmer(false, out, strings.NewReader("y\n"))
+	rec := &orderRecorder{log: &order}
+	confirm := pairConfirmer(false, rec, bufio.NewReader(rec))
 	if !confirm(pairPeer{ID: "PEER", Name: "phone", SAS: "123 456"}) {
 		t.Fatal("not confirmed")
 	}
-	if len(order) < 2 || order[0] != "flush" || order[1] != "print" {
-		t.Errorf("order = %v, want the input dropped before anything was printed", order)
+	if len(order) < 3 || order[0] != "print" || order[len(order)-2] != "flush" || order[len(order)-1] != "read" {
+		t.Errorf("order = %v, want the question printed, then the input dropped, then read", order)
+	}
+	for i, step := range order {
+		if step == "flush" && i != len(order)-2 {
+			t.Errorf("the input was dropped before the question was printed: %v", order)
+		}
 	}
 }
 
-type orderWriter struct{ log *[]string }
+// orderRecorder records what the question does, in order, as writer and as reader.
+type orderRecorder struct {
+	log  *[]string
+	done bool
+}
 
-func (w *orderWriter) Write(p []byte) (int, error) {
-	if len(*w.log) > 0 && (*w.log)[len(*w.log)-1] != "print" {
+func (w *orderRecorder) Write(p []byte) (int, error) {
+	if n := len(*w.log); n == 0 || (*w.log)[n-1] != "print" {
 		*w.log = append(*w.log, "print")
 	}
 	return len(p), nil
+}
+
+func (w *orderRecorder) Read(p []byte) (int, error) {
+	*w.log = append(*w.log, "read")
+	if w.done {
+		return 0, io.EOF
+	}
+	w.done = true
+	return copy(p, "y\n"), nil
 }

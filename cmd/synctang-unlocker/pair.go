@@ -88,8 +88,8 @@ type pairOptions struct {
 // no list to check it against. What replaces that check is the proof
 // below, which requires the secret from the machine's own screen, plus
 // the operator's confirmation before any keyslot is written. A stranger
-// who reaches this port therefore gets a challenge, a rejection, and
-// nothing else.
+// who reaches this port therefore gets a refusal and no nonce, and nothing
+// else.
 func runPairOnce(ctx context.Context, opts pairOptions) error {
 	logger := opts.logger
 	if logger == nil {
@@ -212,7 +212,7 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 		newKid := sha256.Sum256(req.PubKey)
 		if opts.confirmReplace == nil || !opts.confirmReplace(peer, plan.Existing, newKid[:]) {
 			notify("not replacing; nothing was changed")
-			return refusePairing(conn, mrcore.PairRefusedDeclined)
+			return &pairDeclined{refusePairing(conn, mrcore.PairRefusedDeclined)}
 		}
 		if err := replaceRecipient(opts.device, opts.existingPassphrase, req.PubKey, peerID, peerID, plan.Existing.Keyslot); err != nil {
 			_ = mrcore.WriteMessage(conn, mrcore.PairResult{Error: mrcore.PairRefusedEnrolFailed})
@@ -228,7 +228,7 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 
 	// With nobody to ask, nobody is enrolled: --yes passes an explicit yes.
 	if opts.confirm == nil || !opts.confirm(peer) {
-		return refusePairing(conn, mrcore.PairRefusedDeclined)
+		return &pairDeclined{refusePairing(conn, mrcore.PairRefusedDeclined)}
 	}
 
 	if err := enrolRecipient(opts.device, opts.existingPassphrase, req.PubKey,
@@ -266,12 +266,19 @@ type pairAbandoned struct{ error }
 
 func (e *pairAbandoned) Unwrap() error { return e.error }
 
-// errTooManyAbandoned ends a pairing window: that many connections took a nonce and left.
+// pairDeclined marks a connection whose answer the operator said no to. It counts like an abandoned one: a
+// no is what an operator says when the code differs from the one on the key holder's screen, which is what a
+// leaked link looks like, and somebody with the link can put a question in front of them as often as they like.
+type pairDeclined struct{ error }
+
+func (e *pairDeclined) Unwrap() error { return e.error }
+
+// errTooManyAbandoned ends a pairing window: that many connections used the pairing code and did not go on.
 type errTooManyAbandoned struct{ Count int }
 
 func (e *errTooManyAbandoned) Error() string {
-	return fmt.Sprintf(T("%d connections used the pairing code, were given a code to look at and left without answering. "+
-		"Somebody who has the pairing link may be trying codes, so the link is no longer good: run \"synctang-unlocker pair\" again for a new one"), e.Count)
+	return fmt.Sprintf(T("%d connections used the pairing code, were given a code to look at, and left or were declined. "+
+		"Somebody who has the pairing link may be trying codes, so the link has leaked and is no longer good: run \"synctang-unlocker pair\" again for a new one"), e.Count)
 }
 
 // pairAbandonLimit is how many connections may take a nonce and leave before the window ends. Each is a
@@ -279,7 +286,8 @@ func (e *errTooManyAbandoned) Error() string {
 var pairAbandonLimit = 3
 
 // pairWindow runs pairing attempts until one is resolved with success, the window ends, or limit connections
-// have taken a nonce and left without a valid answer. note is told why each other attempt ended.
+// have been given a nonce and did not go on (left without a valid answer, or were declined by the operator).
+// note is told why each other attempt ended.
 //
 // It goes on after a refusal rather than giving up on the first: a code read off a console gets mistyped, and
 // making that end the window means starting over with a new code for no reason. What it does not go on after
@@ -292,7 +300,8 @@ func pairWindow(ctx context.Context, opts pairOptions, limit int, note func(erro
 			return err
 		}
 		var left *pairAbandoned
-		if errors.As(err, &left) {
+		var declined *pairDeclined
+		if errors.As(err, &left) || errors.As(err, &declined) {
 			if abandoned++; abandoned >= limit {
 				return &errTooManyAbandoned{Count: abandoned}
 			}
@@ -532,10 +541,11 @@ func printPeer(stdout io.Writer, p pairPeer) {
 //
 // --yes (assumeYes) answers yes without showing anything to compare: it gives up the check against a pairing
 // code that leaked, and is for a script that has another reason to trust the key holder that answers.
-// flushAnswers drops what was typed before a question is put: a line that was already waiting in the
-// terminal's queue (typed while "waiting for a key holder" turned, or a second y after a first) would answer
-// a question that was not on the screen when it was given, and so could enrol whoever answered next without
-// the code having been seen. Nil, and for input that is not a terminal, it does nothing.
+// flushAnswers drops what was typed before a question was on the screen: a line that was already waiting in
+// the terminal's queue (typed while "waiting for a key holder" turned, or a second y after a first) would
+// answer a question that had not been seen when it was given, and so could enrol whoever answered next without
+// the code having been looked at. It is called after the question is printed and before the answer is read.
+// Nil, and for input that is not a terminal, it does nothing.
 var flushAnswers func()
 
 func pairConfirmer(assumeYes bool, stdout io.Writer, stdin io.Reader) func(pairPeer) bool {
@@ -544,12 +554,13 @@ func pairConfirmer(assumeYes bool, stdout io.Writer, stdin io.Reader) func(pairP
 	}
 	reader := bufio.NewReader(stdin)
 	return func(p pairPeer) bool {
-		if flushAnswers != nil {
-			flushAnswers()
-		}
 		fmt.Fprint(stdout, T("\na key holder answered the pairing code:\n\n"))
 		printPeer(stdout, p)
 		fmt.Fprint(stdout, T("enrol it on this volume? [y/N] "))
+		// After the question is on the screen, so that what is typed while it is being written does not answer it.
+		if flushAnswers != nil {
+			flushAnswers()
+		}
 
 		line, err := reader.ReadString('\n')
 		if err != nil {
@@ -573,13 +584,13 @@ func pairReplaceConfirmer(assumeYes bool, stdout io.Writer, stdin io.Reader) fun
 	}
 	reader := bufio.NewReader(stdin)
 	return func(p pairPeer, existing existingRecipient, newKid []byte) bool {
-		if flushAnswers != nil {
-			flushAnswers()
-		}
 		fmt.Fprint(stdout, T("\na key holder that is already enrolled answered the pairing code:\n\n"))
 		printPeer(stdout, p)
 		fmt.Fprintf(stdout, T("replace the existing entry for this key holder (keyslot %s, key %s) with this one (key %s)? [y/N] "),
 			existing.Keyslot, shortKid(existing.Kid), shortKid(newKid))
+		if flushAnswers != nil {
+			flushAnswers()
+		}
 
 		line, err := reader.ReadString('\n')
 		if err != nil {
