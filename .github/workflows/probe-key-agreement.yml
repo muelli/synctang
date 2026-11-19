@@ -121,14 +121,28 @@ jobs:
           adb shell cmd biometric help 2>&1 | head -20 | note cmd-biometric
           adb shell dumpsys biometric 2>&1 | head -40 | note dumpsys-biometric
 
+      - name: Enrol a virtual fingerprint
+        continue-on-error: true
+        working-directory: .
+        run: |
+          adb root > /dev/null 2>&1 || true
+          sleep 3
+          adb wait-for-device
+          adb shell locksettings set-pin 1234 || true
+          ./scripts/ci-enroll-fingerprint.sh 2>&1 | tee /tmp/enrol.log | cut -c1-300 | sed 's/^/::notice title=enrol::/'
+
       - name: Run the probe
-        # The probe is not a test of the app: what the Keystore and BiometricPrompt of this Android offer for a
-        # key agreement key that needs a fingerprint for each use. It may fail, and what it found is the point.
+        # The sensor is touched in the background all the while: the test waits for a fingerprint.
         continue-on-error: true
         run: |
           export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
+          ( while true; do adb emu finger touch 1 > /dev/null 2>&1; sleep 1; done ) &
+          toucher=$!
           ./gradlew connectedDebugAndroidTest -Psynctang.goMobileTarget=android/amd64 \
             -Pandroid.testInstrumentationRunnerArguments.class=com.github.muelli.synctang.KeyAgreementProbeTest
+          status=$?
+          kill $toucher 2> /dev/null || true
+          exit $status
 
       - name: Report what the probe found
         # As notices, so that they can be read without a login: the check run's annotations are public.
