@@ -12,6 +12,7 @@
 #   BOOT_TIMEOUT   seconds to wait for boot to finish (default 600)
 #   POLL           seconds between checks (default 5)
 #   EMULATOR_LOG   where the emulator's output goes (default /tmp/emulator.log)
+#   SYSTEM_IMAGE  the sdkmanager name of the system image (default system-images;android-34;google_apis;x86_64)
 #   EMULATOR, ADB, AVDMANAGER   override the tools, for tests
 set -euo pipefail
 
@@ -33,7 +34,7 @@ avdmanager=${AVDMANAGER:-$(find "$ANDROID_HOME/cmdline-tools" -name avdmanager -
 export ANDROID_AVD_HOME=${ANDROID_AVD_HOME:-$HOME/.android/avd}
 mkdir -p "$ANDROID_AVD_HOME"
 
-echo no | "$avdmanager" create avd -n "$avd" -k "system-images;android-34;google_apis;x86_64" -d pixel_6 --force
+echo no | "$avdmanager" create avd -n "$avd" -k "${SYSTEM_IMAGE:-system-images;android-34;google_apis;x86_64}" -d pixel_6 --force
 
 # avdmanager exits 0 in some situations where it has made nothing; stop here
 # with the facts rather than start an emulator that cannot find its AVD.

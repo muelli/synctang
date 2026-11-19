@@ -151,3 +151,151 @@ jobs:
             android/app/build/outputs/androidTest-results/
             /tmp/emulator-artifacts/
           if-no-files-found: warn
+
+  # The same tests on the Android that has BiometricPrompt.CryptoObject(KeyAgreement) (API 36.1), with a fingerprint
+  # enrolled in the emulator's virtual sensor and touched while the test waits, so that the phone's key in the secure
+  # hardware is tried end to end: AgreementKeyTest skips itself everywhere else.
+  hardware-agreement:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # versionCode is the commit count, so a shallow clone would
+          # build every APK as version 1.
+          fetch-depth: 0
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.0"
+
+      - name: Make /dev/kvm usable
+        working-directory: .
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          if [ ! -e /dev/kvm ]; then
+            echo "/dev/kvm is not present on this runner, so the emulator cannot be hardware accelerated" >&2
+            exit 1
+          fi
+          ls -l /dev/kvm
+          nproc
+          free -m
+
+      - name: Install the SDK pieces and the NDK
+        # Same sdkmanager lookup and "yes |" as the android job in ci.yml,
+        # for the same reasons.
+        working-directory: .
+        run: |
+          SDKMANAGER=$(command -v sdkmanager || find "$ANDROID_HOME" -type f -name sdkmanager 2>/dev/null | head -1)
+          if [ -z "$SDKMANAGER" ]; then
+            echo "sdkmanager not found under \$ANDROID_HOME ($ANDROID_HOME)" >&2
+            exit 1
+          fi
+          yes | "$SDKMANAGER" --install \
+            "ndk;27.2.12479018" \
+            "emulator" \
+            "platform-tools" \
+            "system-images;android-36.1;google_apis;x86_64"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+
+      - name: Install gomobile
+        working-directory: .
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Build the app and the test APK
+        # Before the emulator boots, so the build and the emulator do not
+        # compete for the runner's CPUs. One ABI, as in ci.yml, and the
+        # one the emulator runs.
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
+          ./gradlew assembleDebug assembleDebugAndroidTest -Psynctang.goMobileTarget=android/amd64
+
+      - name: Show what the boot will have to work with
+        # Printed so that a failed boot comes with the facts that usually
+        # explain it, without needing a second run to find out.
+        if: always()
+        timeout-minutes: 3
+        working-directory: .
+        run: |
+          id
+          ls -l /dev/kvm || true
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME/cmdline-tools" || true
+          ls "$ANDROID_HOME/system-images/android-36.1/google_apis" || true
+          "$ANDROID_HOME/emulator/emulator" -version 2>&1 | head -5 || true
+          java -version 2>&1 | head -2
+          free -m
+          df -h / | tail -1
+
+      - name: Boot the emulator
+        # Every wait is bounded and a failure prints the emulator's log:
+        # see scripts/ci-boot-emulator.sh. The step limit is a backstop.
+        timeout-minutes: 20
+        working-directory: .
+        run: SYSTEM_IMAGE="system-images;android-36.1;google_apis;x86_64" ./scripts/ci-boot-emulator.sh ci
+
+      - name: Enrol a virtual fingerprint
+        working-directory: .
+        run: |
+          adb root > /dev/null 2>&1 || true
+          sleep 3
+          adb wait-for-device
+          adb shell locksettings set-pin 1234 || true
+          ./scripts/ci-enroll-fingerprint.sh 2>&1 | tee /tmp/enrol.log | cut -c1-300 | sed 's/^/::notice title=enrol::/'
+
+      - name: Run the test of the hardware key
+        # The sensor is touched in the background all the while: the test waits for a fingerprint.
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
+          # The screen on, unlocked and staying so: the prompt is cancelled for an app that is not in the foreground.
+          adb shell svc power stayon true
+          adb shell settings put system screen_off_timeout 1800000
+          adb shell input keyevent KEYCODE_WAKEUP
+          adb shell wm dismiss-keyguard
+          sleep 1
+          adb shell input text 1234
+          adb shell input keyevent KEYCODE_ENTER
+          sleep 2
+          ( while true; do adb emu finger touch 1 > /dev/null 2>&1; sleep 1; done ) &
+          toucher=$!
+          ./gradlew connectedDebugAndroidTest -Psynctang.goMobileTarget=android/amd64 \
+            -Pandroid.testInstrumentationRunnerArguments.class=com.github.muelli.synctang.AgreementKeyTest \
+            -Pandroid.testInstrumentationRunnerArguments.requireHardware=true
+          status=$?
+          kill $toucher 2> /dev/null || true
+          exit $status
+
+      - name: Collect logs
+        if: always()
+        timeout-minutes: 5
+        working-directory: .
+        run: |
+          mkdir -p /tmp/emulator-artifacts
+          # Bounded: with no device attached, which is exactly when these
+          # logs matter most (the boot failed), adb logcat waits for one
+          # for ever, and the first run of this workflow sat here until the
+          # job's own limit.
+          timeout 60 adb logcat -d > /tmp/emulator-artifacts/logcat.txt 2>&1 || true
+          cp /tmp/emulator.log /tmp/emulator-artifacts/emulator.log 2>/dev/null || true
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: hardware-agreement-test-results
+          path: |
+            android/app/build/reports/androidTests/
+            android/app/build/outputs/androidTest-results/
+            /tmp/emulator-artifacts/
+          if-no-files-found: warn
