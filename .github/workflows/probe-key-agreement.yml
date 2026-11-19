@@ -104,6 +104,23 @@ jobs:
         working-directory: .
         run: SYSTEM_IMAGE="system-images;android-36.1;google_apis;x86_64" ./scripts/ci-boot-emulator.sh ci
 
+      - name: Look at what the emulator offers for a virtual fingerprint
+        # Information, as notices: a screen lock is set (a key that needs a fingerprint needs one), the emulator is
+        # asked for root, and what the fingerprint service and the biometric service say is printed.
+        continue-on-error: true
+        working-directory: .
+        run: |
+          note() { sed "s/^/::notice title=$1::/" | cut -c1-400; }
+          adb shell locksettings set-pin 1234 2>&1 | note lock
+          adb root 2>&1 | note root
+          sleep 3
+          adb shell getprop | grep -i -E 'fingerprint|biometric' | note props
+          adb shell service list | grep -i -E 'finger|biometric' | note services
+          adb shell dumpsys fingerprint 2>&1 | head -60 | note dumpsys-fingerprint
+          adb shell cmd fingerprint help 2>&1 | head -20 | note cmd-fingerprint
+          adb shell cmd biometric help 2>&1 | head -20 | note cmd-biometric
+          adb shell dumpsys biometric 2>&1 | head -40 | note dumpsys-biometric
+
       - name: Run the probe
         # The probe is not a test of the app: what the Keystore and BiometricPrompt of this Android offer for a
         # key agreement key that needs a fingerprint for each use. It may fail, and what it found is the point.
