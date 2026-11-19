@@ -208,7 +208,7 @@ carry `rd.synctang=0`. It also checks that the initrd would get an address the w
 system does. The initrd asks for DHCP and nothing else, so a machine whose address is set by hand
 (netplan, systemd-networkd, NetworkManager or ifupdown with a static address) boots with no
 network. The check asks the kernel where the default route came from, so it does not depend on the
-network manager. For an address set by hand it prints the `ip=` argument to add to the kernel
+network manager; an address the kernel marks as leased counts as DHCP even when the route was added by a script. For an address set by hand it prints the `ip=` argument to add to the kernel
 command line (see "Kernel command line options"); `synctang-unlocker network-args` prints that
 line again, and only that line. The check looks at the next boot as well as this one: when the
 boot loader's generated configuration (`/boot/grub/grub.cfg`, or the entries in

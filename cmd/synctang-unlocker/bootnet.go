@@ -17,6 +17,23 @@ import (
 	"strings"
 )
 
+// ipSearchPath is where ip(8) is when the caller's PATH does not have it: sudo and cron give root a short one.
+var ipSearchPath = []string{"/usr/sbin/ip", "/sbin/ip", "/usr/bin/ip", "/bin/ip"}
+
+// ipProgram is ip(8) on the caller's PATH, else in the places distributions put it, so that a PATH that was
+// changed under a root shell is not what decides which program runs.
+func ipProgram() string {
+	if path, err := exec.LookPath("ip"); err == nil {
+		return path
+	}
+	for _, path := range ipSearchPath {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	return "ip"
+}
+
 // The initrd asks for DHCP on every interface and does nothing else, unless the kernel command line
 // has an ip= argument (dracut's, which systemd-network-generator turns into a network file). A
 // machine whose address is set by hand would boot into the initrd with only an IPv6 link-local
@@ -31,7 +48,7 @@ import (
 var (
 	// ipOutput runs ip(8) and returns what it prints.
 	ipOutput = func(args ...string) ([]byte, error) {
-		return exec.Command("ip", args...).Output() // i18n:skip a command, not a message
+		return exec.Command(ipProgram(), args...).Output() // i18n:skip a command, not a message
 	}
 	// upstreamResolvConfs are the files that list the DNS servers of the network itself, best first: the
 	// stub resolver in /etc/resolv.conf answers on a local address that the initrd does not have.
@@ -48,6 +65,9 @@ var (
 	}
 )
 
+// safeInterfaceName is an interface name that can go into a kernel argument, and a line of shell, unquoted.
+var safeInterfaceName = regexp.MustCompile(`^[A-Za-z0-9._@-]{1,15}$`)
+
 var bootNetworkCheckName = T("the initrd gets an address the way this machine does")
 
 type ipRoute struct {
@@ -63,6 +83,7 @@ type ipAddr struct {
 		Local     string `json:"local"`
 		PrefixLen int    `json:"prefixlen"`
 		Scope     string `json:"scope"`
+		Dynamic   bool   `json:"dynamic"`
 	} `json:"addr_info"`
 }
 
@@ -121,6 +142,12 @@ func detectBootNetwork(only string) (bootNetwork, error) {
 	}
 	route := routes[0]
 	dev := route.Dev
+	// The line is meant to be pasted into /etc/default/grub, which update-grub sources in a root shell: an
+	// interface name may hold anything the kernel allows (all but "/", ":" and white space), so only names that
+	// are safe there are taken.
+	if !safeInterfaceName.MatchString(dev) {
+		return bootNetwork{}, fmt.Errorf(T("the interface %q has a name that is not safe to put in a kernel argument, so there is none to suggest"), dev)
+	}
 
 	if isWireless(dev) {
 		return bootNetwork{}, fmt.Errorf(T("%s is a wireless interface, and the initrd cannot join a wireless network"), dev)
@@ -144,19 +171,31 @@ func detectBootNetwork(only string) (bootNetwork, error) {
 	if err := ipJSON(&addrs, "-4", "addr", "show", "dev", dev); err != nil {
 		return bootNetwork{}, err
 	}
-	local, prefix := "", 0
+	local, prefix, leased := "", 0, false
 	for _, a := range addrs {
 		for _, i := range a.AddrInfo {
 			if i.Family != "inet" || i.Scope != "global" {
 				continue
 			}
 			if local == "" || i.Local == route.Prefsrc {
-				local, prefix = i.Local, i.PrefixLen
+				local, prefix, leased = i.Local, i.PrefixLen, i.Dynamic
 			}
 		}
 	}
 	if local == "" {
 		return bootNetwork{}, fmt.Errorf(T("%s has no global IPv4 address to suggest"), dev)
+	}
+	// ifupdown with dhclient and udhcpc scripts add the default route with a plain "ip route add", which the
+	// kernel records as "boot", not "dhcp". The address says it was leased, and a lease is DHCP: pinning it
+	// would hand the address to the initrd for good, after the lease has gone to somebody else.
+	if leased {
+		return bootNetwork{Dev: dev, DHCP: true}, nil
+	}
+	// Whatever ip printed, only addresses go into the line.
+	for _, v := range []string{local, route.Gateway} {
+		if addr, err := netip.ParseAddr(v); err != nil || !addr.Is4() || addr.IsUnspecified() {
+			return bootNetwork{}, fmt.Errorf(T("%q is not an IPv4 address, so there is no ip= argument to suggest"), v)
+		}
 	}
 
 	arg := fmt.Sprintf("ip=%s::%s:%s::%s:none", local, route.Gateway, net.IP(net.CIDRMask(prefix, 32)), dev)

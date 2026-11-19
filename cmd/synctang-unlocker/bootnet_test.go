@@ -398,3 +398,51 @@ func TestWithNoBootLoaderConfigurationFoundItIsUnverifiedAndHasTheLineToAdd(t *t
 		t.Errorf("%+v", c)
 	}
 }
+
+// ifupdown with dhclient and udhcpc scripts add the default route with a plain "ip route add", which the kernel
+// records as "boot", not "dhcp". The address is what says it was leased, and a lease is DHCP: a line that pins it
+// would hand the address to the initrd for good, after the lease has gone to somebody else.
+func TestARouteNotMarkedDHCPWithALeasedAddressIsStillDHCP(t *testing.T) {
+	h := staticHost()
+	h["-j -4 route show default"] = strings.Replace(staticRouteJSON, `"protocol":"static"`, `"protocol":"boot"`, 1)
+	h["-j -4 addr show dev ens3"] = `[{"ifname":"ens3","addr_info":[{"family":"inet","local":"192.0.2.10","prefixlen":24,"scope":"global","dynamic":true,"valid_life_time":86400}]}]`
+	h.install(t)
+	notWireless(t)
+	resolvers(t)
+	if c := bootNetworkCheck("ro"); c.Status != "ok" {
+		t.Errorf("%+v", c)
+	}
+	n, err := detectBootNetwork("")
+	if err != nil || !n.DHCP {
+		t.Errorf("%+v %v", n, err)
+	}
+}
+
+// The line is meant to be pasted into /etc/default/grub, which update-grub sources in a root shell: nothing that
+// ip prints is trusted to be a name, an address or a number. A name may hold anything the kernel allows (all but
+// "/", ":" and white space, 15 bytes), "$(" and quotes included.
+func TestNothingThatIsNotAnAddressOrAnInterfaceNameGoesIntoTheLine(t *testing.T) {
+	for name, tc := range map[string]struct{ dev, gw, local string }{
+		"a command in the name":              {`ens$(id)`, "192.0.2.1", "192.0.2.10"},
+		"a backtick in the name":             {"ens`id`", "192.0.2.1", "192.0.2.10"},
+		"a quote in the name":                {`en"s`, "192.0.2.1", "192.0.2.10"},
+		"a semicolon in the name":            {"ens;x", "192.0.2.1", "192.0.2.10"},
+		"a name that is too long":            {"abcdefghijklmnop", "192.0.2.1", "192.0.2.10"},
+		"a gateway that is no IPv4 address":  {"ens3", "192.0.2.1; rm -rf /", "192.0.2.10"},
+		"a gateway that is IPv6":             {"ens3", "2001:db8::1", "192.0.2.10"},
+		"an address that is no IPv4 address": {"ens3", "192.0.2.1", "$(id)"},
+	} {
+		h := hostNet{
+			"-j -4 route show default":      `[{"dst":"default","gateway":"` + tc.gw + `","dev":"` + tc.dev + `","protocol":"static"}]`,
+			"-j -d link show dev " + tc.dev: plainLinkJSON,
+			"-j -4 addr show dev " + tc.dev: `[{"ifname":"x","addr_info":[{"family":"inet","local":"` + tc.local + `","prefixlen":24,"scope":"global"}]}]`,
+		}
+		h.install(t)
+		notWireless(t)
+		resolvers(t)
+		c := bootNetworkCheck("ro")
+		if c.Status != "unchecked" || strings.Contains(c.Detail, ":none") {
+			t.Errorf("%s: %+v", name, c)
+		}
+	}
+}
