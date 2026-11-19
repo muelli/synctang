@@ -41,6 +41,27 @@ that is stronger than being able to ask:
   boot partition ignores `chmod` unless mounted with a restrictive umask
   `[V]` (`scripts/test-secure-initrd.sh`, against a temporary directory).
 
+**An approval is more than an unlock.** The secret that a key holder's approval recovers is the passphrase
+of that key holder's own keyslot: the agent hands exactly this to systemd at boot, and the machine holds it for
+the moment of the unlock. Whoever gets hold of it can do what the passphrase of any keyslot can:
+
+- Unlock the volume with no key holder at all. `synctang-unlocker extract-keyslot-key` shows this: it waits for
+  an approval and prints the passphrase `[V]` (run on a test volume, 2026-11-19). It is described only in the
+  manual page, because it is not a step in setting anything up.
+- Add a keyslot, whether for another key holder or for an ordinary passphrase, because `cryptsetup luksAddKey`
+  takes the passphrase of any slot `[V]` (a passphrase added this way enrolled a second key holder in the test).
+  `synctang-unlocker enrol` and `pair` can take an approval in place of the original passphrase for the first
+  of these.
+- Keep that access after the key holder is revoked, if it did one of the things above: `revoke` destroys the
+  keyslot of a key holder, and nothing else. A keyslot that was added with the passphrase is independent of the
+  key holder, and so is a copy of the passphrase.
+
+The machine's root, malware on the machine, and anyone who obtains one approval from your key holder for a
+copy of the disk (see above) are the parties who can reach this; each needs an approval, and a key holder
+shows who is asking. Tang has the same property: `clevis luks bind` adds a random-key keyslot and leaves the
+original passphrase in place, and `clevis luks pass` prints the passphrase of a slot that was bound to a
+Tang server `[V]` (Clevis manual pages).
+
 What the key holder does to help, cheapest first:
 
 - It shows the requester's Device ID and name before approving
