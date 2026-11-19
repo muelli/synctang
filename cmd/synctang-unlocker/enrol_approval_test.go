@@ -140,3 +140,30 @@ func TestPairWantsOnePassphraseOrAnApprovalNotBoth(t *testing.T) {
 		t.Errorf("exit %d, stderr %q", code, errOut.String())
 	}
 }
+
+// Whether the enrolment can happen is found out before anybody is asked to approve: an approval spent on a key
+// holder that is already enrolled, or on an id that holds another key, would be a person at a phone for nothing.
+func TestEnrolByApprovalChecksTheEnrolmentBeforeAskingForAnApproval(t *testing.T) {
+	fakeOpener(t)
+	f := newOpenFixture(t)
+	holderID := protocol.NewDeviceID(f.holderCert.Certificate[0]).String()
+	sameKey, err := mrcore.P256().ScalarBaseMult(f.s)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start := time.Now()
+	already := waitFor(t, startOpen(f.enrolArgs(hex.EncodeToString(sameKey), holderID, "--approve-with-key-holder", "--timeout", "20s")))
+	if already.code != 0 || !strings.Contains(already.stdout, "already enrolled") {
+		t.Errorf("the same key again: exit %d, stdout %q, stderr %q", already.code, already.stdout, already.stderr)
+	}
+
+	otherKey, _ := newKeyHolder(t)
+	other := waitFor(t, startOpen(f.enrolArgs(otherKey, holderID, "--approve-with-key-holder", "--timeout", "20s")))
+	if other.code != 1 || !strings.Contains(other.stderr, "rotate") {
+		t.Errorf("another key for the same id: exit %d, stderr %q", other.code, other.stderr)
+	}
+	if time.Since(start) > 10*time.Second {
+		t.Errorf("took %s: it waited for an approval", time.Since(start))
+	}
+}

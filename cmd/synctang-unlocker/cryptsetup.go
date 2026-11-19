@@ -32,7 +32,11 @@ import (
 // keyslot content, and runAgentOnce delivers the hex form, so the
 // keyslot and the answer always agree on what "the passphrase" is.
 func luksKeyMaterial(p []byte) []byte {
-	return []byte(hex.EncodeToString(p))
+	// Encoded straight into the slice that is returned: hex.EncodeToString would make a string of it, and a
+	// string is a copy that is never wiped.
+	out := make([]byte, hex.EncodedLen(len(p)))
+	hex.Encode(out, p)
+	return out
 }
 
 // cryptsetupSearchPath covers where distributions put cryptsetup when

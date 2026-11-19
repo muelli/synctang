@@ -180,21 +180,32 @@ func describeRecipients(tok mrcore.Token, idxs []int) string {
 // enrolled as before. replaceRecipient does not come through here: it adds
 // the new key for the same id on purpose.
 func enrolOnce(device string, existingPassphrase, recipientPublicKey []byte, machineName, transportID, recipientTransportID string) (enrolOutcome, error) {
-	if recipientTransportID != "" {
-		plan, err := planEnrolment(device, recipientPublicKey, recipientTransportID)
-		if err != nil {
-			return enrolOutcome{}, err
-		}
-		switch plan.Kind {
-		case planAlready:
-			return enrolOutcome{Already: true, Keyslot: plan.Existing.Keyslot}, nil
-		case planReplace:
-			return enrolOutcome{}, fmt.Errorf(T("transport id %s is already enrolled with a different key (keyslot %s, key %s); "+
-				"to change its key use: synctang-unlocker rotate --device %s --pubkey <new public key> %s ..."),
-				recipientTransportID, plan.Existing.Keyslot, shortKid(plan.Existing.Kid), device, recipientTransportID)
-		}
+	if outcome, err := checkEnrolment(device, recipientPublicKey, recipientTransportID); err != nil || outcome.Already {
+		return outcome, err
 	}
 	return enrolOutcome{}, enrolRecipient(device, existingPassphrase, recipientPublicKey, machineName, transportID, recipientTransportID)
+}
+
+// checkEnrolment settles what needs no authority: an id that already holds this same key is done (the outcome says
+// where), and one that holds another key is refused with the way to rotate it. Otherwise the enrolment can go
+// ahead and the outcome is empty.
+func checkEnrolment(device string, recipientPublicKey []byte, recipientTransportID string) (enrolOutcome, error) {
+	if recipientTransportID == "" {
+		return enrolOutcome{}, nil
+	}
+	plan, err := planEnrolment(device, recipientPublicKey, recipientTransportID)
+	if err != nil {
+		return enrolOutcome{}, err
+	}
+	switch plan.Kind {
+	case planAlready:
+		return enrolOutcome{Already: true, Keyslot: plan.Existing.Keyslot}, nil
+	case planReplace:
+		return enrolOutcome{}, fmt.Errorf(T("transport id %s is already enrolled with a different key (keyslot %s, key %s); "+
+			"to change its key use: synctang-unlocker rotate --device %s --pubkey <new public key> %s ..."),
+			recipientTransportID, plan.Existing.Keyslot, shortKid(plan.Existing.Kid), device, recipientTransportID)
+	}
+	return enrolOutcome{}, nil
 }
 
 type enrolPlanKind int

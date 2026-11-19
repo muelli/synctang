@@ -223,6 +223,15 @@ func runEnrol(args []string, stdout, stderr io.Writer) int {
 
 	var passphrase []byte
 	if *approve {
+		// Found out before anybody is asked to approve: a key holder that is already enrolled, or an id that holds
+		// another key, is settled here and costs a person at a phone nothing.
+		if outcome, err := checkEnrolment(*device, pubkey, *recipientTransportID); err != nil {
+			ui.Errorf(stderr, "%v\n", err)
+			return 1
+		} else if outcome.Already {
+			fmt.Fprintf(stdout, T("%s is already enrolled at keyslot %s on %s; nothing was added\n"), *recipientTransportID, outcome.Keyslot, *device)
+			return 0
+		}
 		// What a key holder's approval recovers is the passphrase of its own keyslot, which is as good as any
 		// other for adding one. It goes from the exchange into the command and nowhere else.
 		key, code := keyFromApprovalFn(*device, approval{
