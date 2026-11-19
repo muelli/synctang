@@ -212,14 +212,13 @@ func TestPairerSaysItIsWaitingForTheOperatorWhileTheyDecide(t *testing.T) {
 			return
 		}
 		defer conn.Close()
-		if _, _, err := machineSide(conn, []byte("a nonce that is thirty two bytes"), "m"); err != nil {
+		if view := machineSide(conn, secret, machineID, []byte("a nonce that is thirty two bytes"), "m"); view.err != nil {
 			return
 		}
 		<-release // the operator is deciding
 		_ = mrcore.WriteMessage(conn, mrcore.PairResult{OK: true})
 		time.Sleep(300 * time.Millisecond)
 	}()
-	_ = secret
 
 	p := NewPairer()
 	done := make(chan error, 1)

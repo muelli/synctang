@@ -16,8 +16,9 @@ import (
 
 // A machine whose operator takes their time: it sends the challenge, takes the
 // proof, and answers only after decide has returned, or never (decide == nil).
-func slowOperatorMachine(t *testing.T, addr, machineSeed string, decide func()) {
+func slowOperatorMachine(t *testing.T, addr, machineSeed string, secret []byte, decide func()) {
 	t.Helper()
+	machineID, _ := DeviceIDForSeed(machineSeed)
 	cert, err := identity.GenerateDeterministicCert(machineSeed)
 	if err != nil {
 		t.Fatal(err)
@@ -30,7 +31,7 @@ func slowOperatorMachine(t *testing.T, addr, machineSeed string, decide func()) 
 			return
 		}
 		defer conn.Close()
-		if _, _, err := machineSide(conn, []byte("a nonce that is thirty two bytes"), "m"); err != nil {
+		if view := machineSide(conn, secret, machineID, []byte("a nonce that is thirty two bytes"), "m"); view.err != nil {
 			return
 		}
 		if decide == nil {
@@ -51,10 +52,10 @@ func pairKey() string { return hex.EncodeToString([]byte("a public key stands in
 // that gives up when the dial budget runs out reports failure on a success.
 func TestPairWaitsForASlowOperatorLongerThanTheDialBudget(t *testing.T) {
 	const phoneSeed, machineSeed = "slow operator phone", "slow operator machine"
-	_, code, _ := mrcore.NewPairingSecret()
+	secret, code, _ := mrcore.NewPairingSecret()
 	machineID, _ := DeviceIDForSeed(machineSeed)
 	addr := freePort(t)
-	slowOperatorMachine(t, addr, machineSeed, func() { time.Sleep(2500 * time.Millisecond) })
+	slowOperatorMachine(t, addr, machineSeed, secret, func() { time.Sleep(2500 * time.Millisecond) })
 
 	saved := pairOperatorWait
 	pairOperatorWait = 20 * time.Second
@@ -74,10 +75,10 @@ func TestPairWaitsForASlowOperatorLongerThanTheDialBudget(t *testing.T) {
 // the machine did not confirm; it never says the machine could not be reached.
 func TestPairGivesUpOnAnOperatorWhoNeverAnswersAndSaysSo(t *testing.T) {
 	const phoneSeed, machineSeed = "absent operator phone", "absent operator machine"
-	_, code, _ := mrcore.NewPairingSecret()
+	secret, code, _ := mrcore.NewPairingSecret()
 	machineID, _ := DeviceIDForSeed(machineSeed)
 	addr := freePort(t)
-	slowOperatorMachine(t, addr, machineSeed, nil)
+	slowOperatorMachine(t, addr, machineSeed, secret, nil)
 
 	saved := pairOperatorWait
 	pairOperatorWait = 1 * time.Second
@@ -106,10 +107,10 @@ func TestPairGivesUpOnAnOperatorWhoNeverAnswersAndSaysSo(t *testing.T) {
 // Cancel stays available for the whole wait.
 func TestPairCanBeCancelledWhileWaitingForTheOperator(t *testing.T) {
 	const phoneSeed, machineSeed = "cancel operator phone", "cancel operator machine"
-	_, code, _ := mrcore.NewPairingSecret()
+	secret, code, _ := mrcore.NewPairingSecret()
 	machineID, _ := DeviceIDForSeed(machineSeed)
 	addr := freePort(t)
-	slowOperatorMachine(t, addr, machineSeed, nil)
+	slowOperatorMachine(t, addr, machineSeed, secret, nil)
 
 	saved := pairOperatorWait
 	pairOperatorWait = 30 * time.Second

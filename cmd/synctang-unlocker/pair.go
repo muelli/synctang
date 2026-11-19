@@ -6,10 +6,10 @@ import (
 	"bufio"
 	"cmp"
 	"context"
-	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/muelli/synctang/internal/gnuflag"
@@ -131,11 +131,24 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 		return fmt.Errorf(T("synctang-unlocker: reading the pairing request: %w"), err)
 	}
 
-	// Rejected here, before anything else is spent on it, so that a key that can never work does not first
-	// get a nonce or a human asked about it. PointToX decodes the point, which is the validation wanted: on
-	// the curve, in the right subgroup, not the point at infinity.
+	// PeerID is the identity from the completed TLS handshake, not anything a message claimed, so the tag, the
+	// commitment and the proof are bound to who the peer actually is and the enrolment records that same
+	// identity.
+	peerID := conn.PeerID()
+
+	// Before anything else is spent on the request, and before it gets a nonce: a request must carry the tag
+	// that only somebody with the pairing code can make, so a stranger gets neither a nonce nor a code to
+	// look at.
+	if err := mrcore.CheckPairRequest(opts.secret, machineID, peerID, req); err != nil {
+		logger.Warn("refused a pairing request without a valid tag", "peer", peerID)
+		return refuseChallenge(conn, mrcore.PairRefusedCodeMismatch)
+	}
+
+	// Then the key: a key that can never work does not get a nonce or a human asked about it. PointToX decodes
+	// the point, which is the validation wanted: on the curve, in the right subgroup, not the point at
+	// infinity.
 	if _, err := mrcore.P256().PointToX(req.PubKey); err != nil {
-		return refusePairing(conn, mrcore.PairRefusedInvalidKey)
+		return refuseChallenge(conn, mrcore.PairRefusedInvalidKey)
 	}
 
 	nonce := make([]byte, mrcore.PairNonceLen)
@@ -160,17 +173,18 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 		return fmt.Errorf(T("synctang-unlocker: reading the proof of the pairing code: %w"), err)
 	}
 
-	// PeerID is the identity from the completed TLS handshake, not
-	// anything a message claimed, so the proof is bound to who the
-	// peer actually is and the enrolment records that same identity.
-	peerID := conn.PeerID()
-	expected := mrcore.PairProof(opts.secret, machineID, peerID, req.PubKey, nonce)
-	if !hmac.Equal(expected, resp.Proof) {
+	// The key holder reveals the nonce it committed to before it saw ours, and proves it holds the code. The
+	// code the operator compares is made from both nonces.
+	sas, err := mrcore.CheckPairResponse(opts.secret, machineID, peerID, req, nonce, resp)
+	switch {
+	case errors.Is(err, mrcore.ErrPairCommitment):
+		logger.Warn("refused a pairing attempt whose nonce was not the one committed to", "peer", peerID)
+		return refusePairing(conn, mrcore.PairRefusedProtocol)
+	case err != nil:
 		logger.Warn("refused a pairing attempt with a bad proof", "peer", peerID)
 		return refusePairing(conn, mrcore.PairRefusedCodeMismatch)
 	}
-	peer := pairPeer{ID: peerID, PubKey: req.PubKey, Name: mrcore.SafeLabel(req.Name, 64),
-		SAS: mrcore.PairSAS(machineID, peerID, req.PubKey, nonce)}
+	peer := pairPeer{ID: peerID, PubKey: req.PubKey, Name: mrcore.SafeLabel(req.Name, 64), SAS: sas}
 
 	// One enrolled recipient per transport id. The same key already there is
 	// success with nothing to add; a different one is replaced, if the operator
@@ -240,6 +254,14 @@ func runPairOnce(ctx context.Context, opts pairOptions) error {
 // console needs to be told that rather than left guessing.
 func refusePairing(conn io.ReadWriter, reason string) error {
 	_ = mrcore.WriteMessage(conn, mrcore.PairResult{Error: reason})
+	waitForPeerClose(conn, resultLingerTimeout)
+	return fmt.Errorf(T("synctang-unlocker: pairing refused: %s"), reason)
+}
+
+// refuseChallenge is a refusal that takes the place of the challenge: the key holder is waiting for a nonce,
+// and reads this where it expects one.
+func refuseChallenge(conn io.ReadWriter, reason string) error {
+	_ = mrcore.WriteMessage(conn, mrcore.PairChallenge{Error: reason})
 	waitForPeerClose(conn, resultLingerTimeout)
 	return fmt.Errorf(T("synctang-unlocker: pairing refused: %s"), reason)
 }

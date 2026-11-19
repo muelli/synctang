@@ -105,8 +105,9 @@ func TestLastFailureOfAnAnswerTheMachineCouldNotUse(t *testing.T) {
 }
 
 // refusingMachine answers one pairing attempt with a refusal.
-func refusingMachine(t *testing.T, addr, machineSeed, reason string) {
+func refusingMachine(t *testing.T, addr, machineSeed string, secret []byte, reason string) {
 	t.Helper()
+	machineID, _ := DeviceIDForSeed(machineSeed)
 	cert, err := identity.GenerateDeterministicCert(machineSeed)
 	if err != nil {
 		t.Fatalf("machine cert: %v", err)
@@ -119,7 +120,7 @@ func refusingMachine(t *testing.T, addr, machineSeed, reason string) {
 			return
 		}
 		defer conn.Close()
-		_, _, _ = machineSide(conn, []byte("a nonce that is thirty two bytes"), "")
+		_ = machineSide(conn, secret, machineID, []byte("a nonce that is thirty two bytes"), "")
 		_ = mrcore.WriteMessage(conn, mrcore.PairResult{Error: reason})
 		time.Sleep(500 * time.Millisecond)
 	}()
@@ -139,14 +140,14 @@ func TestLastFailureOfAPairingRefusal(t *testing.T) {
 		{"no\x1b]0;x\x07\nforged", FailurePairRefused, "no?]0;x??forged"},
 	} {
 		t.Run(tc.reason, func(t *testing.T) {
-			_, code, err := mrcore.NewPairingSecret()
+			secret, code, err := mrcore.NewPairingSecret()
 			if err != nil {
 				t.Fatalf("NewPairingSecret: %v", err)
 			}
 			machineSeed := "kind refusal machine " + tc.reason
 			machineID, _ := DeviceIDForSeed(machineSeed)
 			addr := freePort(t)
-			refusingMachine(t, addr, machineSeed, tc.reason)
+			refusingMachine(t, addr, machineSeed, secret, tc.reason)
 
 			p := NewPairer()
 			err = p.Pair(machineID, code, "kind refusal phone", hex.EncodeToString([]byte("key")), "phone", addr, 20)

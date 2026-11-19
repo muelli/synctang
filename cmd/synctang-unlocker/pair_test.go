@@ -32,6 +32,7 @@ type pairFixture struct {
 	holderS_    []byte // the scalar behind holderS
 	addr        string
 	nonce       []byte // the machine's challenge nonce, as dialAndPair last read it
+	sas         string // the short code the key holder worked out, as dialAndPair last did
 }
 
 func newPairFixture(t *testing.T) *pairFixture {
@@ -98,16 +99,29 @@ func dialAndPair(t *testing.T, f *pairFixture, addr string, secret []byte) (mrco
 	}
 	defer conn.Close()
 
-	// The key holder speaks first, then answers the machine's nonce with the proof.
-	if err := mrcore.WriteMessage(conn, mrcore.PairRequest{PubKey: f.holderS, Name: "test phone"}); err != nil {
+	// The key holder speaks first, commits to a nonce of its own, and answers the machine's nonce with the proof.
+	holder, err := mrcore.NewPairHolder(secret, f.machineID, f.holderID, f.holderS, "test phone")
+	if err != nil {
+		return mrcore.PairResult{}, err
+	}
+	defer holder.Wipe()
+	if err := mrcore.WriteMessage(conn, holder.Request()); err != nil {
 		return mrcore.PairResult{}, err
 	}
 	var challenge mrcore.PairChallenge
 	if err := mrcore.ReadMessage(conn, &challenge); err != nil {
 		return mrcore.PairResult{}, err
 	}
+	// A machine that will not go on says so in place of the nonce.
+	if challenge.Error != "" {
+		return mrcore.PairResult{Error: challenge.Error}, nil
+	}
 	f.nonce = challenge.Nonce
-	resp := mrcore.PairResponse{Proof: mrcore.PairProof(secret, f.machineID, f.holderID, f.holderS, challenge.Nonce)}
+	resp, sas, err := holder.Answer(challenge)
+	if err != nil {
+		return mrcore.PairResult{}, err
+	}
+	f.sas = sas
 	if err := mrcore.WriteMessage(conn, resp); err != nil {
 		return mrcore.PairResult{}, err
 	}
@@ -395,7 +409,7 @@ func TestPairShowsTheOperatorTheShortCodeOfThisConnection(t *testing.T) {
 	if err := <-errCh; err != nil {
 		t.Fatal(err)
 	}
-	if want := mrcore.PairSAS(f.machineID, f.holderID, f.holderS, f.nonce); shown != want {
+	if want := f.sas; shown != want {
 		t.Errorf("the operator was shown %q, the key holder computes %q", shown, want)
 	}
 }
