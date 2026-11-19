@@ -113,11 +113,14 @@ internal fun StatusHeader(icon: ImageVector, tint: Color, headline: String, deta
 internal fun MachineName(machine: Machine, withShortId: Boolean = true) {
     if (machine.label().isBlank()) return
     Column {
-        Text(stringResource(R.string.unlock_machine), style = MaterialTheme.typography.labelMedium)
+        // On the label's own line, so that a screen is no taller for it: the code to compare, on the pairing
+        // screen, must not be pushed off a small screen by the id.
+        val heading = stringResource(R.string.unlock_machine)
+        Text(
+            if (withShortId && machine.name.isNotBlank()) "$heading \u00B7 ${shortDeviceId(machine.deviceId)}" else heading,
+            style = MaterialTheme.typography.labelMedium,
+        )
         Text(machine.label(), style = MaterialTheme.typography.titleLarge)
-        if (withShortId && machine.name.isNotBlank()) {
-            Text(shortDeviceId(machine.deviceId), style = MaterialTheme.typography.bodySmall)
-        }
     }
 }
 
