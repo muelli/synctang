@@ -402,6 +402,26 @@ same machine again updates its name. To take a machine off the phone, use "Forge
 the question; the app then offers to take it back for a few seconds. Forgetting only changes the phone: the
 machine still trusts the phone until you revoke it there (`synctang-unlocker revoke`).
 
+## If you lose the passphrase or a key holder
+
+synctang adds keyslots and never replaces your passphrase: the passphrase keeps its own keyslot, and each
+enrolled key holder has one of its own. Any one of them opens the volume.
+
+- **Another key holder, with no passphrase.** While one key holder is enrolled and works, it can authorise
+  the next one. Run `pair` or `enrol` with `--approve-with-key-holder` in place of `--existing-passphrase-file`,
+  and approve on the key holder that is already enrolled:
+
+      sudo synctang-unlocker pair --device /dev/sdXN --approve-with-key-holder
+
+  The machine waits for that approval first (for as long as `--timeout`), then shows the pairing link for the
+  new key holder as usual. What the approval recovers is the passphrase of the approving key holder's own
+  keyslot, and it goes from the exchange into the command and nowhere else. The new key holder gets a keyslot
+  of its own, which `revoke` removes like any other. The manual page says what else an approval makes possible.
+- **A second passphrase.** While you still have the first, add one for emergencies with
+  `cryptsetup luksAddKey /dev/sdXN`, and keep it somewhere that is not this machine. Do not put it in a file.
+- **Enrol at least two key holders**, for example a phone and a laptop, so that losing one is not the end.
+- **If the passphrase and every key holder are lost,** the data is gone. There is no way around that, by design.
+
 ## Several machines on the phone
 
 With one machine the Unlock screen is as always. With two or more it is a list, the machine you unlocked last
