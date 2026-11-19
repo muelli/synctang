@@ -45,6 +45,16 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
         requireUserAuthentication = !TestMode.noBiometric,
     )
 
+    // The same key as a key agreement key in the secure hardware, on a phone that can ([HardwareAgreement]): then the app
+    // never holds a scalar. Which of the two is the phone's key is decided once, when the key is made, and kept: a phone
+    // that has one keeps it until the person makes a new one, and a new key is the better of the two the phone can make.
+    private val agreementKey = AgreementKey()
+
+    /** Whether the phone's key is, or is about to be made as, a key agreement key in the secure hardware. */
+    private fun usesHardwareKey(): Boolean = agreementKey.exists() || (!key.exists() && HardwareAgreement.supported())
+
+    private fun publicPoint(): ByteArray = if (agreementKey.exists()) agreementKey.publicPoint() else key.publicPoint()
+
     // Null on a device that will not give one out, which costs local
     // discovery and nothing else; see MulticastLease.
     private val multicastLock = MulticastLease.lockFor(application)
@@ -54,11 +64,12 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
         io = Dispatchers.IO,
         store = store,
         identity = ::identity,
-        newSession = { machine -> GoSession(machine, store.identitySeed(), multicastLock, key::publicPoint) },
+        newSession = { machine -> GoSession(machine, store.identitySeed(), multicastLock, ::publicPoint) },
         newPairing = { GoPairing(store.identitySeed(), multicastLock) },
         prepareKey = key::prepareUnwrap,
         unwrapKey = key::unwrap,
-        checkKey = { key.prepareUnwrap() },
+        agreement = AgreementOps(active = agreementKey::exists, prepare = agreementKey::prepareAgreement, agree = agreementKey::agree),
+        checkKey = { if (agreementKey.exists()) agreementKey.prepareAgreement() else key.prepareUnwrap() },
         resetIdentity = ::resetIdentity,
         machinesChanged = ::publishShortcuts,
         allowSoftwareKey = store::allowSoftwareKey,
@@ -95,8 +106,9 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun identity(): Identity {
-        val created = !key.exists()
-        val backing = key.ensureKey()
+        val hardware = usesHardwareKey()
+        val created = !(if (hardware) agreementKey.exists() else key.exists())
+        val backing = if (hardware) agreementKey.ensureKey() else key.ensureKey()
         // The debug build with no biometric gate is for emulators, whose
         // Keystore is software; it has no secrets to protect.
         if (KeyHolderKey.refuses(backing, softwareAllowed = store.softwareKeyAllowed() || TestMode.noBiometric)) {
@@ -104,12 +116,12 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
             // do not leave it behind. One that already existed may be what
             // machines are enrolled on: it is left alone, and the person
             // decides.
-            if (created) key.delete()
+            if (created) (if (hardware) agreementKey.delete() else key.delete())
             throw SoftwareKeyRefused()
         }
         return Identity(
             deviceId = Mobile.deviceIDForSeed(store.identitySeed()),
-            publicKeyHex = key.publicPoint().toHex(),
+            publicKeyHex = publicPoint().toHex(),
             backing = backing,
         )
     }
@@ -122,6 +134,7 @@ class UnlockViewModel(application: Application) : AndroidViewModel(application) 
     private fun resetIdentity(): String {
         val old = Mobile.deviceIDForSeed(store.identitySeed())
         key.delete()
+        agreementKey.delete()
         store.startNewIdentity()
         publishShortcuts()
         return old
@@ -192,6 +205,19 @@ private class GoSession(
     override fun peerId(): String = session.peerID()
     override fun hasRequest() = session.hasRequest()
     override fun requestKidHex() = session.requestKid().toHex()
+
+    override fun requestPoint(): ByteArray = session.requestPoint()
+
+    override fun answerSharedX(agree: (ByteArray) -> ByteArray) {
+        // The key does the multiplication in the secure hardware and returns x(s.X) only: nothing to unwrap, and nothing but this
+        // to wipe. A failure of the agreement itself reaches the flow as itself, as the unwrapping's does.
+        val x = agree(requestPoint())
+        try {
+            classified(session::lastFailure, session::lastFailureDetail) { session.answerWithSharedX(x) }
+        } finally {
+            x.fill(0)
+        }
+    }
 
     override fun answer(unwrap: () -> ByteArray) {
         // Not classified as a whole: the unwrapping's own failures (a retired key, a

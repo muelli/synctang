@@ -3,6 +3,7 @@ package com.github.muelli.synctang
 
 import androidx.annotation.StringRes
 import javax.crypto.Cipher
+import javax.crypto.KeyAgreement
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -41,6 +42,26 @@ enum class AuthOutcome {
 fun interface BiometricGate {
     suspend fun authenticate(title: String, subtitle: String, cipher: Cipher): AuthOutcome
 }
+
+/**
+ * The same for a key agreement key in the secure hardware ([HardwareAgreement]): the fingerprint is bound to a KeyAgreement,
+ * which the androidx prompt cannot take, so a gate that can do it says so by implementing this as well. A gate that does not
+ * cannot be used for such a key, and the unlock stops before anything is sent.
+ */
+fun interface AgreementGate {
+    suspend fun authenticate(title: String, subtitle: String, agreement: KeyAgreement): AuthOutcome
+}
+
+/**
+ * What the flow needs of a hardware key agreement key ([AgreementKey]): whether the phone's key is one, a
+ * KeyAgreement ready for the fingerprint, and the finishing of it with the machine's challenge point, which gives
+ * the 32 bytes of x(s.X) the Go side sends. Null for a phone with the wrapped key only.
+ */
+class AgreementOps(
+    val active: () -> Boolean,
+    val prepare: () -> KeyAgreement,
+    val agree: (KeyAgreement, ByteArray) -> ByteArray,
+)
 
 /** What a Failed screen's button does. */
 enum class Retry {
@@ -239,6 +260,16 @@ interface MachineSession {
 
     /** What the machine said it will do with the answer, when that is not an ordinary unlock; empty for an unlock. */
     fun purpose(): String = ""
+
+    /** The machine's challenge point X, once there is a request: what a key that does the multiplication is given. */
+    fun requestPoint(): ByteArray = ByteArray(0)
+
+    /**
+     * Answers the request with x(s.X) that [agree] returns for the challenge point, from a key that never leaves
+     * the secure hardware, and waits for the machine's verdict. [agree] is called once, here, and what it
+     * returns is wiped by the caller.
+     */
+    fun answerSharedX(agree: (ByteArray) -> ByteArray): Unit = throw UnsupportedOperationException("this session has no hardware key")
     fun peerId(): String
     fun hasRequest(): Boolean
     fun requestKidHex(): String
@@ -358,6 +389,9 @@ class UnlockFlow(
     // the unwrapping that cipher then does.
     private val prepareKey: () -> Cipher,
     private val unwrapKey: (Cipher) -> ByteArray,
+    // The phone's key as a key agreement key in the secure hardware, when it is one: then it, and not the two above, is
+    // what a fingerprint is bound to and what answers.
+    private val agreement: AgreementOps? = null,
     private val resetIdentity: () -> String,
     // Told after the set of paired machines changed, so that what is published of it (the launcher's
     // shortcuts) follows. Not called from the identity reset, which the caller knows about already.
@@ -1109,8 +1143,9 @@ class UnlockFlow(
         // Before any prompt: a key that was retired, or is missing, is found
         // here, and nobody is asked to touch the sensor for an answer that
         // cannot be given.
-        val cipher = try {
-            withContext(io) { timed("prepare cipher") { runWithin(keyUseTimeoutSeconds) { prepareKey() } } }
+        val hardware = agreement?.takeIf { it.active() }
+        val prepared: Any = try {
+            withContext(io) { timed("prepare cipher") { runWithin(keyUseTimeoutSeconds) { if (hardware != null) hardware.prepare() else prepareKey() } } }
         } catch (e: KeyInvalidated) {
             disarmApproveExpiry()
             retireInvalidatedKey(machine, active, e)
@@ -1124,12 +1159,15 @@ class UnlockFlow(
         }
 
         appLog.d { "biometric prompt shown" }
+        val title = strings.get(R.string.biometric_title)
+        val subtitle = strings.get(R.string.biometric_subtitle, machine.name.ifBlank { machine.deviceId })
         val outcome = try {
-            gate.authenticate(
-                title = strings.get(R.string.biometric_title),
-                subtitle = strings.get(R.string.biometric_subtitle, machine.name.ifBlank { machine.deviceId }),
-                cipher = cipher,
-            )
+            when (prepared) {
+                // A key that does the multiplication in hardware is authenticated as a KeyAgreement. A gate that cannot do
+                // that cannot use this key: nothing is sent.
+                is KeyAgreement -> (gate as? AgreementGate)?.authenticate(title, subtitle, prepared) ?: AuthOutcome.UNAVAILABLE
+                else -> gate.authenticate(title = title, subtitle = subtitle, cipher = prepared as Cipher)
+            }
         } catch (e: kotlinx.coroutines.CancellationException) {
             appLog.d { "biometric prompt cancelled" + if (window.expired) " by the window" else "" }
             throw e
@@ -1170,7 +1208,13 @@ class UnlockFlow(
         window.answering = true
         disarmApproveExpiry()
         try {
-            withContext(io) { active.answer { timed("unwrap key") { runWithin(keyUseTimeoutSeconds, discard = { it.fill(0) }) { unwrapKey(cipher) } } } }
+            withContext(io) {
+                if (prepared is KeyAgreement && hardware != null) {
+                    active.answerSharedX { point -> timed("agree") { runWithin(keyUseTimeoutSeconds, discard = { it.fill(0) }) { hardware.agree(prepared, point) } } }
+                } else {
+                    active.answer { timed("unwrap key") { runWithin(keyUseTimeoutSeconds, discard = { it.fill(0) }) { unwrapKey(prepared as Cipher) } } }
+                }
+            }
             _state.value = UnlockUiState.Done(machine, active.purpose())
         } catch (e: KeyUseTimedOut) {
             // The key is not known to be broken, so it is kept; the

@@ -7,6 +7,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import javax.crypto.Cipher
+import javax.crypto.KeyAgreement
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -85,6 +86,20 @@ class UnlockFlowTest {
     /** Added to the flow's clock, to let time pass without waiting for it. */
     private val clockOffsetMillis = java.util.concurrent.atomic.AtomicLong()
 
+    // A hardware agreement key, when a test has one: set it, then make the flow again with newFlow().
+    private var agreementOps: AgreementOps? = null
+    private val agreementPrompts: MutableList<String> = Collections.synchronizedList(mutableListOf())
+    private val bothGates = object : BiometricGate, AgreementGate {
+        override suspend fun authenticate(title: String, subtitle: String, cipher: Cipher): AuthOutcome {
+            promptsSeen += "cipher:$subtitle"
+            return AuthOutcome.SUCCEEDED
+        }
+        override suspend fun authenticate(title: String, subtitle: String, agreement: KeyAgreement): AuthOutcome {
+            agreementPrompts += subtitle
+            return AuthOutcome.SUCCEEDED
+        }
+    }
+
     private var flow = newFlow()
 
     /** A flow whose readiness poll runs every [pollMillis] and whose checks are [minGapMillis] apart at least. */
@@ -100,6 +115,7 @@ class UnlockFlowTest {
         },
         newSession = { machine -> sessionMachines += machine; nextSession().also { sessions += it } },
         newPairing = { nextPairing().also { pairings += it } },
+        agreement = agreementOps,
         prepareKey = {
             prepareFails?.let { throw it }
             prepareBlocksOn?.await()
@@ -1002,6 +1018,104 @@ class UnlockFlowTest {
 
         onMain { flow.approve(countingGate) }
         assertEquals(machineA, await<UnlockUiState.Done>().machine)
+    }
+
+    // The phone's key in the secure hardware does the multiplication and hands back x(s.X) only: the fingerprint is bound to
+    // a KeyAgreement, not a cipher, and what is answered is that x, with no scalar for the app to hold.
+    @Test
+    fun aHardwareKeyIsAuthenticatedAsAnAgreementAndAnswersWithTheSharedX() {
+        store.saved = machineA
+        val agreed = Collections.synchronizedList(mutableListOf<ByteArray>())
+        agreementOps = AgreementOps(
+            active = { true },
+            prepare = { KeyAgreement.getInstance("ECDH") },
+            agree = { _, point -> agreed += point; ByteArray(32) { 7 } },
+        )
+        flow = newFlow()
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        val session = FakeSession(connectReturnsAtOnce = true)
+        nextSession = { session }
+        promptsSeen.clear()
+        onMain { flow.connect(bothGates) }
+        await<UnlockUiState.Done>()
+
+        assertEquals(listOf("res:${R.string.biometric_subtitle}(${machineA.name})"), agreementPrompts.toList())
+        assertTrue("the cipher prompt was used for a hardware key: $promptsSeen", promptsSeen.isEmpty())
+        assertEquals(1, agreed.size)
+        assertEquals("the machine's own challenge point reaches the key", 65, agreed[0].size)
+        assertEquals(1, session.sharedAnswers.size)
+        assertEquals(List(32) { 7.toByte() }, session.sharedAnswers[0].toList())
+        assertTrue("no scalar was unwrapped", unwrappedWith.isEmpty())
+    }
+
+    @Test
+    fun aHardwareKeyThatIsNotActiveLeavesTheWrappedKeyAlone() {
+        store.saved = machineA
+        agreementOps = AgreementOps(active = { false }, prepare = { error("not used") }, agree = { _, _ -> error("not used") })
+        flow = newFlow()
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        nextSession = { FakeSession(connectReturnsAtOnce = true) }
+        promptsSeen.clear()
+        onMain { flow.connect(bothGates) }
+        await<UnlockUiState.Done>()
+        assertTrue(agreementPrompts.isEmpty())
+        assertEquals(1, unwrappedWith.size)
+    }
+
+    // A gate that cannot authenticate an agreement (the androidx prompt cannot) is a gate that cannot use this key.
+    @Test
+    fun aGateThatCannotAuthenticateAnAgreementStopsAHardwareKeyBeforeAnythingIsSent() {
+        store.saved = machineA
+        agreementOps = AgreementOps(active = { true }, prepare = { KeyAgreement.getInstance("ECDH") }, agree = { _, _ -> error("not reached") })
+        flow = newFlow()
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        val session = FakeSession(connectReturnsAtOnce = true)
+        nextSession = { session }
+        onMain { flow.connect(countingGate) }
+        await<UnlockUiState.Failed>()
+        assertTrue(session.sharedAnswers.isEmpty())
+        assertTrue("the machine is told no, not left to time out", session.declines.isNotEmpty())
+    }
+
+    @Test
+    fun aHardwareKeyThatTheFingerprintWasRefusedForIsKeptAndTheMachineIsTold() {
+        store.saved = machineA
+        agreementOps = AgreementOps(
+            active = { true },
+            prepare = { KeyAgreement.getInstance("ECDH") },
+            agree = { _, _ -> throw KeyRefusedFingerprint(RuntimeException("key user not authenticated")) },
+        )
+        flow = newFlow()
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        val session = FakeSession(connectReturnsAtOnce = true)
+        nextSession = { session }
+        onMain { flow.connect(bothGates) }
+        await<UnlockUiState.Failed>()
+        assertTrue(session.declines.isNotEmpty())
+        assertTrue(session.sharedAnswers.isEmpty())
+    }
+
+    @Test
+    fun aHardwareKeyThatWasRetiredIsFoundBeforeAnyPrompt() {
+        store.saved = machineA
+        agreementOps = AgreementOps(
+            active = { true },
+            prepare = { throw KeyInvalidated(RuntimeException("Key permanently invalidated")) },
+            agree = { _, _ -> error("not reached") },
+        )
+        flow = newFlow()
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        nextSession = { FakeSession(connectReturnsAtOnce = true) }
+        onMain { flow.connect(bothGates) }
+        val failed = await<UnlockUiState.Failed>()
+        assertEquals("res:${R.string.failure_key_invalidated}(OLD-PHONE-ID)", failed.message)
+        assertEquals(1, identityResets)
+        assertTrue("a prompt was shown for a retired key", agreementPrompts.isEmpty())
     }
 
     // The machine says in its greeting what it will do with the answer. For anything but an unlock the person is
@@ -2332,6 +2446,16 @@ private class FakeSession(
     override fun progress(): Progress {
         progressCalls.incrementAndGet()
         return shown
+    }
+
+    /** What the machine was answered with when the key did the multiplication in hardware. */
+    val sharedAnswers: MutableList<ByteArray> = Collections.synchronizedList(mutableListOf())
+    override fun requestPoint() = ByteArray(65) { if (it == 0) 4 else (it % 7).toByte() }
+    override fun answerSharedX(agree: (ByteArray) -> ByteArray) {
+        val x = agree(requestPoint())
+        answerFailsWith?.let { throw it }
+        sharedAnswers += x
+        answered = true
     }
 
     override fun machineName() = "machine"
