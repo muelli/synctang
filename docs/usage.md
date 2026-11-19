@@ -135,7 +135,9 @@ machine is asked whether to enrol: say yes only if the code on the laptop is the
 code only proves that whoever answered had it, and a link that was photographed, read over a shoulder
 or pasted somewhere is had by more than one party. If the codes differ, answer `n` on the machine and
 pair again for a new link. A pairing link works until one key holder is enrolled or
-the five minutes are over, and a wrong code does not use it up. While the machine asks its question,
+the five minutes are over, and a wrong code does not use it up. If three connections take a code to look
+at and leave without answering, the machine ends the window and says that the link has leaked: somebody who
+has it may be trying codes, so pair again for a new one. While the machine asks its question,
 another key holder cannot pair, and the question stays open after the five minutes if it is open then.
 (The phone app shows the same code while it waits, and says what to do if it differs.)
 

@@ -104,15 +104,28 @@ and nothing more, so whoever uses it first, while it lasts (until one key holder
 are over; a wrong code does not use it up), is offered to the operator as a key holder, and if the operator says
 yes they hold a keyslot that opens the disk. The link leaks by being photographed, read over a shoulder, or
 pasted into a chat or a shell history. The defence is the operator's check: the machine and the real key
-holder both show a six-digit code derived from both Device IDs, the key being enrolled and a nonce the machine
-chose for that connection (`mrcore.PairSAS`), and the operator enrols only if the two match.
+holder both show a six-digit code derived from both Device IDs, the key being enrolled and a nonce from each
+side (`mrcore.PairSAS`), and the operator enrols only if the two match.
 
-That holds because of the order of the messages. The key holder names its key first, and the machine
-chooses the nonce only after that, so an attacker cannot try keys until one gives a code that matches what the
-real key holder will show: they get one try in a million for each connection. (An earlier order, with the nonce
-sent first, allowed exactly that grinding; a review showed it, and the order was changed. `[V]` a test that the
-code of one connection differs from another's and equals what the key holder works out.) Both clients refuse
-a nonce shorter than 16 bytes, which would also let a code be fitted.
+That holds because each side commits before it sees the other. The key holder's request carries the key to be
+enrolled, a commitment to a nonce of its own, and a tag made with the pairing code; the machine sends its own
+nonce only if the tag is good; and the key holder reveals its nonce afterwards. The code is made from both
+nonces. Whoever plays the machine has to choose its nonce without knowing the key holder's, and whoever plays
+the key holder has to choose its own before it has seen the machine's, so neither can fit the code: one try in
+a million for each connection. Earlier versions did not hold. With the machine's nonce sent first, a key
+holder could grind its key to any code it liked. With only the key holder committed, whoever played the machine
+to a key holder could fit its nonce, so a link passed on with another machine's identity in it made both codes
+agree and the real machine enrol the attacker's key. A review found both, and ran the second on 2026-11-19
+(about a million tries, half a second). `[V]` A test runs that attack against the machine and the phone library,
+and the codes now differ; `[V]` another in memory against the primitives. A QR code scanned off the machine's own
+screen was never open to it, since the key holder then dials the real machine.
+
+Each completed connection is one chance in a million for somebody who has the pairing code: they can take the
+nonce, look at the code, and leave, as often as they like. The machine counts the connections that were given a
+nonce and ended without a valid answer, and ends the window after three, saying that the link has leaked
+`[V]`. A peer that does not have the code gets no nonce, so no code to look at, and does not count. The
+operator saying no is not a guess and does not count either. So over one window the chance of a match for
+somebody with the link is a few in a million, and the code is checked by the operator at that.
 
 What the operator sees when somebody else answered first is not a refusal: the machine asks about a key holder
 while the laptop or phone shows no code yet, or a code that is different. The laptop keeps dialling until its
@@ -130,10 +143,13 @@ code on its pairing screen while the operator decides (`[V]` on an emulator: the
 digit by digit, and it adds nothing to focus; `[V]` in a test that the code the library offers is what the
 machine works out; `[U]` not tried against a real machine from the app itself, since the pairing flow there is
 a scan on a phone). The machine's side of the link, its transport id, is checked by the key holder against the
-certificate it connects to, so a link cannot be used to make a laptop pair with a different machine. A link is
-also somebody's word about names: `synctang-keyholder pair` does not let the name in it take over a name the
+certificate it connects to. That stops a different machine from answering the link it was given; it does not
+stop a link that names a different machine, which the key holder pairs with as asked. That is what the
+comparison of the codes catches (above). A link is also somebody's word about names: `synctang-keyholder pair` does not let the name in it take over a name the
 person already uses for another machine unless they pass `--force`, refuses a link with a setting it does not
-know or one given twice, and shows the name in it with control characters made harmless.
+know or one given twice, and shows the name in it with control characters made harmless; the phone cleans and
+cuts the name in a link the same way and, when another paired machine has the same name, keeps the new one
+apart by adding the first group of its Device ID.
 
 **The phone's key is wrapped, not held, and what that means.** The MR-1 key
 agreement could be a Keystore key (`PURPOSE_AGREE_KEY`), non-exportable and
