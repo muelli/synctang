@@ -121,6 +121,14 @@
     <string name="busy_cancel">Cancel</string>
     <string name="unlock_waiting_hint">The machine has to be waiting at its unlock prompt before this will connect.</string>
     <string name="unlock_request_title">A machine is asking to be unlocked</string>
+    <string name="approve_gives">Approving gives this machine the passphrase of this key\'s keyslot. With it the machine can open the volume and add or remove keys.</string>
+    <string name="approve_other_title">A machine asks for an approval</string>
+    <string name="approve_other_explanation">This is not an unlock. The machine says it will %1$s. Approve only if you started that on the machine yourself just now.</string>
+    <string name="purpose_enrol">enrol a key holder</string>
+    <string name="purpose_pair">pair a key holder</string>
+    <string name="purpose_extract">print the passphrase of this key\'s keyslot</string>
+    <string name="purpose_other">do something it calls \u201c%1$s\u201d</string>
+    <string name="done_other">%1$s was approved. It says it used the answer to %2$s.</string>
     <string name="approve_explanation">Approving answers it with this phone\'s key, after a fingerprint or face check. Approve only if you are unlocking this machine now.</string>
     <string name="unlock_request_identity">Device ID</string>
     <string name="identity_matches">This is the machine this phone was paired with.</string>

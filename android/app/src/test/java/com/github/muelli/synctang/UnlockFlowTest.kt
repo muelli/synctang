@@ -1004,6 +1004,54 @@ class UnlockFlowTest {
         assertEquals(machineA, await<UnlockUiState.Done>().machine)
     }
 
+    // The machine says in its greeting what it will do with the answer. For anything but an unlock the person is
+    // warned on the Approve screen, and the fingerprint is not asked for by the one-tap path: that path takes the
+    // person's choice of the machine as consent to an unlock, which this is not.
+    @Test
+    fun aMachineThatWillDoSomethingElseStopsTheOneTapPathAtTheApproveScreenWithItsPurpose() {
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        nextSession = { FakeSession(connectReturnsAtOnce = true, purpose = "enrol") }
+        promptsSeen.clear()
+        onMain { flow.connect(countingGate) }
+
+        val approve = await<UnlockUiState.Approve>()
+        assertEquals("enrol", approve.purpose)
+        Thread.sleep(300)
+        assertTrue("the fingerprint was asked for without a tap on Approve", promptsSeen.isEmpty())
+        assertTrue(flow.state.value is UnlockUiState.Approve)
+
+        // A tap on Approve is the person's consent, with the warning in front of them.
+        onMain { flow.approve(countingGate) }
+        val done = await<UnlockUiState.Done>()
+        assertEquals("enrol", done.purpose)
+    }
+
+    @Test
+    fun anOrdinaryUnlockHasNoPurposeAndStaysOneTap() {
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        nextSession = { FakeSession(connectReturnsAtOnce = true) }
+        onMain { flow.connect(countingGate) }
+        val done = await<UnlockUiState.Done>()
+        assertEquals("", done.purpose)
+    }
+
+    @Test
+    fun anUnlockAskedForFromOutsideAlsoStopsAtTheApproveScreenForAMachineWithAPurpose() {
+        store.saved = machineA
+        onMain { flow.refresh() }
+        await<UnlockUiState.Ready>()
+        nextSession = { FakeSession(connectReturnsAtOnce = true, purpose = "extract") }
+        promptsSeen.clear()
+        onMain { flow.unlockRequested(machineA.deviceId, countingGate) }
+        assertEquals("extract", await<UnlockUiState.Approve>().purpose)
+        Thread.sleep(300)
+        assertTrue(promptsSeen.isEmpty())
+    }
+
     @Test
     fun theMachineThatWasUnlockedBecomesTheFirstOfTheList() {
         store.machines = listOf(machineB, machineA)
@@ -2244,7 +2292,9 @@ private class FakeSession(
     private val connectedForMillis: Long = 0,
     private val connectTakesMillis: Long = 0,
     private val hasRequest: Boolean = true,
+    private val purpose: String = "",
 ) : MachineSession {
+    override fun purpose(): String = purpose
     override fun connectedForMillis(): Long = connectedForMillis
     val started = CountDownLatch(1)
     private val release = CountDownLatch(1)

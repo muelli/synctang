@@ -105,12 +105,17 @@ sealed interface UnlockUiState {
         val peerId: String,
         val kidHex: String,
         val expiresAtMillis: Long = 0,
+        /**
+         * What the machine said it will do with the answer when that is not an ordinary unlock, or empty
+         * ([purposeLabel]). It is the machine's own word; it makes the screen a warning and stops the one-tap path.
+         */
+        val purpose: String = "",
     ) : UnlockUiState
 
     /** Authenticating, computing the answer, or sending it. */
     data class Working(val machine: Machine, val progress: Progress = Progress()) : UnlockUiState
 
-    data class Done(val machine: Machine) : UnlockUiState
+    data class Done(val machine: Machine, val purpose: String = "") : UnlockUiState
 
     /**
      * Android made this phone's key in software, not in secure hardware,
@@ -231,6 +236,9 @@ interface MachineSession {
     fun close()
     fun decline(reason: String)
     fun machineName(): String
+
+    /** What the machine said it will do with the answer, when that is not an ordinary unlock; empty for an unlock. */
+    fun purpose(): String = ""
     fun peerId(): String
     fun hasRequest(): Boolean
     fun requestKidHex(): String
@@ -1036,8 +1044,11 @@ class UnlockFlow(
                     _state.value = describe(machine).let { if (it is UnlockUiState.Approve) it.copy(expiresAtMillis = expiresAt) else it }
                     (_state.value as? UnlockUiState.Approve)?.let { armApproveExpiry(machine, expiresAt) }
                     // Asked to unlock in one tap and the machine did ask: the person has
-                    // already chosen this machine, and the fingerprint is the consent.
-                    if (gate != null && _state.value is UnlockUiState.Approve) approve(gate)
+                    // already chosen this machine, and the fingerprint is the consent. Not when the machine says it
+                    // will do something other than unlock: choosing a machine to unlock is not consent to that, so
+                    // the person reads the warning on the Approve screen and taps.
+                    val asked = _state.value as? UnlockUiState.Approve
+                    if (gate != null && asked != null && asked.purpose.isEmpty()) approve(gate)
                 }
             } catch (e: Exception) {
                 withContext(io) { fresh?.closeQuietly() }
@@ -1160,7 +1171,7 @@ class UnlockFlow(
         disarmApproveExpiry()
         try {
             withContext(io) { active.answer { timed("unwrap key") { runWithin(keyUseTimeoutSeconds, discard = { it.fill(0) }) { unwrapKey(cipher) } } } }
-            _state.value = UnlockUiState.Done(machine)
+            _state.value = UnlockUiState.Done(machine, active.purpose())
         } catch (e: KeyUseTimedOut) {
             // The key is not known to be broken, so it is kept; the
             // machine is told, rather than left to its own timeout.
@@ -1279,7 +1290,7 @@ class UnlockFlow(
         val active = session ?: return UnlockUiState.Failed(machine, strings.get(R.string.error_connection_lost))
         val named = machine.copy(name = active.machineName().ifBlank { machine.name })
         return when {
-            active.hasRequest() -> UnlockUiState.Approve(named, active.peerId(), active.requestKidHex())
+            active.hasRequest() -> UnlockUiState.Approve(named, active.peerId(), active.requestKidHex(), purpose = active.purpose())
             else -> UnlockUiState.Failed(named, strings.get(R.string.error_nothing_to_approve))
         }
     }

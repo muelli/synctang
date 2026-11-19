@@ -23,6 +23,7 @@ import com.github.muelli.synctang.R
 import com.github.muelli.synctang.UnlockUiState
 import com.github.muelli.synctang.approveTimeLeft
 import com.github.muelli.synctang.focusRing
+import com.github.muelli.synctang.purposeLabel
 import com.github.muelli.synctang.rememberAutoFocusRequester
 import kotlinx.coroutines.delay
 
@@ -33,7 +34,14 @@ internal fun ApproveScreen(
     onDecline: () -> Unit,
     clock: () -> Long = System::currentTimeMillis,
 ) {
-    ScreenHeader(stringResource(R.string.unlock_request_title), stringResource(R.string.approve_explanation))
+    // A machine that says it will do something other than unlock is a warning, and says what: the answer is
+    // good for more than an unlock, and an unlock is not what is being asked for.
+    if (state.purpose.isEmpty()) {
+        ScreenHeader(stringResource(R.string.unlock_request_title), stringResource(R.string.approve_explanation))
+    } else {
+        val words = purposeLabel(state.purpose).let { stringResource(it.res, *it.args.toTypedArray()) }
+        ScreenHeader(stringResource(R.string.approve_other_title), stringResource(R.string.approve_other_explanation, words))
+    }
     MachineIdentity(state.machine, state.peerId)
     Identifier(
         stringResource(R.string.unlock_request_key),
@@ -41,6 +49,8 @@ internal fun ApproveScreen(
         shortKeyId(state.kidHex),
         AppAction.TOGGLE_KEY_ID,
     )
+    // True of every approval, and said before every one.
+    Text(stringResource(R.string.approve_gives), style = MaterialTheme.typography.bodyMedium)
     if (state.expiresAtMillis > 0) TimeLeftText(state.expiresAtMillis, clock)
 
     // Focus starts on Approve even though it is the consequential

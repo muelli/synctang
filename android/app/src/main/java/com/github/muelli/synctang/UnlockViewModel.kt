@@ -188,6 +188,7 @@ private class GoSession(
     override fun close() = session.close()
     override fun decline(reason: String) = session.decline(reason)
     override fun machineName(): String = session.machineName()
+    override fun purpose(): String = session.purpose()
     override fun peerId(): String = session.peerID()
     override fun hasRequest() = session.hasRequest()
     override fun requestKidHex() = session.requestKid().toHex()

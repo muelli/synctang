@@ -19,6 +19,7 @@ import androidx.compose.ui.res.stringResource
 import com.github.muelli.synctang.R
 import com.github.muelli.synctang.UnlockUiState
 import com.github.muelli.synctang.focusRing
+import com.github.muelli.synctang.purposeLabel
 import com.github.muelli.synctang.rememberBuzzer
 import com.github.muelli.synctang.rememberAutoFocusRequester
 
@@ -35,7 +36,13 @@ internal fun DoneScreen(state: UnlockUiState.Done, onDone: () -> Unit) {
         Icons.Filled.CheckCircle,
         MaterialTheme.colorScheme.primary,
         stringResource(R.string.done_title),
-        stringResource(R.string.unlock_done, state.machine.label()),
+        if (state.purpose.isEmpty()) {
+            stringResource(R.string.unlock_done, state.machine.label())
+        } else {
+            // Not "can now unlock its disk": the machine said it would do something else with the answer.
+            val words = purposeLabel(state.purpose).let { stringResource(it.res, *it.args.toTypedArray()) }
+            stringResource(R.string.done_other, state.machine.label(), words)
+        },
     )
     Button(
         onClick = onDone,
