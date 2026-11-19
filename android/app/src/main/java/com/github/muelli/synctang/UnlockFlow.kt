@@ -746,9 +746,21 @@ class UnlockFlow(
 
     /** Saves [machine] (adds it, or updates the one with its Device ID) and shows the home screen. */
     private suspend fun adopt(machine: Machine) {
-        store.saveMachine(machine)
+        store.saveMachine(withNameThatIsNotAnotherMachinesName(machine))
         machinesChanged()
         _state.value = home()
+    }
+
+    /**
+     * A name is the machine's own word and not authenticated: two machines can call themselves the same, or one can
+     * pose as another. With two rows of one name, only a short id tells them apart, so a machine whose name another
+     * paired machine already has is saved with the first group of its own Device ID after it. Pairing the same
+     * machine again keeps its name as it is.
+     */
+    private suspend fun withNameThatIsNotAnotherMachinesName(machine: Machine): Machine {
+        if (machine.name.isEmpty()) return machine
+        val taken = store.machines().any { it.deviceId != machine.deviceId && it.name == machine.name }
+        return if (taken) machine.copy(name = "${machine.name} (${machine.deviceId.substringBefore('-')})") else machine
     }
 
     private suspend fun home(forcePairing: Boolean = false, forgotten: Machine? = null): UnlockUiState =

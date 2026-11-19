@@ -149,6 +149,39 @@ class PairingStore(context: Context) : MachineStore {
     }
 }
 
+/** The longest a machine name from a link is kept, in characters; one cut shorter than it was ends in "...". */
+private const val MAX_LINK_NAME = 64
+
+/**
+ * The name a link gives for its machine, made fit to show: control characters (a newline that draws a second
+ * line), format characters (a bidirectional override that reorders what follows it, a zero-width space), line
+ * and paragraph separators and lone surrogates each become "?", and it is cut to [MAX_LINK_NAME] characters.
+ * The name is the link's word and proves nothing about the machine, and a link is passed through chat and
+ * clipboards, so it is cleaned where it comes in, the way the laptop program does it (`SafeLabel` in mrcore).
+ */
+internal fun cleanMachineName(raw: String): String {
+    val out = StringBuilder()
+    var kept = 0
+    var i = 0
+    while (i < raw.length) {
+        if (kept == MAX_LINK_NAME) {
+            out.append("...")
+            break
+        }
+        val cp = raw.codePointAt(i)
+        i += Character.charCount(cp)
+        val type = Character.getType(cp)
+        val hidden = Character.isISOControl(cp) ||
+            type == Character.FORMAT.toInt() ||
+            type == Character.LINE_SEPARATOR.toInt() ||
+            type == Character.PARAGRAPH_SEPARATOR.toInt() ||
+            type == Character.SURROGATE.toInt()
+        if (hidden) out.append('?') else out.appendCodePoint(cp)
+        kept++
+    }
+    return out.toString()
+}
+
 /**
  * The pairing payload the machine shows as a QR code.
  *
@@ -172,7 +205,7 @@ object PairingPayload {
         if (text.startsWith(SCHEME, ignoreCase = true)) {
             val fields = fields(text)
             val id = normaliseDeviceId(fields["machine"].orEmpty()) ?: return null
-            return Machine(id, fields["name"].orEmpty(), fields["discovery"].orEmpty())
+            return Machine(id, cleanMachineName(fields["name"].orEmpty()), fields["discovery"].orEmpty())
         }
 
         val id = normaliseDeviceId(text) ?: return null

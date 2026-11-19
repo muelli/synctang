@@ -154,6 +154,34 @@ class PairingPayloadTest {
         // The base32 alphabet has no 0, 1, 8 or 9.
         assertNull(PairingPayload.parse(id.replace("-", "").replaceFirst("A", "0")))
     }
+
+    // The name in a link is the link's word, shown to a person on the pairing and unlock screens and on the
+    // launcher: nothing in it may act on a display or make the list say something it does not, and it is not
+    // allowed to be as long as the screen.
+    @Test
+    fun aNameInALinkHasItsControlFormatAndSeparatorCharactersMadeVisible() {
+        fun nameOf(encoded: String) = PairingPayload.parse("synctang://pair?machine=$id&name=$encoded")?.name
+        assertEquals("a?b", nameOf("a%0Ab"))
+        assertEquals("a?b", nameOf("a%09b"))
+        assertEquals("a?b", nameOf("a%E2%80%A8b")) // U+2028 line separator
+        assertEquals("a?b", nameOf("a%E2%80%A9b")) // U+2029 paragraph separator
+        assertEquals("evil?gnp.exe", nameOf("evil%E2%80%AEgnp.exe")) // a bidirectional override
+        assertEquals("a?b", nameOf("a%E2%80%8Bb")) // a zero-width space
+        assertEquals("study desktop", nameOf("study%20desktop"))
+    }
+
+    @Test
+    fun aVeryLongNameInALinkIsCutAtSixtyFourCharacters() {
+        val name = PairingPayload.parse("synctang://pair?machine=$id&name=" + "x".repeat(500))?.name
+        assertEquals("x".repeat(64) + "...", name)
+    }
+
+    @Test
+    fun theCutCountsCharactersNotUtf16Units() {
+        val grin = "%F0%9F%98%80" // one character, two UTF-16 units
+        val name = PairingPayload.parse("synctang://pair?machine=$id&name=" + grin.repeat(70))?.name
+        assertEquals("\uD83D\uDE00".repeat(64) + "...", name)
+    }
 }
 
 /**

@@ -36,7 +36,7 @@
     <string name="pair_keep_current">Back to my machines</string>
     <string name="pair_working">Pairing with the machine…</string>
     <string name="pair_code_intro">The machine shows its operator a code. It must be this one:</string>
-    <string name="pair_code_warning">If it is different, tap Cancel: somebody else used the pairing code first.</string>
+    <string name="pair_code_warning">If it is different, answer n on the machine, then tap Cancel: somebody else used the pairing code first.</string>
     <string name="forgot_machine">Forgot %1$s.</string>
     <string name="forget_action">Forget this machine</string>
     <string name="forget_title">Forget %1$s?</string>
