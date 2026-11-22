@@ -263,9 +263,12 @@ Android does not back up.
   enrolled and touched): an agreement that was not authenticated is refused, the real
   gate authenticates the `CryptoObject`, and the secret after it equals a software ECDH
   of the same two keys. The Keystore on the emulator is software, so this shows that the
-  sequence works and nothing about where a key lives. `[U]` on a real phone: whether
-  its secure hardware (TEE, StrongBox, a Titan M) accepts and uses such a key, and the
-  fingerprint sensor.
+  sequence works and nothing about where a key lives. `[V]` on a real phone, by the owner:
+  a Pixel 10 Pro with Android 17 made the key, took a fingerprint for an unlock and
+  answered the machine. It needs a fingerprint: face unlock, which the wrapped key
+  accepts on that phone, is not accepted for this key. `[U]` whether that key is in
+  StrongBox or the TEE (the app says which, and nobody has read it out here), and any
+  other phone: a different secure hardware, or a Titan M, may behave differently.
 - **On the Pixel 3a XL:** the StrongBox chip creates a key and reports it at the
   StrongBox level, and then every use of it fails (`BACKEND_BUSY` from the key blob
   upgrade, for as long as anyone waits) `[V]`. So the app uses each candidate key
