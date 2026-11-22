@@ -1,0 +1,4 @@
+- A short buzz when a machine becomes ready and when an unlock is done.
+- On Android 16 QPR2 or later, a new key is made in the secure hardware and the app never holds it. It needs your fingerprint, not your face. Pair again after making one.
+- The Approve screen warns when a machine asks for more than an unlock, and says what an approval gives it.
+- Pairing: a swapped link can no longer make the codes match, and machine names from a link are cleaned and told apart by their id.
