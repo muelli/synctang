@@ -422,3 +422,79 @@ func TestReflowUsesAWideTerminalForOneLineEach(t *testing.T) {
 		t.Errorf("a description that fits was still broken:\n%s", got)
 	}
 }
+
+// Words only the machine the shell runs on knows are asked for when the person completes, by running the program.
+func TestBashAsksTheProgramForWordsThatAreTheMachinesOwn(t *testing.T) {
+	bash := lookPath(t, "bash")
+	p := Program{Name: "tool", Commands: []Command{
+		{Name: "unlock", PositionalFrom: []string{"things", "names"}},
+		{Name: "things", Positional: []string{"list", "add", "remove"}, Then: []Then{{Word: "remove", From: []string{"things", "names"}}}},
+	}}
+	script, err := Generate("bash", p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	file := filepath.Join(dir, "completion.bash")
+	if err := os.WriteFile(file, []byte(script), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// The program: prints two names for "things names", and is not asked anything else.
+	fake := "#!/bin/sh\n[ \"$*\" = \"things names\" ] && printf 'beatbox\\nluks-fedora\\n'\n"
+	if err := os.WriteFile(filepath.Join(dir, "tool"), []byte(fake), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	complete := func(words ...string) string {
+		quoted := make([]string, len(words))
+		for i, w := range words {
+			quoted[i] = "'" + w + "'"
+		}
+		harness := `source "$1"; COMPREPLY=(stale); COMP_WORDS=(` + strings.Join(quoted, " ") + `); COMP_CWORD=` +
+			string(rune('0'+len(words)-1)) + `; _tool; echo "${COMPREPLY[*]}"`
+		cmd := exec.Command(bash, "-c", harness, "bash", file)
+		cmd.Env = append(os.Environ(), "PATH="+dir+":"+os.Getenv("PATH"))
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("bash: %v\n%s", err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	for _, c := range []struct {
+		words []string
+		want  string
+	}{
+		{[]string{"tool", "unlock", ""}, "beatbox luks-fedora"},
+		{[]string{"tool", "unlock", "be"}, "beatbox"},
+		{[]string{"tool", "things", ""}, "list add remove"},
+		{[]string{"tool", "things", "remove", ""}, "beatbox luks-fedora"},
+		{[]string{"tool", "things", "remove", "l"}, "luks-fedora"},
+		{[]string{"tool", "things", "add", ""}, ""},
+	} {
+		if got := complete(c.words...); got != c.want {
+			t.Errorf("%q: %q, want %q", c.words, got, c.want)
+		}
+	}
+}
+
+func TestZshAndFishWithAskedForWordsAreValid(t *testing.T) {
+	p := Program{Name: "tool", Commands: []Command{
+		{Name: "unlock", PositionalFrom: []string{"things", "names"}},
+		{Name: "things", Positional: []string{"list", "remove"}, Then: []Then{{Word: "remove", From: []string{"things", "names"}}}},
+	}}
+	for _, shell := range []string{"zsh", "fish"} {
+		script, err := Generate(shell, p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		file := filepath.Join(t.TempDir(), "script")
+		if err := os.WriteFile(file, []byte(script), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if out, err := exec.Command(lookPath(t, shell), "-n", file).CombinedOutput(); err != nil {
+			t.Errorf("%s -n: %v\n%s\n%s", shell, err, out, script)
+		}
+		if n := strings.Count(script, "tool things names"); n != 2 {
+			t.Errorf("%s: asks in %d places, want 2:\n%s", shell, n, script)
+		}
+	}
+}

@@ -92,10 +92,24 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			var out bytes.Buffer
 			run([]string{command, "-h"}, strings.NewReader(""), &out, &out)
 			return out.String()
-		}, nil, args[1:], stdout, stderr)
+		}, markPositionals, args[1:], stdout, stderr)
 	default:
 		ui.Errorf(stderr, T("unknown command %q%s\n%s"), args[0], completion.DidYouMean(args[0], usage), completion.Reflow(usage, wrap.Width(stderr)))
 		return 2
+	}
+}
+
+// markPositionals says what only this program knows about its commands' arguments: that a machine's name is
+// asked for at the moment of completing, since the names are the person's own.
+func markPositionals(p *completion.Program) {
+	for i := range p.Commands {
+		switch p.Commands[i].Name {
+		case "unlock":
+			p.Commands[i].PositionalFrom = []string{"machines", "names"}
+		case "machines":
+			p.Commands[i].Positional = []string{"list", "add", "remove", "names"}
+			p.Commands[i].Then = []completion.Then{{Word: "remove", From: []string{"machines", "names"}}}
+		}
 	}
 }
 

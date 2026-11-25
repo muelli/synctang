@@ -265,6 +265,16 @@ func runMachines(args []string, stdout, stderr io.Writer) int {
 		header := []string{"NAME", "TRANSPORT ID", "DISCOVERY"}
 		fmt.Fprint(stdout, ui.Table(header, rows, look))
 		return 0
+	case "names":
+		// For scripts and for shell completion: the names and nothing else, so that none is a sentence.
+		ms, err := loadMachines(*file)
+		if err != nil {
+			return 1 // a completion that asks must not be answered with an error message in the middle of the command line
+		}
+		for _, m := range ms {
+			fmt.Fprintln(stdout, m.Name)
+		}
+		return 0
 	case "add":
 		if fs.NArg() != 2 {
 			ui.Errorln(stderr, T("machines add wants a name and a transport id"))
@@ -309,6 +319,6 @@ func runMachines(args []string, stdout, stderr io.Writer) int {
 		ui.Errorf(stderr, T("no machine named %q\n"), fs.Arg(0))
 		return 1
 	}
-	ui.Errorf(stderr, T("unknown machines command %q: want list, add or remove\n"), sub)
+	ui.Errorf(stderr, T("unknown machines command %q: want list, add, remove or names\n"), sub)
 	return 2
 }

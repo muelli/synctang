@@ -5,6 +5,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -176,5 +177,49 @@ func TestAMisspeltCommandSuggestsTheOneMeant(t *testing.T) {
 	code, _, errOut := runKH("unlok")
 	if code != 2 || !strings.Contains(errOut, "did you mean \"unlock\"?") {
 		t.Errorf("exit %d: %s", code, errOut)
+	}
+}
+
+// "machines names" is what shell completion asks, so it prints the names and nothing else: no sentence for an
+// empty book (which would be offered as words), and no message for a book that does not read, which would land in
+// the middle of somebody's command line.
+func TestMachinesNamesPrintsOnlyTheNames(t *testing.T) {
+	book := booksPath(t)
+	if code, out, e := runKH("machines", "names", "--machines-file", book); code != 0 || out != "" || e != "" {
+		t.Fatalf("empty book: exit %d: %q %q", code, out, e)
+	}
+	for name, id := range map[string]string{"luks-ubuntu": machineIDA, "fedora": machineIDB} {
+		if code, out, e := runKH("machines", "add", "--machines-file", book, name, id); code != 0 {
+			t.Fatalf("add: exit %d: %s%s", code, out, e)
+		}
+	}
+	code, out, e := runKH("machines", "names", "--machines-file", book)
+	if code != 0 || e != "" {
+		t.Fatalf("exit %d: %s", code, e)
+	}
+	got := strings.Fields(out)
+	sort.Strings(got)
+	if strings.Join(got, " ") != "fedora luks-ubuntu" || strings.Count(out, "\n") != 2 {
+		t.Errorf("one name to a line:\n%s", out)
+	}
+	if err := os.WriteFile(book, []byte("this is not a machine line\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, out, e := runKH("machines", "names", "--machines-file", book); code != 1 || out != "" || e != "" {
+		t.Errorf("a book that does not read: exit %d: %q %q", code, out, e)
+	}
+}
+
+// The names are the person's own, so a completion script cannot have them written into it: it asks for them each
+// time, for "unlock" and for the name after "machines remove".
+func TestTheCompletionScriptsAskForTheMachineNames(t *testing.T) {
+	for _, shell := range []string{"bash", "zsh", "fish"} {
+		code, out, e := runKH("completion", shell)
+		if code != 0 {
+			t.Fatalf("%s: exit %d: %s", shell, code, e)
+		}
+		if n := strings.Count(out, "synctang-keyholder machines names"); n != 2 {
+			t.Errorf("%s: asks for the names in %d places, want 2 (unlock and machines remove):\n%s", shell, n, out)
+		}
 	}
 }

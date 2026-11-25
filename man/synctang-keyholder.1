@@ -29,6 +29,8 @@ synctang\-keyholder \- the laptop key holder for synctang
 .B synctang\-keyholder machines remove
 .I name
 .br
+.B synctang\-keyholder machines names
+.br
 .B synctang\-keyholder status
 .RI [ flags ]
 .br
@@ -432,6 +434,8 @@ on the machine; an existing name is not changed to mean another machine without
 .BR \-\-force .
 .B remove
 forgets a name only: the machine still lets this key holder unlock it.
+.B names
+prints the names and nothing else, one to a line, for scripts; it prints nothing, and no message, if there are none or the file does not read.
 A name is letters, digits, dots, dashes and underscores, and cannot be one that
 could be taken for a transport identity.
 .PP
@@ -462,6 +466,15 @@ let an existing name mean this machine instead.
 Writes to standard output the completion script for the shell named: bash, zsh or fish.
 The program makes the script from its own usage text and the flag help of each command, so it
 names exactly the commands and flags of this version and cannot fall out of step with them.
+The names of the machines are the one thing it cannot know: the script asks for them when you complete, by running
+.BR "synctang\-keyholder machines names" ,
+for
+.B unlock
+and for
+.BR "machines remove" .
+It asks with the default file, so a name in a file given with
+.B \-\-machines\-file
+on the same line is not offered.
 The Debian package installs the three scripts under
 .BR /usr/share/bash\-completion/completions ,
 .B /usr/share/zsh/vendor\-completions

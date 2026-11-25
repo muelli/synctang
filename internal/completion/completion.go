@@ -45,13 +45,36 @@ func (f Flag) TakesFile() bool {
 }
 
 // Command is one subcommand. Positional lists the words its argument may be, and
-// PositionalFiles says the argument is a path.
+// PositionalFiles says the argument is a path. PositionalFrom is a command of the program itself
+// (its arguments, without its name) that prints the words the argument may be, one to a line:
+// asked each time a person completes, for words only the machine the shell runs on knows, such as
+// the names of the machines a key holder has. Then does the same for the argument after one of
+// the words in Positional, as "remove" is followed by a machine's name.
 type Command struct {
 	Name            string
 	Summary         string
 	Flags           []Flag
 	Positional      []string
 	PositionalFiles bool
+	PositionalFrom  []string
+	Then            []Then
+}
+
+// Then says that after the positional word Word, the next argument is one of what From prints, as
+// for Command.PositionalFrom.
+type Then struct {
+	Word string
+	From []string
+}
+
+// fromLine is the command line that asks the program for words: its name and the arguments.
+func fromLine(p Program, from []string) string {
+	return strings.Join(append([]string{p.Name}, from...), " ")
+}
+
+// hasArguments reports whether the command has anything to complete besides its name.
+func (c Command) hasArguments() bool {
+	return len(c.Flags) > 0 || len(c.Positional) > 0 || c.PositionalFiles || len(c.PositionalFrom) > 0 || len(c.Then) > 0
 }
 
 // Program is what a completion script is made from.
@@ -191,7 +214,7 @@ func bash(p Program) string {
 	fmt.Fprintf(&b, "\t\tmapfile -t COMPREPLY < <(compgen -W %q -- \"$cur\")\n", strings.Join(commandNames(p), " "))
 	b.WriteString(`		return
 	fi
-	local flags="" words="" files=""
+	local flags="" words="" files="" from=""
 	case "${COMP_WORDS[1]}" in
 `)
 	for _, c := range p.Commands {
@@ -219,7 +242,18 @@ func bash(p Program) string {
 			b.WriteString("\t\tesac\n")
 		}
 		if len(c.Positional) > 0 {
-			fmt.Fprintf(&b, "\t\twords=%q\n", strings.Join(c.Positional, " "))
+			if len(c.Then) > 0 {
+				// The words are for the first argument only; what follows one of them is asked for below.
+				fmt.Fprintf(&b, "\t\tif [ \"$COMP_CWORD\" -eq 2 ]; then words=%q; fi\n", strings.Join(c.Positional, " "))
+			} else {
+				fmt.Fprintf(&b, "\t\twords=%q\n", strings.Join(c.Positional, " "))
+			}
+		}
+		for _, t := range c.Then {
+			fmt.Fprintf(&b, "\t\tif [ \"$COMP_CWORD\" -ge 3 ] && [ \"${COMP_WORDS[2]}\" = %q ]; then from=%q; fi\n", t.Word, fromLine(p, t.From))
+		}
+		if len(c.PositionalFrom) > 0 {
+			fmt.Fprintf(&b, "\t\tfrom=%q\n", fromLine(p, c.PositionalFrom))
 		}
 		if c.PositionalFiles {
 			b.WriteString("\t\tfiles=1\n")
@@ -233,6 +267,8 @@ func bash(p Program) string {
 		mapfile -t COMPREPLY < <(compgen -W "$flags" -- "$cur")
 	elif [ -n "$words" ]; then
 		mapfile -t COMPREPLY < <(compgen -W "$words" -- "$cur")
+	elif [ -n "$from" ]; then
+		mapfile -t COMPREPLY < <(compgen -W "$($from 2> /dev/null)" -- "$cur")
 	elif [ -n "$files" ]; then
 		mapfile -t COMPREPLY < <(compgen -f -- "$cur")
 	fi
@@ -271,10 +307,14 @@ func zsh(p Program) string {
 	}
 	fmt.Fprintf(&b, "\t)\n\tif (( CURRENT == 2 )); then\n\t\t_describe -t commands %s commands\n\t\treturn\n\tfi\n\tcase ${words[2]} in\n", zshQuote(p.Name+" command"))
 	for _, c := range p.Commands {
-		if len(c.Flags) == 0 && len(c.Positional) == 0 && !c.PositionalFiles {
+		if !c.hasArguments() {
 			continue
 		}
-		fmt.Fprintf(&b, "\t%s)\n\t\t_arguments", c.Name)
+		fmt.Fprintf(&b, "\t%s)\n", c.Name)
+		for _, t := range c.Then {
+			fmt.Fprintf(&b, "\t\tif (( CURRENT >= 4 )) && [[ ${words[3]} == %s ]]; then\n\t\t\tlocal -a from\n\t\t\tfrom=(${(f)\"$(%s 2> /dev/null)\"})\n\t\t\tcompadd -a from\n\t\t\treturn\n\t\tfi\n", zshQuote(t.Word), fromLine(p, t.From))
+		}
+		b.WriteString("\t\t_arguments")
 		for _, f := range c.Flags {
 			spec := "--" + f.Name
 			switch {
@@ -290,6 +330,8 @@ func zsh(p Program) string {
 		switch {
 		case len(c.Positional) > 0:
 			fmt.Fprintf(&b, " \\\n\t\t\t%s", zshQuote("1:argument:("+strings.Join(c.Positional, " ")+")"))
+		case len(c.PositionalFrom) > 0:
+			fmt.Fprintf(&b, " \\\n\t\t\t%s", zshQuote("1:argument:{local -a from; from=(${(f)\"$("+fromLine(p, c.PositionalFrom)+" 2> /dev/null)\"}); compadd -a from}"))
 		case c.PositionalFiles:
 			fmt.Fprintf(&b, " \\\n\t\t\t%s", zshQuote("*:argument:_files"))
 		}
@@ -325,7 +367,18 @@ func fish(p Program) string {
 			fmt.Fprintf(&b, "complete -c %s -n %s -l %s%s -d %s\n", p.Name, fishQuote(when), f.Name, kind, fishQuote(f.Usage))
 		}
 		if len(c.Positional) > 0 {
-			fmt.Fprintf(&b, "complete -c %s -n %s -a %s\n", p.Name, fishQuote(when), fishQuote(strings.Join(c.Positional, " ")))
+			first := when
+			if len(c.Then) > 0 {
+				// Offered until one of them is typed: what follows is asked for below.
+				first += "; and not __fish_seen_subcommand_from " + strings.Join(c.Positional, " ")
+			}
+			fmt.Fprintf(&b, "complete -c %s -n %s -a %s\n", p.Name, fishQuote(first), fishQuote(strings.Join(c.Positional, " ")))
+		}
+		for _, t := range c.Then {
+			fmt.Fprintf(&b, "complete -c %s -n %s -a %s\n", p.Name, fishQuote(when+"; and __fish_seen_subcommand_from "+t.Word), fishQuote("("+fromLine(p, t.From)+" 2> /dev/null)"))
+		}
+		if len(c.PositionalFrom) > 0 {
+			fmt.Fprintf(&b, "complete -c %s -n %s -a %s\n", p.Name, fishQuote(when), fishQuote("("+fromLine(p, c.PositionalFrom)+" 2> /dev/null)"))
 		}
 		if c.PositionalFiles {
 			fmt.Fprintf(&b, "complete -c %s -n %s -F\n", p.Name, fishQuote(when))
