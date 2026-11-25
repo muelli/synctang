@@ -98,7 +98,7 @@ jobs:
         # one the emulator runs.
         run: |
           export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
-          ./gradlew assembleDebug assembleDebugAndroidTest -Psynctang.goMobileTarget=android/amd64
+          ./gradlew assembleDebug assembleDebugAndroidTest -Psynctang.goMobileTarget=android/amd64 -Psynctang.cameraAtOnce=false
 
       - name: Show what the boot will have to work with
         # Printed so that a failed boot comes with the facts that usually
@@ -220,7 +220,7 @@ jobs:
         # one the emulator runs.
         run: |
           export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
-          ./gradlew assembleDebug assembleDebugAndroidTest -Psynctang.goMobileTarget=android/amd64
+          ./gradlew assembleDebug assembleDebugAndroidTest -Psynctang.goMobileTarget=android/amd64 -Psynctang.cameraAtOnce=false
 
       - name: Show what the boot will have to work with
         # Printed so that a failed boot comes with the facts that usually

@@ -26,9 +26,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -72,6 +74,17 @@ fun QrScanner(
             ActivityCompat.shouldShowRequestPermissionRationale(it, Manifest.permission.CAMERA)
         } ?: true
         access = cameraAccessAfterRequest(ok, rationale)
+    }
+
+    // The screen is for scanning, so the camera is asked for as the screen appears and not after a tap on a
+    // button. Once only: a refusal leaves the button, or the way to Settings, as before. Saved, so that turning
+    // the phone does not ask again.
+    var asked by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(access) {
+        if (asksAtOnce(access, asked, BuildConfig.CAMERA_AT_ONCE)) {
+            asked = true
+            ask.launch(Manifest.permission.CAMERA)
+        }
     }
 
     // Someone sent to Settings comes back through onResume, having
@@ -188,6 +201,14 @@ class ScanLatch(private val now: () -> Long) {
 
 /** Whether the scanner can show the camera, or what it must offer instead. */
 enum class CameraAccess { GRANTED, ASK, OPEN_SETTINGS }
+
+/**
+ * Whether the camera is asked for now, without waiting for the person to press the button: when it is not
+ * allowed yet, it has not been asked for on this screen, and the build does it (tests turn it off, see
+ * `synctang.cameraAtOnce` in build.gradle.kts).
+ */
+fun asksAtOnce(access: CameraAccess, alreadyAsked: Boolean, enabled: Boolean): Boolean =
+    enabled && !alreadyAsked && access == CameraAccess.ASK
 
 fun initialCameraAccess(hasPermission: Boolean): CameraAccess =
     if (hasPermission) CameraAccess.GRANTED else CameraAccess.ASK

@@ -77,8 +77,14 @@ android {
         // so removing that guard takes two deliberate edits, not one.
         val noBiometric = (findProperty("synctang.noBiometric") as String?)?.toBoolean() ?: false
 
+        // -Psynctang.cameraAtOnce=false keeps the pairing screen from asking for the camera by itself, so that the
+        // permission dialog does not take the keys of an instrumented test that opens the app unpaired. The emulator
+        // workflow passes it; a release build always asks.
+        val cameraAtOnce = (findProperty("synctang.cameraAtOnce") as String?)?.toBoolean() ?: true
+
         getByName("debug") {
             buildConfigField("boolean", "NO_BIOMETRIC", noBiometric.toString())
+            buildConfigField("boolean", "CAMERA_AT_ONCE", cameraAtOnce.toString())
             // A different application id, so that a debug build installs next to
             // the release from the F-Droid repository instead of replacing it
             // (Android refuses to replace an app with one signed by another key,
@@ -87,6 +93,7 @@ android {
         }
         release {
             buildConfigField("boolean", "NO_BIOMETRIC", "false")
+            buildConfigField("boolean", "CAMERA_AT_ONCE", "true")
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }

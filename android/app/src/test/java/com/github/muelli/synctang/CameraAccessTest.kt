@@ -36,4 +36,25 @@ class CameraAccessTest {
     fun noPermissionYetStartsByAsking() {
         assertEquals(CameraAccess.ASK, initialCameraAccess(hasPermission = false))
     }
+
+    @Test
+    fun theCameraIsAskedForAtOnceWhenItIsNotAllowedYet() {
+        assertEquals(true, asksAtOnce(CameraAccess.ASK, alreadyAsked = false, enabled = true))
+    }
+
+    @Test
+    fun itIsAskedForOnceAndNotAgainAfterARefusal() {
+        assertEquals(false, asksAtOnce(CameraAccess.ASK, alreadyAsked = true, enabled = true))
+    }
+
+    @Test
+    fun nothingIsAskedWhenItIsAllowedOrSettingsIsTheOnlyWayOn() {
+        assertEquals(false, asksAtOnce(CameraAccess.GRANTED, alreadyAsked = false, enabled = true))
+        assertEquals(false, asksAtOnce(CameraAccess.OPEN_SETTINGS, alreadyAsked = false, enabled = true))
+    }
+
+    @Test
+    fun aBuildThatTurnsItOffNeverAsks() {
+        assertEquals(false, asksAtOnce(CameraAccess.ASK, alreadyAsked = false, enabled = false))
+    }
 }
