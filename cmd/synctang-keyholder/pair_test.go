@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"encoding/hex"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -296,6 +297,93 @@ func TestPairTakesOverANameThatMeantAnotherMachineWithForceAndSaysSo(t *testing.
 	if !strings.Contains(out+e, machineIDB) {
 		t.Errorf("the machine the name used to mean should be named:\n%s%s", out, e)
 	}
+}
+
+// The link is a secret for five minutes, and on a command line it is in the shell's history and in the process list.
+// On standard input it is in neither, and a person who copied the command's quotes with it has not made it unreadable.
+func TestPairReadsTheLinkFromStandardInput(t *testing.T) {
+	for name, input := range map[string]func(link string) string{
+		"no argument, a line":           func(l string) string { return l + "\n" },
+		"no line break at the end":      func(l string) string { return l },
+		"blank lines before it":         func(l string) string { return "\n  \n" + l + "\n" },
+		"single quotes, as it is shown": func(l string) string { return "'" + l + "'\n" },
+		"double quotes":                 func(l string) string { return "\"" + l + "\"\n" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := newFakeMachine(t, accept)
+			keyFile, transportFile := keyholderDir(t)
+			book := booksPath(t)
+			code, out, errOut := runKHWithInput(input(m.link("study-box")), pairArgs(m, book, keyFile, transportFile, "--store", "file")...)
+			if code != 0 {
+				t.Fatalf("exit %d:\n%s%s", code, out, errOut)
+			}
+			if got := m.result(t); !got.proof || !strings.Contains(out, got.sas) {
+				t.Errorf("proof %v, code %q, printed:\n%s", got.proof, got.sas, out)
+			}
+		})
+	}
+}
+
+func TestPairWithADashReadsTheLinkFromStandardInput(t *testing.T) {
+	m := newFakeMachine(t, accept)
+	keyFile, transportFile := keyholderDir(t)
+	code, out, errOut := runKHWithInput(m.link("box")+"\n", append(pairArgs(m, booksPath(t), keyFile, transportFile, "--store", "file"), "-")...)
+	if code != 0 {
+		t.Fatalf("exit %d:\n%s%s", code, out, errOut)
+	}
+	if !m.result(t).proof {
+		t.Error("the machine did not accept the proof of the code")
+	}
+}
+
+func TestPairWithNothingToReadOrTooManyLinksIsRefusedBeforeAnythingIsMade(t *testing.T) {
+	keyFile, transportFile := keyholderDir(t)
+	base := []string{"pair", "--machines-file", booksPath(t), "--key-file", keyFile, "--transport-key-file", transportFile, "--store", "file"}
+	for name, c := range map[string]struct {
+		input string
+		extra []string
+		want  string
+	}{
+		"empty input":      {"", nil, "no pairing link"},
+		"only blank lines": {"\n\n \n", nil, "no pairing link"},
+		"two arguments":    {"", []string{"synctang://pair?a=1", "synctang://pair?b=2"}, "at most"},
+		"not a link":       {"hello\n", nil, "not a pairing link"},
+	} {
+		if code, _, e := runKHWithInput(c.input, append(append([]string{}, base...), c.extra...)...); code != 2 || !strings.Contains(e, c.want) {
+			t.Errorf("%s: exit %d: %s", name, code, e)
+		}
+	}
+	if _, err := os.Stat(keyFile); !os.IsNotExist(err) {
+		t.Error("a key was made though there was no link")
+	}
+}
+
+// What is read is bounded: a pipe with something else in it is not read to its end.
+func TestPairReadsNoMoreThanALinkCanBe(t *testing.T) {
+	var in strings.Builder
+	for in.Len() < 4*maxPairLinkBytes {
+		in.WriteString("x")
+	}
+	if _, err := readPairLink(strings.NewReader(in.String()), io.Discard); err != nil {
+		t.Fatal(err) // a long line is returned, to be refused as not a link
+	}
+	var read int
+	r := &countingReader{r: strings.NewReader(in.String()), n: &read}
+	readPairLink(r, io.Discard)
+	if read > maxPairLinkBytes+4096 {
+		t.Errorf("read %d bytes", read)
+	}
+}
+
+type countingReader struct {
+	r io.Reader
+	n *int
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	*c.n += n
+	return n, err
 }
 
 func TestPairRefusesWhatIsNotAPairingLink(t *testing.T) {

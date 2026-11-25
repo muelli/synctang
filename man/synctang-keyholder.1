@@ -7,7 +7,7 @@ synctang\-keyholder \- the laptop key holder for synctang
 .br
 .B synctang\-keyholder pair
 .RI [ flags ]
-.I link
+.RI [ link ]
 .br
 .B synctang\-keyholder init
 .RI [ flags ]
@@ -108,8 +108,15 @@ Enrols this key holder on a machine from the pairing link that
 prints under its QR code.
 That one string is all that is copied: it carries the machine's transport identity, its name, the
 discovery server if it is not the public one, and a one-time code.
-Quote it, because it contains
-.BR & .
+Give it as the argument, in quotes because it contains
+.BR & ,
+or leave the argument out (or write
+.BR \- )
+and the link is read from standard input: the first line that has anything in it, with a pair of quotes
+around it taken off.
+At a terminal the command asks for it, so it can be pasted.
+The link is a secret until it is used, and in an argument it is in the shell's history and in the list of
+processes; on standard input it is in neither.
 .PP
 If there is no key yet, one is made first, as
 .B init

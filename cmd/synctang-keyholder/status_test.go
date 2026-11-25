@@ -17,8 +17,13 @@ func keyholderDir(t *testing.T) (keyFile, transportFile string) {
 }
 
 func runKH(args ...string) (int, string, string) {
+	return runKHWithInput("", args...)
+}
+
+// runKHWithInput is runKH with something on standard input.
+func runKHWithInput(input string, args ...string) (int, string, string) {
 	var out, errOut bytes.Buffer
-	code := run(args, strings.NewReader(""), &out, &errOut)
+	code := run(args, strings.NewReader(input), &out, &errOut)
 	return code, out.String(), errOut.String()
 }
 

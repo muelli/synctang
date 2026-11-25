@@ -129,6 +129,10 @@ matter, the link contains `&`):
 
     synctang-keyholder pair 'synctang://pair?machine=...&name=my-machine&psk=...'
 
+Or give no link and paste it when asked: `synctang-keyholder pair` reads it from standard input (as does
+`synctang-keyholder pair -`, and `... | synctang-keyholder pair`). The link is a secret until it is used, and
+typed as an argument it is in the shell's history and in the list of processes; read from standard input it is in neither.
+
 That one string is all that is copied. The laptop makes its key if it has none, proves it holds the
 one-time code, and sends its public key. **Both sides now show a six-digit code, and the person at the
 machine is asked whether to enrol: say yes only if the code on the laptop is the same.** The one-time

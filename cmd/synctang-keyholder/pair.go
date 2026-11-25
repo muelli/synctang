@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"cmp"
 	"context"
 	"crypto/tls"
@@ -14,6 +15,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/muelli/synctang/internal/gnuflag"
@@ -21,6 +23,7 @@ import (
 	"github.com/muelli/synctang/mrcore"
 	"github.com/muelli/synctang/mrcore/transport"
 	"github.com/syncthing/syncthing/lib/protocol"
+	"golang.org/x/term"
 )
 
 // pairLink is what "synctang-unlocker pair" shows as a link and a QR code: the machine to dial, its
@@ -71,6 +74,35 @@ func parsePairingLink(text string) (pairLink, error) {
 	}
 	mrcore.Wipe(secret)
 	return l, nil
+}
+
+// maxPairLinkBytes is more than any link is long: a machine id, a name, a discovery URL and a code come to a few hundred
+// bytes. Reading stops there, so that a pipe with something else in it is not read to its end.
+const maxPairLinkBytes = 8 << 10
+
+// readPairLink reads the pairing link from standard input: the first line that has anything in it. At a terminal it
+// asks first, because a program that waits on a silent terminal looks hung. A link given this way is on no command
+// line, so it is in neither the shell's history nor the process list, which a link in an argument is. A pair of quotes
+// around it is taken off: the command that "synctang-unlocker pair" prints has the link in quotes, and a person who
+// copies from there copies them too.
+func readPairLink(stdin io.Reader, stderr io.Writer) (string, error) {
+	if f, ok := stdin.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+		fmt.Fprint(stderr, T("Pairing link (the synctang://pair?... line that \"synctang-unlocker pair\" prints): "))
+	}
+	in := bufio.NewReader(io.LimitReader(stdin, maxPairLinkBytes))
+	for {
+		line, err := in.ReadString('\n')
+		line = strings.TrimSpace(line)
+		if len(line) >= 2 && (line[0] == '\'' || line[0] == '"') && line[len(line)-1] == line[0] {
+			line = line[1 : len(line)-1]
+		}
+		if line != "" {
+			return line, nil
+		}
+		if err != nil {
+			return "", errors.New(T("no pairing link: give it as the argument, or on standard input (it is the synctang://pair?... line that \"synctang-unlocker pair\" prints under its QR code)"))
+		}
+	}
 }
 
 // pairFinal marks a failure after which another attempt cannot help: the machine has the proof of the
@@ -172,7 +204,7 @@ const (
 	defaultPairWait = 5 * time.Minute
 )
 
-func runPair(args []string, stdout, stderr io.Writer) int {
+func runPair(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("pair", flag.ContinueOnError)
 	fs.SetOutput(gnuflag.Writer(stderr))
 	keyFile := keyFileFlag(fs)
@@ -190,11 +222,19 @@ func runPair(args []string, stdout, stderr io.Writer) int {
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if fs.NArg() != 1 {
-		ui.Errorln(stderr, T("pair wants one argument, the pairing link that \"synctang-unlocker pair\" prints under its QR code (in quotes)"))
+	if fs.NArg() > 1 {
+		ui.Errorln(stderr, T("pair wants one argument at most, the pairing link that \"synctang-unlocker pair\" prints under its QR code (in quotes); without one it is read from standard input"))
 		return 2
 	}
-	link, err := parsePairingLink(fs.Arg(0))
+	text := fs.Arg(0)
+	if fs.NArg() == 0 || text == "-" {
+		var err error
+		if text, err = readPairLink(stdin, stderr); err != nil {
+			ui.Errorf(stderr, "%v\n", err)
+			return 2
+		}
+	}
+	link, err := parsePairingLink(text)
 	if err != nil {
 		ui.Errorf(stderr, "%v\n", err)
 		return 2

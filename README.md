@@ -112,6 +112,8 @@ command. Run it on the laptop. Keep the quotes.
 
     synctang-keyholder pair 'synctang://pair?machine=...&name=my-machine&psk=...'
 
+(Or run `synctang-keyholder pair` alone and paste the link when it asks.)
+
 The laptop and the machine show a 6-digit code. Enter `y` on the machine only if the codes are the same.
 The laptop remembers the machine under its name.
 

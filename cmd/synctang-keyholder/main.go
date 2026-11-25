@@ -33,7 +33,7 @@ var usage = T(`usage: synctang-keyholder <command> [flags]
 
 commands:
   pair           enrol this key holder on a machine, from the link that
-                 "synctang-unlocker pair" shows
+                 "synctang-unlocker pair" shows (as the argument, or pasted)
   init           generate a new long-term key and transport identity
   export-pubkey  print the public key and transport id, as "enrol" wants them
   unlock         answer a machine's recovery attempt, by name or transport id
@@ -73,7 +73,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprint(stdout, version.Describe("synctang-keyholder"))
 		return 0
 	case "pair":
-		return runPair(args[1:], stdout, stderr)
+		return runPair(args[1:], stdin, stdout, stderr)
 	case "init":
 		return runInit(args[1:], stdout, stderr)
 	case "export-pubkey":
