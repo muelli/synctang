@@ -316,6 +316,27 @@ func shouldWarnAboutNewIdentity(isNew bool, keyFile string) bool {
 	return isNew && keyFile == defaultMachineKeyFile
 }
 
+// loadAgentIdentity loads this machine's transport identity for the agent and says which id the agent is waiting under.
+// If there is no identity file, a new one is made, and that is said too, loudly: no key holder was ever shown that id,
+// so none will find this machine. In the initrd that is what a missing /etc/synctang/machine.pem looks like, and the
+// console is where a person who is debugging it is looking.
+func loadAgentIdentity(path string, stdout, stderr io.Writer) (tls.Certificate, error) {
+	_, statErr := os.Stat(path)
+	madeNew := errors.Is(statErr, fs.ErrNotExist)
+	cert, err := transport.LoadOrCreateCert(path)
+	if err != nil {
+		return cert, err
+	}
+	id := protocol.NewDeviceID(cert.Certificate[0]).String()
+	ui.Infof(stdout, T("waiting for a key holder, transport id %s\n"), id)
+	if madeNew {
+		ui.Notef(stderr, T("there was no transport identity at %s, so this one is new: no key holder has been shown it, and none will find this machine.\n"), path)
+		ui.Infoln(stderr, T("if this is the initrd, it was built without the identity: run \"synctang-unlocker rehearse\" on the running system, then rebuild it (dracut --force)."))
+		slog.Warn("no transport identity, made a new one that no key holder knows", "path", path, "transport_id", id)
+	}
+	return cert, nil
+}
+
 // runAgentCLI is the "agent" subcommand: it runs the systemd password
 // agent, listening for a key holder to connect and answer one recovery
 // attempt at a time, until ctx (SIGTERM, which
@@ -353,13 +374,11 @@ func runAgentCLI(args []string, stdout, stderr io.Writer) int {
 	logger := newLogger(logLevel, journalChoice, journal.DefaultSocket, os.Stderr)
 	slog.SetDefault(logger)
 
-	cert, err := transport.LoadOrCreateCert(*machineKeyFile)
+	cert, err := loadAgentIdentity(*machineKeyFile, stdout, stderr)
 	if err != nil {
 		ui.Errorf(stderr, "%v\n", err)
 		return 1
 	}
-
-	ui.Infof(stdout, T("waiting for a key holder, transport id %s\n"), protocol.NewDeviceID(cert.Certificate[0]))
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer cancel()
